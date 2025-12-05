@@ -1,0 +1,117 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: dno-crawler-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dno}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dno_secret}
+      POSTGRES_DB: ${POSTGRES_DB:-dno_crawler}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro,Z
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dno}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Redis Cache & Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: dno-crawler-redis
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Ollama LLM Server
+  ollama:
+    image: ollama/ollama:latest
+    container_name: dno-crawler-ollama
+    restart: unless-stopped
+    volumes:
+      - ollama_data:/root/.ollama
+    ports:
+      - "11434:11434"
+    # GPU support (uncomment if you have NVIDIA GPU)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+
+  # SearXNG Web Search (optional)
+  searxng:
+    image: searxng/searxng:latest
+    container_name: dno-crawler-searxng
+    restart: unless-stopped
+    volumes:
+      - ./searxng:/etc/searxng:rw,Z
+    ports:
+      - "8080:8080"
+    environment:
+      - SEARXNG_BASE_URL=http://localhost:8080/
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dno-crawler-backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD:-dno_secret}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SEARXNG_BASE_URL=http://searxng:8080
+      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
+      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src:ro,z
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # React Frontend (development)
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    container_name: dno-crawler-frontend
+    restart: unless-stopped
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app,Z
+      - /app/node_modules
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  redis_data:
+  ollama_data:

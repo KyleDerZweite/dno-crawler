@@ -1,0 +1,120 @@
+# .gitignore for dno-crawler
+# Targets: Python backend, Node/Vite frontends, Docker, Editor files, OS files, logs and build artifacts
+
+### General
+# Ignore OS files
+*.DS_Store
+Thumbs.db
+desktop.ini
+
+# Editor/IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
+
+# Logs
+*.log
+logs/
+
+### Python
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environment
+venv/
+.venv/
+env/
+ENV/
+venv.bak/
+/.python-version
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+*.egg
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+
+# C extensions / compiled files
+*.so
+
+# Type check / lint caches
+.mypy_cache/
+.ruff_cache/
+.pyrightcache/
+
+# Local database files
+*.db
+*.sqlite3
+
+### Node / Frontend
+# Node modules and package manager logs
+node_modules/
+**/node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Build output
+dist/
+build/
+.vite/
+/.parcel-cache/
+/.next/
+/.nuxt/
+
+# Production web assets
+public/dist/
+
+# Lock files (keep lockfiles unless you explicitly want to ignore)
+# package-lock.json
+
+### Docker
+# Local override files often aren't meant to be checked in
+docker-compose.override.yml
+docker-compose.*.yml
+Dockerfile*~
+
+# Ignore container metadata
+docker-compose.yml.local
+
+### Environment
+.env
+.env.*
+*.local
+
+### Misc
+# Backup files
+*.bak
+*~
+# Vim swap files
+*.swp
+
+# Ignore compiled search indexes
+.cache/
+
+# Ignore IDE project files and settings (Team-owned configs should not be ignored)
+# JetBrains
+.idea/
+# Mac
+.DS_Store
+# Windows
+Thumbs.db
+
+# End of .gitignore
+example_frontend/

@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 32 32" fill="none" stroke="#34d399" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <!-- DNO-Crawler favicon: network nodes + download tray + energy bolt -->
+  <!-- Subtle web ring -->
+  <circle cx="16" cy="14" r="8" stroke-opacity="0.12" fill="none"/>
+
+  <!-- Connections (web/crawl) -->
+  <path d="M16 10v4"/>
+  <path d="M16 14L10 18"/>
+  <path d="M16 14L22 18"/>
+
+  <!-- Nodes -->
+  <circle cx="16" cy="14" r="1.9" fill="#34d399" stroke="none"/>
+  <circle cx="10" cy="18" r="0.9" fill="#34d399" stroke="none"/>
+  <circle cx="22" cy="18" r="0.9" fill="#34d399" stroke="none"/>
+
+  <!-- Download arrow pointing into tray (central) -->
+  <path d="M16 18v3" stroke="#34d399" stroke-width="1.8" stroke-linecap="round"/>
+  <path d="M14.5 19.5l1.5 1.5 1.5-1.5" stroke="#34d399" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <path d="M12.5 22.5h7a0.5 0.5 0 0 1 .5.5v0.6a0.5 0.5 0 0 1-.5.5h-7a0.5 0.5 0 0 1-.5-.5v-0.6a0.5 0.5 0 0 1 .5-.5z" stroke-opacity="1"/>
+
+  <!-- Energy bolt / electrical spark to suggest 'power' or 'downloads' -->
+  <path d="M20.6 8.6l-1 2.6h1.9l-2 3" stroke="#5ae3b1" stroke-width="1.2" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- Sparkles to carry the original 'magic' feel -->
+  <circle cx="9" cy="9" r="0.6" fill="#34d399" stroke="none"/>
+  <circle cx="23" cy="11" r="0.6" fill="#34d399" stroke="none"/>
+  <circle cx="14" cy="22.5" r="0.5" fill="#34d399" stroke="none"/>
+</svg>
