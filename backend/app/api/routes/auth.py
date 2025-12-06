@@ -190,7 +190,7 @@ async def login(
         access_token=access_token,
         refresh_token=refresh_token,
         user=User(
-            id=user.id,
+            id=str(user.id),
             email=user.email,
             name=user.name,
             role=UserRole(user.role),
@@ -230,7 +230,7 @@ async def get_current_user_info(
 ) -> User:
     """Get current user information."""
     return User(
-        id=current_user.id,
+        id=str(current_user.id),
         email=current_user.email,
         name=current_user.name,
         role=UserRole(current_user.role),

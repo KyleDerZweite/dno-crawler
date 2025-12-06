@@ -136,7 +136,7 @@ class UserCreate(UserBase):
 
 
 class User(UserBase, TimestampMixin):
-    id: int  # Changed from UUID to int to match database schema
+    id: str  # String ID for API responses (converted from int in DB)
     role: UserRole = UserRole.PENDING
     is_active: bool = True
     email_verified: bool = False
