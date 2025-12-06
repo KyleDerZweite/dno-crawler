@@ -136,7 +136,7 @@ class UserCreate(UserBase):
 
 
 class User(UserBase, TimestampMixin):
-    id: UUID
+    id: int  # Changed from UUID to int to match database schema
     role: UserRole = UserRole.PENDING
     is_active: bool = True
     email_verified: bool = False

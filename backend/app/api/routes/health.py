@@ -7,13 +7,13 @@ from fastapi import APIRouter
 router = APIRouter()
 
 
-@router.get("/health")
+@router.get("/api/health")
 async def health_check() -> dict:
     """Basic health check."""
     return {"status": "healthy"}
 
 
-@router.get("/ready")
+@router.get("/api/ready")
 async def readiness_check() -> dict:
     """Readiness check - includes database connectivity."""
     # TODO: Add actual database and Redis checks

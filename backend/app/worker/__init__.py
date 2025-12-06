@@ -6,6 +6,13 @@ from app.db import close_db, init_db
 
 logger = structlog.get_logger()
 
+
+async def health_check_job(ctx) -> str:
+    """Placeholder health check job."""
+    logger.info("Worker health check job executed")
+    return "ok"
+
+
 async def startup(ctx):
     """
     Initialize the worker context.
@@ -26,7 +33,7 @@ class WorkerSettings:
     """
     Arq worker settings.
     """
-    functions = []  # Register job functions here
+    functions = [health_check_job]  # Register job functions here
     redis_settings = RedisSettings.from_dsn(str(settings.redis_url))
     on_startup = startup
     on_shutdown = shutdown

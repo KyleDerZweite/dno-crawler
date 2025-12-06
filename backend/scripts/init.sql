@@ -5,11 +5,7 @@
 CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 
 -- Create enum types
-DO $$ BEGIN
-    CREATE TYPE user_role AS ENUM ('user', 'admin');
-EXCEPTION
-    WHEN duplicate_object THEN null;
-END $$;
+-- Note: user_role is handled as VARCHAR by SQLAlchemy ORM, not as ENUM
 
 DO $$ BEGIN
     CREATE TYPE crawl_status AS ENUM ('pending', 'running', 'completed', 'failed');
@@ -33,10 +29,10 @@ CREATE TABLE IF NOT EXISTS users (
     verification_status VARCHAR(50) NOT NULL DEFAULT 'awaiting_approval',
     approved_by INTEGER,
     approved_at TIMESTAMPTZ,
-    role user_role NOT NULL DEFAULT 'user',
+    role VARCHAR(20) NOT NULL DEFAULT 'pending',
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    updated_at TIMESTAMPTZ
 );
 
 -- Create DNOs table

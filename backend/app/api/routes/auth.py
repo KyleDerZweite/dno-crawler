@@ -4,7 +4,6 @@ Authentication routes.
 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
@@ -64,12 +63,12 @@ async def get_current_user(
     
     # Get user from database
     try:
-        # Ensure user_id is a valid UUID
-        user_uuid = UUID(user_id)
-    except ValueError:
+        # Convert user_id to integer (UserModel.id is Integer)
+        user_int_id = int(user_id)
+    except (ValueError, TypeError):
         raise credentials_exception
 
-    query = select(UserModel).where(UserModel.id == user_uuid)
+    query = select(UserModel).where(UserModel.id == user_int_id)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     
@@ -260,14 +259,14 @@ async def refresh_token(
     
     # Verify user exists and is active
     try:
-        user_uuid = UUID(user_id)
-    except ValueError:
+        user_int_id = int(user_id)
+    except (ValueError, TypeError):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
 
-    query = select(UserModel).where(UserModel.id == user_uuid)
+    query = select(UserModel).where(UserModel.id == user_int_id)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     
