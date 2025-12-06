@@ -79,7 +79,7 @@ export function Layout() {
               <Zap className="h-6 w-6 text-primary" />
             </div>
             <span className="text-xl font-bold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
-              DNO Crawler
+              DNO-Crawler
             </span>
           </Link>
           <Button
