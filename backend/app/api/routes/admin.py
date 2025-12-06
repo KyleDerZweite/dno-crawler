@@ -6,12 +6,20 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import func, select
+from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_admin_user
 from app.core.models import APIResponse, UserRole
-from app.db import CrawlJobModel, DNOModel, NetzentgelteModel, UserModel, get_db
+from app.db import (
+    CrawlJobModel,
+    DNOModel,
+    NetzentgelteModel,
+    UserModel,
+    SessionModel,
+    APIKeyModel,
+    get_db,
+)
 
 router = APIRouter()
 
@@ -233,6 +241,9 @@ async def delete_user(
             detail="User not found",
         )
     
+    # Remove all sessions and api keys related to this user to avoid FK/NULL constraint issues
+    await db.execute(delete(SessionModel).where(SessionModel.user_id == user_id))
+    await db.execute(delete(APIKeyModel).where(APIKeyModel.user_id == user_id))
     await db.delete(user)
     await db.commit()
     
