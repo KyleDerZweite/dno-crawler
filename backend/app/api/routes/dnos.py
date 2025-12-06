@@ -3,7 +3,6 @@ DNO management routes (authenticated).
 """
 
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -68,7 +67,7 @@ async def list_dnos_detailed(
 
 @router.get("/{dno_id}")
 async def get_dno_details(
-    dno_id: UUID,
+    dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
 ) -> APIResponse:
@@ -101,7 +100,7 @@ async def get_dno_details(
 
 @router.post("/{dno_id}/crawl")
 async def trigger_crawl(
-    dno_id: UUID,
+    dno_id: int,
     request: TriggerCrawlRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
@@ -163,7 +162,7 @@ async def trigger_crawl(
 
 @router.get("/{dno_id}/data")
 async def get_dno_data(
-    dno_id: UUID,
+    dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     year: int | None = Query(None),
@@ -197,7 +196,7 @@ async def get_dno_data(
 
 @router.get("/{dno_id}/jobs")
 async def get_dno_crawl_jobs(
-    dno_id: UUID,
+    dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
     limit: int = Query(10, ge=1, le=50),

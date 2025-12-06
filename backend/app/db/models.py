@@ -96,8 +96,8 @@ class NetzentgelteModel(Base, TimestampMixin):
     __tablename__ = "netzentgelte"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -311,11 +311,11 @@ class CrawlAttemptModel(Base, TimestampMixin):
     __tablename__ = "crawl_attempts"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
-    strategy_id: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("extraction_strategies.id", ondelete="SET NULL")
+    strategy_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("extraction_strategies.id", ondelete="SET NULL")
     )
     status: Mapped[str] = mapped_column(String(20), nullable=False)
     data_found: Mapped[dict | None] = mapped_column(JSON)

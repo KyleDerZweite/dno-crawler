@@ -7,7 +7,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -33,6 +33,10 @@ class RegisterRequest(BaseModel):
     email: EmailStr
     name: str
     password: str
+
+
+class RefreshTokenRequest(BaseModel):
+    refresh_token: str = Field(..., description="The refresh token to exchange for a new access token")
 
 
 class LoginResponse(BaseModel):
@@ -240,10 +244,10 @@ async def get_current_user_info(
 @router.post("/refresh")
 async def refresh_token(
     db: Annotated[AsyncSession, Depends(get_db)],
-    refresh_token: str,
+    request: RefreshTokenRequest,
 ) -> Token:
     """Refresh access token using refresh token."""
-    payload = verify_token(refresh_token, "refresh")
+    payload = verify_token(request.refresh_token, "refresh")
     if payload is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
