@@ -4,20 +4,25 @@ services:
     image: postgres:16-alpine
     container_name: dno-crawler-db
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-dno}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dno_secret}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB:-dno_crawler}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro,Z
     ports:
-      - "5432:5432"
+      - "${POSTGRES_PORT:-5432}:5432"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dno}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dno} -d ${POSTGRES_DB:-dno_crawler}"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - dno-crawler
 
   # Redis Cache & Job Queue
   redis:
@@ -28,12 +33,14 @@ services:
     volumes:
       - redis_data:/data
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - dno-crawler
 
   # Ollama LLM Server
   ollama:
@@ -43,17 +50,11 @@ services:
     volumes:
       - ollama_data:/root/.ollama
     ports:
-      - "11434:11434"
-    # GPU support (uncomment if you have NVIDIA GPU)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+      - "11435:11434"
+    networks:
+      - dno-crawler
 
-  # SearXNG Web Search (optional)
+  # SearXNG Web Search
   searxng:
     image: searxng/searxng:latest
     container_name: dno-crawler-searxng
@@ -64,6 +65,8 @@ services:
       - "8080:8080"
     environment:
       - SEARXNG_BASE_URL=http://localhost:8080/
+    networks:
+      - dno-crawler
 
   # FastAPI Backend
   backend:
@@ -72,15 +75,18 @@ services:
       dockerfile: Dockerfile
     container_name: dno-crawler-backend
     restart: unless-stopped
+    env_file:
+      - .env
     environment:
-      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD:-dno_secret}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_BASE_URL=http://ollama:11434
       - SEARXNG_BASE_URL=http://searxng:8080
-      - JWT_SECRET=${JWT_SECRET:-your-super-secret-jwt-key-change-in-production}
-      - CORS_ORIGINS=http://localhost:5173,http://localhost:3000
+      - JWT_SECRET=${JWT_SECRET}
+      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
+      - DEBUG=true
     ports:
-      - "8000:8000"
+      - "${BACKEND_PORT:-8000}:8000"
     depends_on:
       db:
         condition: service_healthy
@@ -93,8 +99,35 @@ services:
       interval: 30s
       timeout: 10s
       retries: 3
+    networks:
+      - dno-crawler
 
-  # React Frontend (development)
+  # Background Worker
+  worker:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dno-crawler-worker
+    restart: unless-stopped
+    command: arq src.worker.WorkerSettings
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - SEARXNG_BASE_URL=http://searxng:8080
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend/src:/app/src:ro,z
+    networks:
+      - dno-crawler
+
+  # React Frontend
   frontend:
     build:
       context: ./frontend
@@ -102,16 +135,24 @@ services:
     container_name: dno-crawler-frontend
     restart: unless-stopped
     ports:
-      - "5173:5173"
+      - "${FRONTEND_PORT:-5173}:5173"
     volumes:
-      - ./frontend:/app,Z
-      - /app/node_modules
+      - ./frontend:/app:Z
+      - frontend_node_modules:/app/node_modules
     environment:
       - VITE_API_URL=http://localhost:8000
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     depends_on:
       - backend
+    networks:
+      - dno-crawler
 
 volumes:
   postgres_data:
   redis_data:
   ollama_data:
+  frontend_node_modules:
+
+networks:
+  dno-crawler:
+    driver: bridge

@@ -27,7 +27,12 @@ END $$;
 CREATE TABLE IF NOT EXISTS users (
     id SERIAL PRIMARY KEY,
     email VARCHAR(255) NOT NULL UNIQUE,
-    hashed_password VARCHAR(255) NOT NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    name VARCHAR(255) NOT NULL DEFAULT 'admin',
+    email_verified BOOLEAN NOT NULL DEFAULT false,
+    verification_status VARCHAR(50) NOT NULL DEFAULT 'awaiting_approval',
+    approved_by INTEGER,
+    approved_at TIMESTAMPTZ,
     role user_role NOT NULL DEFAULT 'user',
     is_active BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -136,10 +141,9 @@ CREATE INDEX IF NOT EXISTS idx_crawl_jobs_dno ON crawl_jobs(dno_id);
 CREATE INDEX IF NOT EXISTS idx_extraction_strategies_dno ON extraction_strategies(dno_id);
 
 -- Insert default admin user (password: admin123 - CHANGE IN PRODUCTION!)
--- Password hash generated with: passlib.hash.bcrypt.hash("admin123")
-INSERT INTO users (email, hashed_password, role)
-VALUES ('admin@kylehub.dev', '$2b$12$QmYROWqypH8XrBPFIrUzpOv9.aAy8oqGt66E8cWNW.aSoPGng/zdS', 'admin')
-ON CONFLICT (email) DO NOTHING;
+-- Default admin user is created by the backend at startup when
+-- `ADMIN_EMAIL` and `ADMIN_PASSWORD` are provided via environment variables.
+-- This prevents committing plaintext credentials to the DB initialization script.
 
 -- Insert some sample DNOs
 INSERT INTO dnos (name, homepage_url, netzentgelt_url, bundesland) VALUES

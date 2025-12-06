@@ -52,7 +52,7 @@ class DNOModel(Base, TimestampMixin):
 
     __tablename__ = "dnos"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     official_name: Mapped[str | None] = mapped_column(String(255))
@@ -69,12 +69,11 @@ class DNOModel(Base, TimestampMixin):
 
 class DNOCrawlConfigModel(Base, TimestampMixin):
     """Crawl configuration for a DNO."""
-
     __tablename__ = "dno_crawl_configs"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE"), unique=True
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE"), unique=True
     )
     crawl_type: Mapped[str] = mapped_column(String(50))
     netzentgelte_source_url: Mapped[str | None] = mapped_column(Text)
@@ -94,13 +93,9 @@ class DNOCrawlConfigModel(Base, TimestampMixin):
 
 class NetzentgelteModel(Base, TimestampMixin):
     """Netzentgelte (network tariffs) data."""
+    __tablename__ = "netzentgelte"
 
-    __tablename__ = "netzentgelte_data"
-    __table_args__ = (
-        Index("idx_netzentgelte_dno_year", "dno_id", "year"),
-    )
-
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dno_id: Mapped[UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
     )
@@ -115,8 +110,8 @@ class NetzentgelteModel(Base, TimestampMixin):
     verification_status: Mapped[str] = mapped_column(
         String(20), default=VerificationStatus.UNVERIFIED.value
     )
-    verified_by: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id")
+    verified_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id")
     )
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_notes: Mapped[str | None] = mapped_column(Text)
@@ -127,15 +122,10 @@ class NetzentgelteModel(Base, TimestampMixin):
 
 class HLZFModel(Base, TimestampMixin):
     """HLZF (Hauptlastzeiten) data."""
-
-    __tablename__ = "hlzf_data"
-    __table_args__ = (
-        Index("idx_hlzf_dno_year", "dno_id", "year"),
-    )
-
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    __tablename__ = "hlzf"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     season: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -147,8 +137,8 @@ class HLZFModel(Base, TimestampMixin):
     verification_status: Mapped[str] = mapped_column(
         String(20), default=VerificationStatus.UNVERIFIED.value
     )
-    verified_by: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id")
+    verified_by: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id")
     )
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -164,9 +154,9 @@ class DataSourceModel(Base, TimestampMixin):
         Index("idx_data_sources_dno_year", "dno_id", "year"),
     )
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -186,10 +176,9 @@ class DataSourceModel(Base, TimestampMixin):
 
 class UserModel(Base, TimestampMixin):
     """User account."""
-
     __tablename__ = "users"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
     email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -197,7 +186,7 @@ class UserModel(Base, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
     verification_status: Mapped[str] = mapped_column(String(50), default="awaiting_approval")
-    approved_by: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("users.id"))
+    approved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
@@ -210,9 +199,9 @@ class SessionModel(Base, TimestampMixin):
 
     __tablename__ = "sessions"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE")
     )
     token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     refresh_token_hash: Mapped[str | None] = mapped_column(String(255), unique=True)
@@ -231,12 +220,11 @@ class SessionModel(Base, TimestampMixin):
 
 class APIKeyModel(Base, TimestampMixin):
     """API keys for programmatic access."""
-
     __tablename__ = "api_keys"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="CASCADE"), index=True
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
     )
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     key_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
@@ -255,17 +243,12 @@ class CrawlJobModel(Base, TimestampMixin):
     """Crawl job tracking."""
 
     __tablename__ = "crawl_jobs"
-    __table_args__ = (
-        Index("idx_crawl_jobs_dno_year", "dno_id", "year"),
-        Index("idx_crawl_jobs_status", "status"),
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
     )
-
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
-    )
-    dno_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    dno_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
@@ -286,9 +269,9 @@ class CrawlJobStepModel(Base, TimestampMixin):
 
     __tablename__ = "crawl_job_steps"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    job_id: Mapped[UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("crawl_jobs.id", ondelete="CASCADE"), index=True
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    job_id: Mapped[int] = mapped_column(
+        Integer, ForeignKey("crawl_jobs.id", ondelete="CASCADE"), index=True
     )
     step_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
@@ -306,12 +289,11 @@ class CrawlJobStepModel(Base, TimestampMixin):
 
 class ExtractionStrategyModel(Base, TimestampMixin):
     """Learned extraction strategies."""
-
     __tablename__ = "extraction_strategies"
 
-    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    dno_id: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("dnos.id", ondelete="CASCADE")
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     strategy_type: Mapped[str] = mapped_column(String(50), nullable=False)
     config: Mapped[dict] = mapped_column(JSON, nullable=False)
@@ -362,8 +344,8 @@ class QueryLogModel(Base):
     __tablename__ = "query_logs"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("users.id", ondelete="SET NULL")
+    user_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("users.id", ondelete="SET NULL")
     )
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     interpreted_dno: Mapped[str | None] = mapped_column(String(255))

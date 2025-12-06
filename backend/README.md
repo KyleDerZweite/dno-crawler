@@ -176,4 +176,4 @@ npm run format
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file
+MIT License - see LICENSE file

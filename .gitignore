@@ -97,6 +97,7 @@ docker-compose.yml.local
 .env
 .env.*
 *.local
+!.env.example
 
 ### Misc
 # Backup files
@@ -117,4 +118,3 @@ docker-compose.yml.local
 Thumbs.db
 
 # End of .gitignore
-example_frontend/

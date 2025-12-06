@@ -2,10 +2,11 @@
 Core configuration and settings for DNO Crawler.
 """
 
+import os
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -70,10 +71,57 @@ class Settings(BaseSettings):
         "Mozilla/5.0 (compatible; DNOCrawler/1.0; +https://github.com/KyleDerZweite/dno-crawler)"
     )
 
+    # Initial admin user (optional) - provide via .env for local/dev only
+    admin_email: str | None = None
+    admin_username: str | None = None
+    admin_password: str | None = None
+
     # Storage
     storage_path: str = "./data"
     downloads_path: str = "./data/downloads"
     strategies_path: str = "./data/strategies"
+
+    @field_validator('jwt_secret')
+    @classmethod
+    def validate_jwt_secret(cls, v: str, info: ValidationInfo) -> str:
+        """Validate that jwt_secret is secure for production"""
+        if not v or v.strip() == "":
+            raise ValueError("jwt_secret cannot be empty")
+        
+        # Check minimum length
+        if len(v) < 32:
+            raise ValueError(
+                "jwt_secret must be at least 32 characters long for security"
+            )
+        
+        # Production-specific checks (only in production mode)
+        debug_mode = os.getenv('DEBUG', 'false').lower() in ('true', '1', 'yes', 'on')
+        if not debug_mode:
+            if ("change-me" in v or 
+                "development" in v or
+                "secret" in v):
+                raise ValueError(
+                    "jwt_secret must be changed from default value in production. "
+                    "Use a secure random string of at least 32 characters."
+                )
+        
+        return v
+
+    @field_validator('database_url')
+    @classmethod
+    def validate_database_url(cls, v: PostgresDsn) -> PostgresDsn:
+        """Validate database URL"""
+        if not v:
+            raise ValueError("database_url cannot be empty")
+        
+        # In Pydantic v2, PostgresDsn is an object, cast to str to check scheme if needed, 
+        # but Pydantic already validates scheme for PostgresDsn type.
+        return v
+
+    @staticmethod
+    def _is_debug_mode() -> bool:
+        """Check if we're in debug mode"""
+        return os.getenv('DEBUG', 'false').lower() in ('true', '1', 'yes', 'on')
 
 
 @lru_cache

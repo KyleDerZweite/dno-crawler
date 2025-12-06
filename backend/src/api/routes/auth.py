@@ -4,23 +4,26 @@ Authentication routes.
 
 from datetime import datetime, timedelta, timezone
 from typing import Annotated
+from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from jose import JWTError, jwt
-from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from src.core.config import settings
 from src.core.models import APIResponse, Token, User, UserRole
+from src.core.security import (
+    create_access_token,
+    create_refresh_token,
+    get_password_hash,
+    verify_password,
+    verify_token,
+)
 from src.db import SessionModel, UserModel, get_db
 
 router = APIRouter()
-
-# Password hashing
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # OAuth2 scheme
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/v1/auth/login")
@@ -40,41 +43,6 @@ class LoginResponse(BaseModel):
     user: User
 
 
-# Utility functions
-def verify_password(plain_password: str, hashed_password: str) -> bool:
-    return pwd_context.verify(plain_password, hashed_password)
-
-
-def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
-
-
-def create_access_token(user_id: str, expires_delta: timedelta | None = None) -> str:
-    if expires_delta:
-        expire = datetime.now(timezone.utc) + expires_delta
-    else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=settings.jwt_access_token_expire_minutes
-        )
-    
-    to_encode = {
-        "sub": user_id,
-        "exp": expire,
-        "type": "access",
-    }
-    return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-
-
-def create_refresh_token(user_id: str) -> str:
-    expire = datetime.now(timezone.utc) + timedelta(days=settings.jwt_refresh_token_expire_days)
-    to_encode = {
-        "sub": user_id,
-        "exp": expire,
-        "type": "refresh",
-    }
-    return jwt.encode(to_encode, settings.jwt_secret, algorithm=settings.jwt_algorithm)
-
-
 async def get_current_user(
     token: Annotated[str, Depends(oauth2_scheme)],
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -86,20 +54,22 @@ async def get_current_user(
         headers={"WWW-Authenticate": "Bearer"},
     )
     
-    try:
-        payload = jwt.decode(
-            token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
-        )
-        user_id: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
-        if user_id is None or token_type != "access":
-            raise credentials_exception
-    except JWTError:
+    payload = verify_token(token, "access")
+    if payload is None:
+        raise credentials_exception
+    
+    user_id: str = payload.get("sub")
+    if user_id is None:
         raise credentials_exception
     
     # Get user from database
-    query = select(UserModel).where(UserModel.id == user_id)
+    try:
+        # Ensure user_id is a valid UUID
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise credentials_exception
+
+    query = select(UserModel).where(UserModel.id == user_uuid)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     
@@ -197,8 +167,8 @@ async def login(
         )
     
     # Create tokens
-    access_token = create_access_token(str(user.id))
-    refresh_token = create_refresh_token(str(user.id))
+    access_token = create_access_token({"sub": str(user.id)})
+    refresh_token = create_refresh_token({"sub": str(user.id)})
     
     # Store session
     session = SessionModel(
@@ -274,26 +244,30 @@ async def refresh_token(
     refresh_token: str,
 ) -> Token:
     """Refresh access token using refresh token."""
-    try:
-        payload = jwt.decode(
-            refresh_token, settings.jwt_secret, algorithms=[settings.jwt_algorithm]
+    payload = verify_token(refresh_token, "refresh")
+    if payload is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
         )
-        user_id: str = payload.get("sub")
-        token_type: str = payload.get("type")
-        
-        if user_id is None or token_type != "refresh":
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid refresh token",
-            )
-    except JWTError:
+    
+    user_id: str = payload.get("sub")
+    if user_id is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Invalid refresh token",
         )
     
     # Verify user exists and is active
-    query = select(UserModel).where(UserModel.id == user_id)
+    try:
+        user_uuid = UUID(user_id)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token",
+        )
+
+    query = select(UserModel).where(UserModel.id == user_uuid)
     result = await db.execute(query)
     user = result.scalar_one_or_none()
     
@@ -304,8 +278,8 @@ async def refresh_token(
         )
     
     # Create new tokens
-    new_access_token = create_access_token(str(user.id))
-    new_refresh_token = create_refresh_token(str(user.id))
+    new_access_token = create_access_token({"sub": str(user.id)})
+    new_refresh_token = create_refresh_token({"sub": str(user.id)})
     
     return Token(
         access_token=new_access_token,

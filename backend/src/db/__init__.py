@@ -2,7 +2,7 @@
 Database package initialization.
 """
 
-from src.db.database import Base, async_session_maker, close_db, engine, get_db, init_db
+from src.db.database import Base, async_session_maker, close_db, engine, get_db, init_db, DatabaseError
 from src.db.models import (
     APIKeyModel,
     CrawlAttemptModel,
@@ -29,6 +29,7 @@ __all__ = [
     "get_db",
     "init_db",
     "close_db",
+    "DatabaseError",
     # Models
     "DNOModel",
     "DNOCrawlConfigModel",

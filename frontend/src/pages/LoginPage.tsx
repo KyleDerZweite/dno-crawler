@@ -53,7 +53,7 @@ export function LoginPage() {
         <CardHeader className="text-center">
           <div className="flex justify-center mb-4">
             <div className="p-3 rounded-xl bg-primary/10">
-              <Zap className="h-8 w-8 text-primary" />
+              <img src="/favicon.svg" alt="Logo" className="h-12 w-12" />
             </div>
           </div>
           <CardTitle className="text-2xl">Welcome back</CardTitle>
