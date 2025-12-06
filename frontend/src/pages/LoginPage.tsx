@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { useAuth } from '@/lib/auth'
 import { Button } from '@/components/ui/button'
@@ -10,6 +10,9 @@ import { useToast } from '@/hooks/use-toast'
 import { AxiosError } from 'axios'
 
 export function LoginPage() {
+  useEffect(() => {
+    document.title = "DNO-Crawler | Login";
+  }, []);
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPassword, setShowPassword] = useState(false)

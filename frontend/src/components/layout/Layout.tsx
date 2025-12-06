@@ -12,7 +12,7 @@ import {
   X,
   Zap,
 } from "lucide-react"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
 
 const navigation = [
@@ -34,6 +34,26 @@ export function Layout() {
   const allNavigation = user?.role === 'admin'
     ? [...navigation, ...adminNavigation] 
     : navigation
+
+  // Derive page title for document and header
+  const path = location.pathname;
+  const pageMap: Record<string, string> = {
+    "/dashboard": "Dashboard",
+    "/search": "Search",
+    "/dnos": "DNOs",
+    "/admin": "Admin",
+    "/settings": "Settings",
+  };
+  let page = pageMap[path];
+  if (!page) {
+    if (path.startsWith("/dnos")) page = "DNOs";
+    if (path.startsWith("/admin")) page = "Admin";
+    if (path === "/") page = "Dashboard";
+  }
+  useEffect(() => {
+    const title = `DNO-Crawler${page ? ` | ${page}` : ""}`;
+    document.title = title;
+  }, [path, page]);
 
   return (
     <div className="min-h-screen bg-background font-sans text-foreground">
@@ -157,7 +177,7 @@ export function Layout() {
           >
             <Menu className="h-5 w-5" />
           </Button>
-          <span className="font-bold text-lg">DNO Crawler</span>
+          <span className="font-bold text-lg">DNO-Crawler{page ? ` | ${page}` : ''}</span>
         </header>
 
         {/* Main Content */}
