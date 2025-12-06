@@ -22,7 +22,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, INET, JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
-from src.core.models import (
+from app.core.models import (
     ContentFormat,
     DataType,
     JobStatus,
@@ -30,7 +30,7 @@ from src.core.models import (
     UserRole,
     VerificationStatus,
 )
-from src.db.database import Base
+from app.db.database import Base
 
 
 class TimestampMixin:

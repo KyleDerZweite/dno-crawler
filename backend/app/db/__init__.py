@@ -2,8 +2,8 @@
 Database package initialization.
 """
 
-from src.db.database import Base, async_session_maker, close_db, engine, get_db, init_db, DatabaseError
-from src.db.models import (
+from app.db.database import Base, async_session_maker, close_db, engine, get_db, init_db, DatabaseError
+from app.db.models import (
     APIKeyModel,
     CrawlAttemptModel,
     CrawlJobModel,

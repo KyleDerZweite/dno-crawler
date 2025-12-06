@@ -10,9 +10,9 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.api.routes.auth import get_current_active_user
-from src.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
-from src.db import CrawlJobModel, DNOModel, UserModel, get_db
+from app.api.routes.auth import get_current_active_user
+from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
+from app.db import CrawlJobModel, DNOModel, UserModel, get_db
 
 router = APIRouter()
 

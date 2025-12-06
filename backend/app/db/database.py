@@ -11,7 +11,7 @@ from sqlalchemy.exc import OperationalError, SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 
-from src.core.config import settings
+from app.core.config import settings
 
 logger = structlog.get_logger()
 
@@ -85,7 +85,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         )
     except Exception as e:
         # Don't catch application-level exceptions that should be handled by global handlers
-        from src.core.exceptions import DNOCrawlerException
+        from app.core.exceptions import DNOCrawlerException
         from fastapi.exceptions import HTTPException as FastAPIHTTPException
         
         if isinstance(e, (DNOCrawlerException, FastAPIHTTPException)):

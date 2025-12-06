@@ -12,16 +12,16 @@ from pydantic import BaseModel, EmailStr
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.config import settings
-from src.core.models import APIResponse, Token, User, UserRole
-from src.core.security import (
+from app.core.config import settings
+from app.core.models import APIResponse, Token, User, UserRole
+from app.core.security import (
     create_access_token,
     create_refresh_token,
     get_password_hash,
     verify_password,
     verify_token,
 )
-from src.db import SessionModel, UserModel, get_db
+from app.db import SessionModel, UserModel, get_db
 
 router = APIRouter()
 

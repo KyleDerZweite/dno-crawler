@@ -1,8 +1,8 @@
 import structlog
 from arq.connections import RedisSettings
 
-from src.core.config import settings
-from src.db import close_db, init_db
+from app.core.config import settings
+from app.db import close_db, init_db
 
 logger = structlog.get_logger()
 

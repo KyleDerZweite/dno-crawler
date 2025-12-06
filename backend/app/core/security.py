@@ -10,7 +10,7 @@ import jwt
 from jwt.exceptions import PyJWTError
 from passlib.context import CryptContext
 
-from src.core.config import settings
+from app.core.config import settings
 
 # Password hashing context
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")

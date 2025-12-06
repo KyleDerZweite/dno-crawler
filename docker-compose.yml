@@ -93,7 +93,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend/src:/app/src:ro,z
+      - ./backend:/app:ro,z
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8000/api/health"]
       interval: 30s
@@ -109,7 +109,7 @@ services:
       dockerfile: Dockerfile
     container_name: dno-crawler-worker
     restart: unless-stopped
-    command: arq src.worker.WorkerSettings
+    command: arq app.worker.WorkerSettings
     env_file:
       - .env
     environment:
@@ -123,7 +123,7 @@ services:
       redis:
         condition: service_healthy
     volumes:
-      - ./backend/src:/app/src:ro,z
+      - ./backend:/app:ro,z
     networks:
       - dno-crawler
 

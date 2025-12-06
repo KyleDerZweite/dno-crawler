@@ -9,8 +9,8 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from src.core.models import APIResponse, DataType, PaginatedResponse
-from src.db import DNOModel, HLZFModel, NetzentgelteModel, get_db
+from app.core.models import APIResponse, DataType, PaginatedResponse
+from app.db import DNOModel, HLZFModel, NetzentgelteModel, get_db
 
 router = APIRouter()
 

@@ -73,7 +73,7 @@ An intelligent web crawler for extracting German Distribution Network Operator (
    # alembic upgrade head
    
    # Start server
-   uvicorn src.api.main:create_app --factory --reload
+   uvicorn app.api.main:create_app --factory --reload
    ```
 
 5. **Frontend setup** (new terminal)
@@ -106,7 +106,7 @@ docker compose down
 ```
 dno-crawler/
 ├── backend/
-│   ├── src/
+│   ├── app/
 │   │   ├── api/           # FastAPI routes and middleware
 │   │   ├── core/          # Pydantic models and config
 │   │   ├── db/            # SQLAlchemy models and database

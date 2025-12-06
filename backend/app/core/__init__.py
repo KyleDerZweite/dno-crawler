@@ -2,8 +2,8 @@
 Core package initialization.
 """
 
-from src.core.config import Settings, get_settings, settings
-from src.core.models import (
+from app.core.config import Settings, get_settings, settings
+from app.core.models import (
     APIResponse,
     ContentFormat,
     CrawlJob,

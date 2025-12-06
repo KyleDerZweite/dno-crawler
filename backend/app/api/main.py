@@ -11,9 +11,9 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from src.api.routes import admin, auth, dnos, health, public
-from src.core.config import settings
-from src.core.exceptions import (
+from app.api.routes import admin, auth, dnos, health, public
+from app.core.config import settings
+from app.core.exceptions import (
     AuthenticationError,
     AuthorizationError,
     ConflictError,
@@ -22,11 +22,11 @@ from src.core.exceptions import (
     RateLimitError,
     ResourceNotFoundError,
 )
-from src.db import DatabaseError, close_db, init_db
-from src.db.database import async_session_maker
+from app.db import DatabaseError, close_db, init_db
+from app.db.database import async_session_maker
 from sqlalchemy import select
-from src.db.models import UserModel
-from src.core.security import get_password_hash
+from app.db.models import UserModel
+from app.core.security import get_password_hash
 
 logger = structlog.get_logger()
 
@@ -257,7 +257,7 @@ if __name__ == "__main__":
     import uvicorn
 
     uvicorn.run(
-        "src.api.main:app",
+        "app.api.main:app",
         host=settings.host,
         port=settings.port,
         reload=settings.debug,
