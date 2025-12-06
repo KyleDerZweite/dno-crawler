@@ -107,7 +107,15 @@ export function Layout() {
 
         {/* User Profile */}
         <div className="absolute bottom-0 left-0 right-0 border-t border-white/5 p-6 bg-gradient-to-t from-black/20 to-transparent">
-          <div className="flex items-center gap-4 mb-4">
+          {!user && (
+            <div className="flex items-center justify-center">
+              <Link to="/login" className="text-sm text-primary hover:underline">
+                Sign in
+              </Link>
+            </div>
+          )}
+          {user && (
+            <div className="flex items-center gap-4 mb-4">
             <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-violet-600 p-[1px] shadow-lg shadow-primary/20">
               <div className="h-full w-full rounded-[11px] bg-sidebar flex items-center justify-center">
                 <span className="text-sm font-bold text-primary">
@@ -123,15 +131,18 @@ export function Layout() {
                 {user?.role}
               </span>
             </div>
-          </div>
-          <Button
-            variant="ghost"
-            className="w-full justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10 h-9 text-xs font-medium transition-colors"
-            onClick={logout}
-          >
-            <LogOut className="h-3.5 w-3.5 mr-2" />
-            Sign Out
-          </Button>
+            </div>
+          )}
+          {user && (
+            <Button
+              variant="ghost"
+              className="w-full justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10 h-9 text-xs font-medium transition-colors"
+              onClick={logout}
+            >
+              <LogOut className="h-3.5 w-3.5 mr-2" />
+              Sign Out
+            </Button>
+          )}
         </div>
       </aside>
 
