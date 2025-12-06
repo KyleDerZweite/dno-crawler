@@ -66,8 +66,10 @@ function App() {
         }
       />
 
-      {/* Public search (no auth required) */}
-      <Route path="/search" element={<SearchPage />} />
+      {/* Public search (no auth required) - show app layout for consistent UI */}
+      <Route path="/search" element={<Layout />}>
+        <Route index element={<SearchPage />} />
+      </Route>
 
       {/* Protected routes */}
       <Route
