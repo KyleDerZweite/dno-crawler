@@ -168,6 +168,12 @@ async def login(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Account is disabled",
         )
+    # Prevent users with pending approval from logging in
+    if user.role == UserRole.PENDING.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Account pending approval",
+        )
     
     # Create tokens
     access_token = create_access_token({"sub": str(user.id)})

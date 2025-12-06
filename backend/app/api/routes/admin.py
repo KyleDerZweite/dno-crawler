@@ -3,7 +3,6 @@ Admin routes - requires admin role.
 """
 
 from typing import Annotated
-from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
@@ -141,7 +140,7 @@ async def list_pending_users(
 
 @router.post("/users/{user_id}/approve")
 async def approve_user(
-    user_id: UUID,
+    user_id: int,
     request: ApproveUserRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[UserModel, Depends(get_admin_user)],
@@ -180,7 +179,7 @@ async def approve_user(
 
 @router.patch("/users/{user_id}/role")
 async def update_user_role(
-    user_id: UUID,
+    user_id: int,
     request: UpdateUserRoleRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[UserModel, Depends(get_admin_user)],
@@ -213,7 +212,7 @@ async def update_user_role(
 
 @router.delete("/users/{user_id}")
 async def delete_user(
-    user_id: UUID,
+    user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     admin: Annotated[UserModel, Depends(get_admin_user)],
 ) -> APIResponse:

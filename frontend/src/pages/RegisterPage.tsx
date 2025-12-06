@@ -40,7 +40,7 @@ export function RegisterPage() {
       await register(name, email, password)
       toast({
         title: "Account created",
-        description: "You can now log in with your credentials",
+        description: "Registration received. Please wait until an admin approves your account before logging in.",
       });
       navigate("/login");
     } catch (err: unknown) {
