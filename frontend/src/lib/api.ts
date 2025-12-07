@@ -295,6 +295,40 @@ export const api = {
       );
       return data;
     },
+
+    async updateHLZF(
+      dno_id: string,
+      record_id: number,
+      payload: {
+        winter?: string;
+        fruehling?: string;
+        sommer?: string;
+        herbst?: string;
+      }
+    ): Promise<ApiResponse<{ id: string }>> {
+      const { data } = await apiClient.patch(
+        `/dnos/${dno_id}/hlzf/${record_id}`,
+        payload
+      );
+      return data;
+    },
+
+    async deleteHLZF(
+      dno_id: string,
+      record_id: number
+    ): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.delete(
+        `/dnos/${dno_id}/hlzf/${record_id}`
+      );
+      return data;
+    },
+
+    async getFiles(
+      dno_id: string
+    ): Promise<ApiResponse<{ name: string; size: number; path: string }[]>> {
+      const { data } = await apiClient.get(`/dnos/${dno_id}/files`);
+      return data;
+    },
   },
 
   admin: {

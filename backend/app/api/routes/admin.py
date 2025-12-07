@@ -543,3 +543,79 @@ async def cancel_job(
         success=True,
         message="Job cancelled",
     )
+
+
+@router.post("/normalize-voltage-levels")
+async def normalize_voltage_levels(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserModel, Depends(get_admin_user)],
+) -> APIResponse:
+    """Normalize voltage level names across Netzentgelte and HLZF tables."""
+    from app.db import HLZFModel
+    
+    # Standard voltage level mapping - same as in crawl_job.py
+    VOLTAGE_LEVEL_MAPPING = {
+        # Hochspannung variants
+        "hochspannung": "Hochspannung",
+        "hochspannungsnetz": "Hochspannung",
+        "hs": "Hochspannung",
+        # Mittelspannung variants
+        "mittelspannung": "Mittelspannung",
+        "mittelspannungsnetz": "Mittelspannung",
+        "ms": "Mittelspannung",
+        # Niederspannung variants
+        "niederspannung": "Niederspannung",
+        "niederspannungsnetz": "Niederspannung",
+        "ns": "Niederspannung",
+        # Umspannung HS/MS variants
+        "umspannung hoch-/mittelspannung": "Umspannung HS/MS",
+        "umspannung hoch-mittelspannung": "Umspannung HS/MS",
+        "umspannung hochspannung/mittelspannung": "Umspannung HS/MS",
+        "hoch-/mittelspannung": "Umspannung HS/MS",
+        "hs/ms": "Umspannung HS/MS",
+        "umspannung zur mittelspannung": "Umspannung HS/MS",
+        "umspg. zur mittelspannung": "Umspannung HS/MS",
+        "umsp. zur ms": "Umspannung HS/MS",
+        # Umspannung MS/NS variants
+        "umspannung mittel-/niederspannung": "Umspannung MS/NS",
+        "umspannung mittel-niederspannung": "Umspannung MS/NS",
+        "umspannung mittelspannung/niederspannung": "Umspannung MS/NS",
+        "mittel-/niederspannung": "Umspannung MS/NS",
+        "ms/ns": "Umspannung MS/NS",
+        "umspannung zur niederspannung": "Umspannung MS/NS",
+        "umspg. zur niederspannung": "Umspannung MS/NS",
+        "umsp. zur ns": "Umspannung MS/NS",
+    }
+    
+    netzentgelte_updated = 0
+    hlzf_updated = 0
+    
+    # Update Netzentgelte
+    result = await db.execute(select(NetzentgelteModel))
+    records = result.scalars().all()
+    for record in records:
+        if record.voltage_level:
+            cleaned = " ".join(record.voltage_level.replace("\n", " ").split())
+            normalized = VOLTAGE_LEVEL_MAPPING.get(cleaned.lower(), cleaned)
+            if normalized != record.voltage_level:
+                record.voltage_level = normalized
+                netzentgelte_updated += 1
+    
+    # Update HLZF
+    result = await db.execute(select(HLZFModel))
+    records = result.scalars().all()
+    for record in records:
+        if record.voltage_level:
+            cleaned = " ".join(record.voltage_level.replace("\n", " ").split())
+            normalized = VOLTAGE_LEVEL_MAPPING.get(cleaned.lower(), cleaned)
+            if normalized != record.voltage_level:
+                record.voltage_level = normalized
+                hlzf_updated += 1
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message=f"Normalized {netzentgelte_updated} Netzentgelte and {hlzf_updated} HLZF records",
+        data={"netzentgelte_updated": netzentgelte_updated, "hlzf_updated": hlzf_updated},
+    )

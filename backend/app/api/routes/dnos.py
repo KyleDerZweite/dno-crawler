@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_active_user
-from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
+from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType, UserRole
 from app.db import CrawlJobModel, DNOModel, UserModel, get_db
 
 router = APIRouter()
@@ -413,7 +413,7 @@ async def update_netzentgelte(
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
 ) -> APIResponse:
     """Update a Netzentgelte record (admin only)."""
-    if not current_user.is_admin:
+    if current_user.role != UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -461,7 +461,7 @@ async def delete_netzentgelte(
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
 ) -> APIResponse:
     """Delete a Netzentgelte record (admin only)."""
-    if not current_user.is_admin:
+    if current_user.role != UserRole.ADMIN.value:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -490,3 +490,148 @@ async def delete_netzentgelte(
         message="Record deleted successfully",
     )
 
+
+class UpdateHLZFRequest(BaseModel):
+    """Request model for updating HLZF."""
+    winter: str | None = None
+    fruehling: str | None = None
+    sommer: str | None = None
+    herbst: str | None = None
+
+
+@router.patch("/{dno_id}/hlzf/{record_id}")
+async def update_hlzf(
+    dno_id: int,
+    record_id: int,
+    request: UpdateHLZFRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """Update an HLZF record (admin only)."""
+    if current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    from app.db import HLZFModel
+    
+    query = select(HLZFModel).where(
+        HLZFModel.id == record_id,
+        HLZFModel.dno_id == dno_id,
+    )
+    result = await db.execute(query)
+    record = result.scalar_one_or_none()
+    
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Record not found",
+        )
+    
+    # Update only provided fields
+    if request.winter is not None:
+        record.winter = request.winter if request.winter != "" else None
+    if request.fruehling is not None:
+        record.fruehling = request.fruehling if request.fruehling != "" else None
+    if request.sommer is not None:
+        record.sommer = request.sommer if request.sommer != "" else None
+    if request.herbst is not None:
+        record.herbst = request.herbst if request.herbst != "" else None
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Record updated successfully",
+        data={"id": str(record.id)},
+    )
+
+
+@router.delete("/{dno_id}/hlzf/{record_id}")
+async def delete_hlzf(
+    dno_id: int,
+    record_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """Delete an HLZF record (admin only)."""
+    if current_user.role != UserRole.ADMIN.value:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    from app.db import HLZFModel
+    
+    query = select(HLZFModel).where(
+        HLZFModel.id == record_id,
+        HLZFModel.dno_id == dno_id,
+    )
+    result = await db.execute(query)
+    record = result.scalar_one_or_none()
+    
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Record not found",
+        )
+    
+    await db.delete(record)
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Record deleted successfully",
+    )
+
+
+@router.get("/{dno_id}/files")
+async def list_dno_files(
+    dno_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """List available PDF files for a DNO."""
+    import os
+    from pathlib import Path
+    
+    # Verify DNO exists
+    query = select(DNOModel).where(DNOModel.id == dno_id)
+    result = await db.execute(query)
+    dno = result.scalar_one_or_none()
+    
+    if not dno:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="DNO not found",
+        )
+    
+    # Look for files in both old path and new slug-based path
+    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    files = []
+    
+    # Check old path (data/downloads/)
+    old_path = Path(storage_path) / "downloads"
+    if old_path.exists():
+        for f in old_path.glob(f"{dno.slug}-*.pdf"):
+            files.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "path": f"/api/v1/files/downloads/{f.name}",
+            })
+    
+    # Check new path (data/downloads/<slug>/)
+    new_path = Path(storage_path) / "downloads" / dno.slug
+    if new_path.exists():
+        for f in new_path.glob("*.pdf"):
+            files.append({
+                "name": f.name,
+                "size": f.stat().st_size,
+                "path": f"/api/v1/files/downloads/{dno.slug}/{f.name}",
+            })
+    
+    return APIResponse(
+        success=True,
+        data=files,
+    )

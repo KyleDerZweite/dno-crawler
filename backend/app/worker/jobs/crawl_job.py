@@ -363,7 +363,7 @@ async def crawl_dno_job(ctx: dict, job_id: int) -> dict:
         import httpx
         from pathlib import Path
         
-        downloads_dir = Path("/data/downloads")
+        downloads_dir = Path("/data/downloads") / dno.slug
         downloads_dir.mkdir(parents=True, exist_ok=True)
         
         netzentgelte_path = None
@@ -486,12 +486,49 @@ async def crawl_dno_job(ctx: dict, job_id: int) -> dict:
         netzentgelte_inserted = 0
         hlzf_inserted = 0
         
-        # Normalize voltage_level to prevent duplicates from newlines/spaces
+        # Standard voltage level mapping - maps various names to canonical names
+        VOLTAGE_LEVEL_MAPPING = {
+            # Hochspannung variants
+            "hochspannung": "Hochspannung",
+            "hochspannungsnetz": "Hochspannung",
+            "hs": "Hochspannung",
+            # Mittelspannung variants
+            "mittelspannung": "Mittelspannung",
+            "mittelspannungsnetz": "Mittelspannung",
+            "ms": "Mittelspannung",
+            # Niederspannung variants
+            "niederspannung": "Niederspannung",
+            "niederspannungsnetz": "Niederspannung",
+            "ns": "Niederspannung",
+            # Umspannung HS/MS variants
+            "umspannung hoch-/mittelspannung": "Umspannung HS/MS",
+            "umspannung hoch-mittelspannung": "Umspannung HS/MS",
+            "umspannung hochspannung/mittelspannung": "Umspannung HS/MS",
+            "hoch-/mittelspannung": "Umspannung HS/MS",
+            "hs/ms": "Umspannung HS/MS",
+            "umspannung zur mittelspannung": "Umspannung HS/MS",
+            "umspg. zur mittelspannung": "Umspannung HS/MS",
+            "umsp. zur ms": "Umspannung HS/MS",
+            # Umspannung MS/NS variants
+            "umspannung mittel-/niederspannung": "Umspannung MS/NS",
+            "umspannung mittel-niederspannung": "Umspannung MS/NS",
+            "umspannung mittelspannung/niederspannung": "Umspannung MS/NS",
+            "mittel-/niederspannung": "Umspannung MS/NS",
+            "ms/ns": "Umspannung MS/NS",
+            "umspannung zur niederspannung": "Umspannung MS/NS",
+            "umspg. zur niederspannung": "Umspannung MS/NS",
+            "umsp. zur ns": "Umspannung MS/NS",
+        }
+        
+        # Normalize voltage_level to prevent duplicates and standardize names
         def normalize_voltage_level(records):
             for record in records:
                 if "voltage_level" in record and record["voltage_level"]:
                     # Replace newlines with spaces and collapse multiple spaces
-                    record["voltage_level"] = " ".join(record["voltage_level"].replace("\n", " ").split())
+                    cleaned = " ".join(record["voltage_level"].replace("\n", " ").split())
+                    # Look up in mapping (case-insensitive)
+                    normalized = VOLTAGE_LEVEL_MAPPING.get(cleaned.lower(), cleaned)
+                    record["voltage_level"] = normalized
             return records
         
         netzentgelte_records = normalize_voltage_level(netzentgelte_records)
