@@ -4,7 +4,6 @@ import { Layout } from "./components/layout/Layout";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
-import { SearchPage } from "./pages/SearchPage";
 import { DNOsPage } from "./pages/DNOsPage";
 import { DNODetailPage } from "./pages/DNODetailPage";
 import { AdminPage } from "./pages/AdminPage";
@@ -68,11 +67,6 @@ function App() {
         }
       />
 
-      {/* Public search (no auth required) - show app layout for consistent UI */}
-      <Route path="/search" element={<Layout />}>
-        <Route index element={<SearchPage />} />
-      </Route>
-
       {/* Protected routes */}
       <Route
         path="/"
@@ -91,8 +85,8 @@ function App() {
         <Route path="settings" element={<SettingsPage />} />
       </Route>
 
-      {/* Catch all */}
-      <Route path="*" element={<Navigate to="/search" replace />} />
+      {/* Catch all - redirect to dashboard */}
+      <Route path="*" element={<Navigate to="/dashboard" replace />} />
     </Routes>
   );
 }

@@ -90,11 +90,11 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
-    # Include routers
+    # Include routers - order matters for route matching
     app.include_router(health.router, tags=["Health"])
-    app.include_router(public.router, prefix="/api/v1", tags=["Public"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])
+    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Must be before public
+    app.include_router(public.router, prefix="/api/v1", tags=["Public"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
     # Exception Handlers

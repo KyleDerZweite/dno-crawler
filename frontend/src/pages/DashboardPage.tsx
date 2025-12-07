@@ -10,7 +10,6 @@ import {
 import { Link } from "react-router-dom";
 import {
   Database,
-  Search,
   Activity,
   TrendingUp,
   Clock,
@@ -87,13 +86,13 @@ export function DashboardPage() {
         </CardHeader>
         <CardContent className="p-0 flex flex-wrap gap-4">
           <Button asChild>
-            <Link to="/search" className="flex items-center gap-2">
-              <Search className="h-4 w-4" />
-              Search Data
+            <Link to="/dnos" className="flex items-center gap-2">
+              <Database className="h-4 w-4" />
+              View DNOs
             </Link>
           </Button>
           <Button variant="outline" asChild>
-            <Link to="/dnos">Manage DNOs</Link>
+            <Link to="/jobs">View Jobs</Link>
           </Button>
           <Button variant="outline" asChild>
             <Link to="/settings">Settings</Link>
@@ -104,10 +103,10 @@ export function DashboardPage() {
   );
 }
 
-function StatCard({ 
-  icon: Icon, 
-  title, 
-  value, 
+function StatCard({
+  icon: Icon,
+  title,
+  value,
   subtitle,
   isLoading,
   accent = false

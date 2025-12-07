@@ -151,14 +151,22 @@ async def list_dnos_detailed(
 
 @router.get("/{dno_id}")
 async def get_dno_details(
-    dno_id: int,
+    dno_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[UserModel, Depends(get_current_active_user)],
 ) -> APIResponse:
-    """Get detailed information about a specific DNO."""
-    query = select(DNOModel).where(DNOModel.id == dno_id)
-    result = await db.execute(query)
-    dno = result.scalar_one_or_none()
+    """Get detailed information about a specific DNO by ID or slug."""
+    # Try to find by numeric ID first, then by slug
+    dno = None
+    if dno_id.isdigit():
+        query = select(DNOModel).where(DNOModel.id == int(dno_id))
+        result = await db.execute(query)
+        dno = result.scalar_one_or_none()
+    
+    if not dno:
+        query = select(DNOModel).where(DNOModel.slug == dno_id.lower())
+        result = await db.execute(query)
+        dno = result.scalar_one_or_none()
     
     if not dno:
         raise HTTPException(

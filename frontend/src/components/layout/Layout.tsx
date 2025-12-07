@@ -3,7 +3,6 @@ import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import {
   Activity,
-  Search,
   Database,
   LayoutDashboard,
   LogOut,
@@ -18,7 +17,6 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-  { name: "Search Data", href: "/search", icon: Search },
   { name: "DNOs", href: "/dnos", icon: Database },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
@@ -34,14 +32,13 @@ export function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   const allNavigation = user?.role === 'admin'
-    ? [...navigation, ...adminNavigation] 
+    ? [...navigation, ...adminNavigation]
     : navigation
 
   // Derive page title for document and header
   const path = location.pathname;
   const pageMap: Record<string, string> = {
     "/dashboard": "Dashboard",
-    "/search": "Search",
     "/dnos": "DNOs",
     "/jobs": "Jobs",
     "/admin": "Admin",
@@ -140,21 +137,21 @@ export function Layout() {
           )}
           {user && (
             <div className="flex items-center gap-4 mb-4">
-            <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-violet-600 p-[1px] shadow-lg shadow-primary/20">
-              <div className="h-full w-full rounded-[11px] bg-sidebar flex items-center justify-center">
-                <span className="text-sm font-bold text-primary">
-                  {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-violet-600 p-[1px] shadow-lg shadow-primary/20">
+                <div className="h-full w-full rounded-[11px] bg-sidebar flex items-center justify-center">
+                  <span className="text-sm font-bold text-primary">
+                    {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-col overflow-hidden">
+                <span className="text-sm font-semibold text-white truncate">
+                  {user?.name || user?.email}
+                </span>
+                <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
+                  {user?.role}
                 </span>
               </div>
-            </div>
-            <div className="flex flex-col overflow-hidden">
-              <span className="text-sm font-semibold text-white truncate">
-                {user?.name || user?.email}
-              </span>
-              <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                {user?.role}
-              </span>
-            </div>
             </div>
           )}
           {user && (
