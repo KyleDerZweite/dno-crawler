@@ -115,12 +115,20 @@ async def list_dnos_detailed(
     
     data = []
     for dno in dnos:
-        # Get netzentgelte count for this DNO
-        count_result = await db.execute(
+        # Get total data points count (Netzentgelte + HLZF)
+        netz_count_result = await db.execute(
             text("SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id"),
             {"dno_id": dno.id}
         )
-        netzentgelte_count = count_result.scalar() or 0
+        netzentgelte_count = netz_count_result.scalar() or 0
+        
+        hlzf_count_result = await db.execute(
+            text("SELECT COUNT(*) FROM hlzf WHERE dno_id = :dno_id"),
+            {"dno_id": dno.id}
+        )
+        hlzf_count = hlzf_count_result.scalar() or 0
+        
+        data_points_count = netzentgelte_count + hlzf_count
         
         dno_data = {
             "id": str(dno.id),
@@ -130,16 +138,15 @@ async def list_dnos_detailed(
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
-            "netzentgelte_count": netzentgelte_count,
+            "data_points_count": data_points_count,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         }
         
         if include_stats:
-            # TODO: Add actual stats (data counts, last crawl, etc.)
             dno_data["stats"] = {
                 "netzentgelte_count": netzentgelte_count,
-                "hlzf_count": 0,
+                "hlzf_count": hlzf_count,
                 "years_available": [],
                 "last_crawl": None,
             }

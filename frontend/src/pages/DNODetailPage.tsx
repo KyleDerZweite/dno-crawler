@@ -16,10 +16,12 @@ import {
     CheckCircle,
     XCircle,
     AlertCircle,
+    Trash2,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/auth";
 
 export function DNODetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -74,6 +76,40 @@ export function DNODetailPage() {
     const dno = dnoResponse?.data;
     const dnoData = dataResponse?.data;
     const jobs = jobsResponse?.data || [];
+
+    // Get admin status
+    const { isAdmin } = useAuth();
+
+    // Delete Netzentgelte mutation
+    const deleteNetzentgelteMutation = useMutation({
+        mutationFn: (recordId: number) => api.dnos.deleteNetzentgelte(id!, recordId),
+        onSuccess: () => {
+            toast({
+                title: "Record deleted",
+                description: "The Netzentgelte record has been deleted",
+            });
+            queryClient.invalidateQueries({ queryKey: ["dno-data", id] });
+        },
+        onError: (error: unknown) => {
+            const message =
+                error instanceof AxiosError
+                    ? error.response?.data?.detail ?? error.message
+                    : error instanceof Error
+                        ? error.message
+                        : "Unknown error";
+            toast({
+                variant: "destructive",
+                title: "Failed to delete record",
+                description: message,
+            });
+        },
+    });
+
+    const handleDeleteNetzentgelte = (recordId: number) => {
+        if (confirm("Are you sure you want to delete this record?")) {
+            deleteNetzentgelteMutation.mutate(recordId);
+        }
+    };
 
     if (dnoLoading) {
         return (
@@ -267,6 +303,7 @@ export function DNODetailPage() {
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Voltage Level</th>
                                     <th className="text-right py-2 px-3 font-medium text-muted-foreground">Leistung (€/kW)</th>
                                     <th className="text-right py-2 px-3 font-medium text-muted-foreground">Arbeit (ct/kWh)</th>
+                                    {isAdmin && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-24">Actions</th>}
                                 </tr>
                             </thead>
                             <tbody>
@@ -276,6 +313,20 @@ export function DNODetailPage() {
                                         <td className="py-2 px-3">{item.voltage_level}</td>
                                         <td className="py-2 px-3 text-right font-mono">{item.leistung?.toFixed(2) || "-"}</td>
                                         <td className="py-2 px-3 text-right font-mono">{item.arbeit?.toFixed(3) || "-"}</td>
+                                        {isAdmin && (
+                                            <td className="py-2 px-3 text-right">
+                                                <div className="flex gap-1 justify-end">
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        className="h-7 w-7 p-0"
+                                                        onClick={() => handleDeleteNetzentgelte(item.id)}
+                                                    >
+                                                        <Trash2 className="h-4 w-4 text-destructive" />
+                                                    </Button>
+                                                </div>
+                                            </td>
+                                        )}
                                     </tr>
                                 ))}
                             </tbody>
@@ -302,18 +353,22 @@ export function DNODetailPage() {
                             <thead>
                                 <tr className="border-b">
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Year</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Season</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Period</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Time Range</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Voltage Level</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Winter</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Frühling</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Sommer</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Herbst</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {dnoData.hlzf.map((item, idx) => (
                                     <tr key={idx} className="border-b border-border/50 hover:bg-muted/50">
                                         <td className="py-2 px-3">{item.year}</td>
-                                        <td className="py-2 px-3 capitalize">{item.season}</td>
-                                        <td className="py-2 px-3">{item.period_number}</td>
-                                        <td className="py-2 px-3 font-mono">{item.start_time} - {item.end_time}</td>
+                                        <td className="py-2 px-3">{item.voltage_level}</td>
+                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.winter || "-"}</td>
+                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.fruehling || "-"}</td>
+                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.sommer || "-"}</td>
+                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.herbst || "-"}</td>
                                     </tr>
                                 ))}
                             </tbody>

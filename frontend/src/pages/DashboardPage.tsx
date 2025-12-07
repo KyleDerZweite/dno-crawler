@@ -29,7 +29,7 @@ export function DashboardPage() {
         totalDnos: dnos.data.length,
         activeCrawls: 0,
         lastUpdated: new Date().toLocaleDateString(),
-        dataPoints: dnos.data.reduce((acc, dno) => acc + (dno.netzentgelte_count || 0), 0),
+        dataPoints: dnos.data.reduce((acc, dno) => acc + (dno.data_points_count || 0), 0),
       };
     },
   });

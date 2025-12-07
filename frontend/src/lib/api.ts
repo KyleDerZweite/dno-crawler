@@ -59,10 +59,11 @@ export interface DNO {
   homepage_url?: string;
   netzentgelt_url?: string;
   is_active?: boolean;
-  netzentgelte_count?: number;
+  data_points_count?: number;
 }
 
 export interface Netzentgelte {
+  id: number;
   type: "netzentgelte";
   dno_id: string;
   year: number;
@@ -71,16 +72,20 @@ export interface Netzentgelte {
   arbeit?: number;
   leistung_unter_2500h?: number;
   arbeit_unter_2500h?: number;
+  verification_status?: string;
 }
 
 export interface HLZF {
+  id: number;
   type: "hlzf";
   dno_id: string;
   year: number;
-  season: string;
-  period_number: number;
-  start_time?: string;
-  end_time?: string;
+  voltage_level: string;
+  winter?: string | null;
+  fruehling?: string | null;
+  sommer?: string | null;
+  herbst?: string | null;
+  verification_status?: string;
 }
 
 export interface ApiResponse<T> {
@@ -261,6 +266,33 @@ export const api = {
       const { data } = await apiClient.get(`/dnos/${dno_id}/jobs`, {
         params: { limit: limit || 10 },
       });
+      return data;
+    },
+
+    async updateNetzentgelte(
+      dno_id: string,
+      record_id: number,
+      payload: {
+        leistung?: number;
+        arbeit?: number;
+        leistung_unter_2500h?: number;
+        arbeit_unter_2500h?: number;
+      }
+    ): Promise<ApiResponse<{ id: string }>> {
+      const { data } = await apiClient.patch(
+        `/dnos/${dno_id}/netzentgelte/${record_id}`,
+        payload
+      );
+      return data;
+    },
+
+    async deleteNetzentgelte(
+      dno_id: string,
+      record_id: number
+    ): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.delete(
+        `/dnos/${dno_id}/netzentgelte/${record_id}`
+      );
       return data;
     },
   },
