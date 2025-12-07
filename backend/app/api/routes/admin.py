@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_admin_user
 from app.core.models import APIResponse, UserRole
+from app.core.config import settings
 from app.db import (
     CrawlJobModel,
     DNOModel,
@@ -20,6 +21,11 @@ from app.db import (
     APIKeyModel,
     get_db,
 )
+from arq import create_pool
+from arq.connections import RedisSettings
+import structlog
+
+logger = structlog.get_logger()
 
 router = APIRouter()
 
@@ -414,6 +420,21 @@ async def create_standalone_job(
     await db.commit()
     await db.refresh(job)
     
+    # Enqueue job to arq worker queue
+    try:
+        redis_pool = await create_pool(
+            RedisSettings.from_dsn(str(settings.redis_url))
+        )
+        await redis_pool.enqueue_job(
+            "crawl_dno_job",
+            job.id,
+            _job_id=f"crawl_{job.id}",
+        )
+        await redis_pool.aclose()
+        logger.info("Job enqueued to worker", job_id=job.id)
+    except Exception as e:
+        logger.error("Failed to enqueue job to worker", job_id=job.id, error=str(e))
+    
     return APIResponse(
         success=True,
         message=f"Job created for {dno.name} ({request.year})",
@@ -464,6 +485,21 @@ async def rerun_job(
     db.add(new_job)
     await db.commit()
     await db.refresh(new_job)
+    
+    # Enqueue job to arq worker queue
+    try:
+        redis_pool = await create_pool(
+            RedisSettings.from_dsn(str(settings.redis_url))
+        )
+        await redis_pool.enqueue_job(
+            "crawl_dno_job",
+            new_job.id,
+            _job_id=f"crawl_{new_job.id}",
+        )
+        await redis_pool.aclose()
+        logger.info("Rerun job enqueued to worker", job_id=new_job.id, original_id=job_id)
+    except Exception as e:
+        logger.error("Failed to enqueue rerun job to worker", job_id=new_job.id, error=str(e))
     
     return APIResponse(
         success=True,

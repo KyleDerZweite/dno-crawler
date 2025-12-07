@@ -486,6 +486,17 @@ async def crawl_dno_job(ctx: dict, job_id: int) -> dict:
         netzentgelte_inserted = 0
         hlzf_inserted = 0
         
+        # Normalize voltage_level to prevent duplicates from newlines/spaces
+        def normalize_voltage_level(records):
+            for record in records:
+                if "voltage_level" in record and record["voltage_level"]:
+                    # Replace newlines with spaces and collapse multiple spaces
+                    record["voltage_level"] = " ".join(record["voltage_level"].replace("\n", " ").split())
+            return records
+        
+        netzentgelte_records = normalize_voltage_level(netzentgelte_records)
+        hlzf_records = normalize_voltage_level(hlzf_records)
+        
         async with get_db_session() as db:
             # Store Netzentgelte records
             for record in netzentgelte_records:

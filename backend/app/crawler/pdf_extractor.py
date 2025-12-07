@@ -177,7 +177,7 @@ def find_pdf_url_for_dno(dno_name: str, year: int, pdf_type: str = "netzentgelte
             },
             "regelungen": {
                 2025: "https://assets.ctfassets.net/xytfb1vrn7of/01bujLCqkK8CFb4NgKfbnu/12f56b562fab37f09d41cc6924994e3e/regelungen-fuer-die-nutzung-des-stromverteilnetzes-2025.pdf",
-                2024: "https://assets.ctfassets.net/xytfb1vrn7of/01bujLCqkK8CFb4NgKfbnu/12f56b562fab37f09d41cc6924994e3e/regelungen-fuer-die-nutzung-des-stromverteilnetzes-2025.pdf",  # Using 2025 as 2024 not available
+                2024: "https://assets.ctfassets.net/xytfb1vrn7of/2gDZwU8Xvjl80uIctHlNYe/738081518a3240d77968d024458e2f15/regelungen-fuer-die-nutzung-des-stromverteilnetzes-2024.pdf",
             },
         },
     }
