@@ -2,6 +2,7 @@ import { Button } from "@/components/ui/button"
 import { useAuth } from "@/lib/auth"
 import { cn } from "@/lib/utils"
 import {
+  Activity,
   Search,
   Database,
   LayoutDashboard,
@@ -23,6 +24,7 @@ const navigation = [
 ]
 
 const adminNavigation = [
+  { name: "Jobs", href: "/jobs", icon: Activity },
   { name: "Admin", href: "/admin", icon: Shield },
 ]
 
@@ -41,12 +43,14 @@ export function Layout() {
     "/dashboard": "Dashboard",
     "/search": "Search",
     "/dnos": "DNOs",
+    "/jobs": "Jobs",
     "/admin": "Admin",
     "/settings": "Settings",
   };
   let page = pageMap[path];
   if (!page) {
     if (path.startsWith("/dnos")) page = "DNOs";
+    if (path.startsWith("/jobs")) page = "Jobs";
     if (path.startsWith("/admin")) page = "Admin";
     if (path === "/") page = "Dashboard";
   }

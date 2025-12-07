@@ -99,6 +99,14 @@ docker-compose.yml.local
 *.local
 !.env.example
 
+### Data Storage
+# Ignore downloaded files but keep directory structure
+data/downloads/**
+data/strategies/**
+data/extracted/**
+!data/.gitkeep
+!data/**/.gitkeep
+
 ### Misc
 # Backup files
 *.bak

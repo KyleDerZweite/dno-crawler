@@ -95,6 +95,39 @@ export interface ApiResponse<T> {
   };
 }
 
+export interface Job {
+  id: string;
+  dno_id: string;
+  dno_name?: string;
+  user_id?: string;
+  year: number;
+  data_type: string;
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  progress: number;
+  current_step?: string;
+  error_message?: string;
+  priority: number;
+  started_at?: string;
+  completed_at?: string;
+  created_at: string;
+}
+
+export interface JobStep {
+  id: string;
+  step_name: string;
+  status: string;
+  started_at?: string;
+  completed_at?: string;
+  duration_seconds?: number;
+  details?: Record<string, unknown>;
+}
+
+export interface JobDetails extends Job {
+  dno_slug?: string;
+  updated_at?: string;
+  steps: JobStep[];
+}
+
 export interface Tokens {
   access_token: string;
   refresh_token: string;
@@ -255,8 +288,35 @@ export const api = {
       status?: string;
       page?: number;
       per_page?: number;
-    }): Promise<ApiResponse<unknown[]>> {
+    }): Promise<ApiResponse<Job[]>> {
       const { data } = await apiClient.get("/admin/jobs", { params });
+      return data;
+    },
+
+    async getJob(jobId: string): Promise<ApiResponse<JobDetails>> {
+      const { data } = await apiClient.get(`/admin/jobs/${jobId}`);
+      return data;
+    },
+
+    async createJob(payload: {
+      dno_id: number;
+      year: number;
+      data_type?: string;
+      priority?: number;
+      job_type?: string;
+      target_file_id?: number;
+    }): Promise<ApiResponse<{ job_id: string }>> {
+      const { data } = await apiClient.post("/admin/jobs", payload);
+      return data;
+    },
+
+    async rerunJob(jobId: string): Promise<ApiResponse<{ job_id: string }>> {
+      const { data } = await apiClient.post(`/admin/jobs/${jobId}/rerun`);
+      return data;
+    },
+
+    async cancelJob(jobId: string): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.delete(`/admin/jobs/${jobId}`);
       return data;
     },
   },

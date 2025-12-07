@@ -1,0 +1,8 @@
+# This directory contains persistent file storage for the DNO Crawler.
+# Structure:
+#   downloads/   - Downloaded PDFs and documents from DNO websites
+#   strategies/  - LLM extraction strategies (JSON)
+#   extracted/   - Processed/cached extraction data
+
+# This file ensures the data directory is tracked by git.
+# The actual data files should be ignored via .gitignore.

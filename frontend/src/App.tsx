@@ -8,6 +8,7 @@ import { SearchPage } from "./pages/SearchPage";
 import { DNOsPage } from "./pages/DNOsPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
+import { JobsPage } from "./pages/JobsPage";
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -83,6 +84,7 @@ function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="dnos" element={<DNOsPage />} />
+        <Route path="jobs" element={<JobsPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

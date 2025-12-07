@@ -264,11 +264,23 @@ async def list_all_jobs(
     if status_filter:
         query = query.where(CrawlJobModel.status == status_filter)
     
+    # Get total count
+    count_query = select(func.count(CrawlJobModel.id))
+    if status_filter:
+        count_query = count_query.where(CrawlJobModel.status == status_filter)
+    total = await db.scalar(count_query) or 0
+    
     query = query.order_by(CrawlJobModel.created_at.desc())
     query = query.offset((page - 1) * per_page).limit(per_page)
     
     result = await db.execute(query)
     jobs = result.scalars().all()
+    
+    # Fetch DNO names for display
+    dno_ids = list(set(job.dno_id for job in jobs))
+    dno_query = select(DNOModel).where(DNOModel.id.in_(dno_ids))
+    dno_result = await db.execute(dno_query)
+    dnos = {dno.id: dno for dno in dno_result.scalars().all()}
     
     return APIResponse(
         success=True,
@@ -276,14 +288,222 @@ async def list_all_jobs(
             {
                 "id": str(job.id),
                 "dno_id": str(job.dno_id),
+                "dno_name": dnos.get(job.dno_id).name if dnos.get(job.dno_id) else None,
+                "user_id": str(job.user_id) if job.user_id else None,
                 "year": job.year,
                 "data_type": job.data_type,
                 "status": job.status,
                 "progress": job.progress,
                 "current_step": job.current_step,
                 "error_message": job.error_message,
+                "priority": job.priority,
+                "started_at": job.started_at.isoformat() if job.started_at else None,
+                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
             }
             for job in jobs
         ],
+        meta={
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page,
+        },
+    )
+
+
+@router.get("/jobs/{job_id}")
+async def get_job_details(
+    job_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserModel, Depends(get_admin_user)],
+) -> APIResponse:
+    """Get detailed information about a specific job including steps."""
+    from sqlalchemy.orm import selectinload
+    
+    query = select(CrawlJobModel).where(CrawlJobModel.id == job_id).options(
+        selectinload(CrawlJobModel.steps)
+    )
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    
+    # Get DNO info
+    dno_query = select(DNOModel).where(DNOModel.id == job.dno_id)
+    dno_result = await db.execute(dno_query)
+    dno = dno_result.scalar_one_or_none()
+    
+    return APIResponse(
+        success=True,
+        data={
+            "id": str(job.id),
+            "dno_id": str(job.dno_id),
+            "dno_name": dno.name if dno else None,
+            "dno_slug": dno.slug if dno else None,
+            "user_id": str(job.user_id) if job.user_id else None,
+            "year": job.year,
+            "data_type": job.data_type,
+            "status": job.status,
+            "progress": job.progress,
+            "current_step": job.current_step,
+            "error_message": job.error_message,
+            "priority": job.priority,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "updated_at": job.updated_at.isoformat() if job.updated_at else None,
+            "steps": [
+                {
+                    "id": str(step.id),
+                    "step_name": step.step_name,
+                    "status": step.status,
+                    "started_at": step.started_at.isoformat() if step.started_at else None,
+                    "completed_at": step.completed_at.isoformat() if step.completed_at else None,
+                    "duration_seconds": step.duration_seconds,
+                    "details": step.details,
+                }
+                for step in sorted(job.steps, key=lambda s: s.created_at or s.id)
+            ],
+        },
+    )
+
+
+class CreateJobRequest(BaseModel):
+    """Request to create a standalone job."""
+    dno_id: int
+    year: int
+    data_type: str = "all"
+    priority: int = 5
+    job_type: str = "crawl"  # crawl, rescan_pdf, rerun_extraction
+    target_file_id: int | None = None  # For rescan_pdf jobs
+
+
+@router.post("/jobs")
+async def create_standalone_job(
+    request: CreateJobRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserModel, Depends(get_admin_user)],
+) -> APIResponse:
+    """Create a standalone job (admin only)."""
+    # Verify DNO exists
+    dno_query = select(DNOModel).where(DNOModel.id == request.dno_id)
+    dno_result = await db.execute(dno_query)
+    dno = dno_result.scalar_one_or_none()
+    
+    if not dno:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="DNO not found",
+        )
+    
+    # Create job based on type
+    job = CrawlJobModel(
+        user_id=admin.id,
+        dno_id=request.dno_id,
+        year=request.year,
+        data_type=request.data_type,
+        priority=request.priority,
+        current_step=f"Created ({request.job_type})",
+    )
+    db.add(job)
+    await db.commit()
+    await db.refresh(job)
+    
+    return APIResponse(
+        success=True,
+        message=f"Job created for {dno.name} ({request.year})",
+        data={
+            "job_id": str(job.id),
+            "dno_id": str(request.dno_id),
+            "dno_name": dno.name,
+            "year": request.year,
+            "data_type": request.data_type,
+            "job_type": request.job_type,
+            "status": job.status,
+        },
+    )
+
+
+@router.post("/jobs/{job_id}/rerun")
+async def rerun_job(
+    job_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserModel, Depends(get_admin_user)],
+) -> APIResponse:
+    """Rerun a failed or completed job."""
+    query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    
+    if job.status in ["pending", "running"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot rerun a job that is still pending or running",
+        )
+    
+    # Create a new job based on the old one
+    new_job = CrawlJobModel(
+        user_id=admin.id,
+        dno_id=job.dno_id,
+        year=job.year,
+        data_type=job.data_type,
+        priority=job.priority,
+        current_step=f"Rerun of job {job_id}",
+    )
+    db.add(new_job)
+    await db.commit()
+    await db.refresh(new_job)
+    
+    return APIResponse(
+        success=True,
+        message=f"Job rerun created",
+        data={
+            "job_id": str(new_job.id),
+            "original_job_id": str(job_id),
+            "status": new_job.status,
+        },
+    )
+
+
+@router.delete("/jobs/{job_id}")
+async def cancel_job(
+    job_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[UserModel, Depends(get_admin_user)],
+) -> APIResponse:
+    """Cancel a pending job or mark a running job for cancellation."""
+    query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
+    result = await db.execute(query)
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Job not found",
+        )
+    
+    if job.status == "completed":
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Cannot cancel a completed job",
+        )
+    
+    job.status = "cancelled"
+    job.error_message = f"Cancelled by admin {admin.email}"
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Job cancelled",
     )
