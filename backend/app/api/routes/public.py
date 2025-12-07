@@ -90,10 +90,11 @@ async def search_data(
                 "type": "hlzf",
                 "dno_id": str(h.dno_id),
                 "year": h.year,
-                "season": h.season,
-                "period_number": h.period_number,
-                "start_time": h.start_time,
-                "end_time": h.end_time,
+                "voltage_level": h.voltage_level,
+                "winter": h.winter,
+                "fruehling": h.fruehling,
+                "sommer": h.sommer,
+                "herbst": h.herbst,
             })
     
     return PaginatedResponse(

@@ -121,17 +121,31 @@ class NetzentgelteModel(Base, TimestampMixin):
 
 
 class HLZFModel(Base, TimestampMixin):
-    """HLZF (Hauptlastzeiten) data."""
+    """HLZF (Hochlastzeitfenster) data per voltage level and season.
+    
+    Structure based on Netze BW format:
+    - Rows: Voltage levels (Hochspannungsnetz, Umspannung HS/MS, etc.)
+    - Columns: Seasons (Winter, Frühling, Sommer, Herbst)
+    - Values: Time windows like "07:30-15:30\n17:15-19:15" or "entfällt"
+    """
     __tablename__ = "hlzf"
+    __table_args__ = (
+        Index("idx_hlzf_dno_year_voltage", "dno_id", "year", "voltage_level"),
+    )
+    
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dno_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
-    season: Mapped[str] = mapped_column(String(20), nullable=False)
-    period_number: Mapped[int] = mapped_column(Integer, nullable=False)
-    start_time: Mapped[str | None] = mapped_column(String(10))
-    end_time: Mapped[str | None] = mapped_column(String(10))
+    voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    # Seasonal time windows (can contain multiple lines like "07:30-15:30\n17:15-19:15")
+    # "entfällt" or null means no HLZF for that season
+    winter: Mapped[str | None] = mapped_column(Text)  # Jan, Feb, Dez
+    fruehling: Mapped[str | None] = mapped_column(Text)  # Mrz - Mai
+    sommer: Mapped[str | None] = mapped_column(Text)  # Jun - Aug
+    herbst: Mapped[str | None] = mapped_column(Text)  # Sept - Nov
 
     # Verification
     verification_status: Mapped[str] = mapped_column(

@@ -295,7 +295,7 @@ async def get_dno_data(
     
     # Query netzentgelte data
     netzentgelte_query = text("""
-        SELECT voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, verification_status
+        SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, verification_status
         FROM netzentgelte
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
@@ -306,13 +306,37 @@ async def get_dno_data(
     netzentgelte = []
     for row in netzentgelte_rows:
         netzentgelte.append({
-            "voltage_level": row[0],
-            "year": row[1],
-            "leistung": row[2],  # T >= 2500 h/a
-            "arbeit": row[3],    # T >= 2500 h/a
-            "leistung_unter_2500h": row[4],  # T < 2500 h/a
-            "arbeit_unter_2500h": row[5],
-            "verification_status": row[6],
+            "id": row[0],
+            "voltage_level": row[1],
+            "year": row[2],
+            "leistung": row[3],  # T >= 2500 h/a
+            "arbeit": row[4],    # T >= 2500 h/a
+            "leistung_unter_2500h": row[5],  # T < 2500 h/a
+            "arbeit_unter_2500h": row[6],
+            "verification_status": row[7],
+        })
+    
+    # Query HLZF data
+    hlzf_query = text("""
+        SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, verification_status
+        FROM hlzf
+        WHERE dno_id = :dno_id
+        ORDER BY year DESC, voltage_level
+    """)
+    result = await db.execute(hlzf_query, {"dno_id": dno_id})
+    hlzf_rows = result.fetchall()
+    
+    hlzf = []
+    for row in hlzf_rows:
+        hlzf.append({
+            "id": row[0],
+            "voltage_level": row[1],
+            "year": row[2],
+            "winter": row[3],
+            "fruehling": row[4],
+            "sommer": row[5],
+            "herbst": row[6],
+            "verification_status": row[7],
         })
     
     return APIResponse(
@@ -323,7 +347,7 @@ async def get_dno_data(
                 "name": dno.name,
             },
             "netzentgelte": netzentgelte,
-            "hlzf": [],
+            "hlzf": hlzf,
         },
     )
 
@@ -363,3 +387,99 @@ async def get_dno_crawl_jobs(
             for job in jobs
         ],
     )
+
+
+class UpdateNetzentgelteRequest(BaseModel):
+    """Request model for updating Netzentgelte."""
+    leistung: float | None = None
+    arbeit: float | None = None
+    leistung_unter_2500h: float | None = None
+    arbeit_unter_2500h: float | None = None
+
+
+@router.patch("/{dno_id}/netzentgelte/{record_id}")
+async def update_netzentgelte(
+    dno_id: int,
+    record_id: int,
+    request: UpdateNetzentgelteRequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """Update a Netzentgelte record (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    from app.db import NetzentgelteModel
+    
+    query = select(NetzentgelteModel).where(
+        NetzentgelteModel.id == record_id,
+        NetzentgelteModel.dno_id == dno_id,
+    )
+    result = await db.execute(query)
+    record = result.scalar_one_or_none()
+    
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Record not found",
+        )
+    
+    # Update only provided fields
+    if request.leistung is not None:
+        record.leistung = request.leistung
+    if request.arbeit is not None:
+        record.arbeit = request.arbeit
+    if request.leistung_unter_2500h is not None:
+        record.leistung_unter_2500h = request.leistung_unter_2500h
+    if request.arbeit_unter_2500h is not None:
+        record.arbeit_unter_2500h = request.arbeit_unter_2500h
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Record updated successfully",
+        data={"id": str(record.id)},
+    )
+
+
+@router.delete("/{dno_id}/netzentgelte/{record_id}")
+async def delete_netzentgelte(
+    dno_id: int,
+    record_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """Delete a Netzentgelte record (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    from app.db import NetzentgelteModel
+    
+    query = select(NetzentgelteModel).where(
+        NetzentgelteModel.id == record_id,
+        NetzentgelteModel.dno_id == dno_id,
+    )
+    result = await db.execute(query)
+    record = result.scalar_one_or_none()
+    
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Record not found",
+        )
+    
+    await db.delete(record)
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Record deleted successfully",
+    )
+

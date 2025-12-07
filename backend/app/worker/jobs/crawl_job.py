@@ -94,6 +94,162 @@ async def update_job_step(
         await db.commit()
 
 
+async def _extract_with_ollama(
+    ollama_url: str,
+    netzentgelte_path: str | None,
+    regelungen_path: str | None,
+    dno_name: str,
+    year: int,
+) -> dict:
+    """
+    Use Ollama LLM to extract data from PDFs when pdfplumber fails.
+    
+    Args:
+        ollama_url: URL to Ollama API
+        netzentgelte_path: Path to Netzentgelte PDF (if extraction needed)
+        regelungen_path: Path to Regelungen PDF (if extraction needed)
+        dno_name: Name of the DNO
+        year: Year to extract data for
+        
+    Returns:
+        Dict with "netzentgelte" and/or "hlzf" lists
+    """
+    import httpx
+    import json
+    import pdfplumber
+    from pathlib import Path
+    
+    log = logger.bind(dno=dno_name, year=year)
+    results = {"netzentgelte": [], "hlzf": []}
+    
+    model = "qwen3-vl:2b"  # Vision-capable model for PDF understanding
+    
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        # Check if Ollama is available
+        try:
+            health = await client.get(f"{ollama_url}/api/tags")
+            if health.status_code != 200:
+                log.warning("Ollama not available")
+                return results
+        except Exception as e:
+            log.warning(f"Ollama connection failed: {e}")
+            return results
+        
+        # Extract Netzentgelte with AI
+        if netzentgelte_path:
+            pdf_path = Path(netzentgelte_path)
+            if pdf_path.exists():
+                # Extract text from PDF for context
+                try:
+                    with pdfplumber.open(pdf_path) as pdf:
+                        text = "\n".join([p.extract_text() or "" for p in pdf.pages[:5]])
+                    
+                    prompt = f"""Extract the Netzentgelte (network charges) data from this text for {dno_name} {year}.
+
+Look for a table with voltage levels (Hochspannung, Umspannung HS/MS, Mittelspannung, Umspannung MS/NS, Niederspannung) and 4 price columns:
+1. Leistungspreis < 2500h
+2. Arbeitspreis < 2500h  
+3. Leistungspreis >= 2500h
+4. Arbeitspreis >= 2500h
+
+Return JSON only, no other text:
+{{"records": [{{"voltage_level": "...", "lp_unter": ..., "ap_unter": ..., "lp": ..., "ap": ...}}]}}
+
+Text:
+{text[:4000]}"""
+
+                    response = await client.post(
+                        f"{ollama_url}/api/generate",
+                        json={"model": model, "prompt": prompt, "stream": False},
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        answer = result.get("response", "")
+                        
+                        # Try to parse JSON from response
+                        try:
+                            # Find JSON in response
+                            import re
+                            json_match = re.search(r'\{.*\}', answer, re.DOTALL)
+                            if json_match:
+                                data = json.loads(json_match.group())
+                                for r in data.get("records", []):
+                                    results["netzentgelte"].append({
+                                        "voltage_level": r.get("voltage_level", ""),
+                                        "leistung_unter_2500h": r.get("lp_unter"),
+                                        "arbeit_unter_2500h": r.get("ap_unter"),
+                                        "leistung": r.get("lp"),
+                                        "arbeit": r.get("ap"),
+                                    })
+                                log.info(f"AI extracted {len(results['netzentgelte'])} Netzentgelte records")
+                        except json.JSONDecodeError:
+                            log.warning("Failed to parse AI response as JSON")
+                            
+                except Exception as e:
+                    log.error(f"AI Netzentgelte extraction failed: {e}")
+        
+        # Extract HLZF with AI
+        if regelungen_path:
+            pdf_path = Path(regelungen_path)
+            if pdf_path.exists():
+                try:
+                    with pdfplumber.open(pdf_path) as pdf:
+                        # Find HLZF section
+                        text = ""
+                        for page in pdf.pages:
+                            page_text = page.extract_text() or ""
+                            if "hochlast" in page_text.lower():
+                                text += page_text + "\n"
+                        
+                        if not text:
+                            text = "\n".join([p.extract_text() or "" for p in pdf.pages[10:15]])
+                    
+                    prompt = f"""Extract the Hochlastzeitfenster (HLZF - peak load time windows) from this text for {dno_name} {year}.
+
+Look for a table with:
+- Rows: Voltage levels (Hochspannungsnetz, Umspannung zur Mittelspannung, Mittelspannungsnetz, etc.)
+- Columns: Seasons (Winter, Frühling, Sommer, Herbst)
+- Values: Time windows like "07:30-15:30" or "entfällt" (means null)
+
+Return JSON only:
+{{"records": [{{"voltage_level": "...", "winter": "...", "fruehling": null, "sommer": null, "herbst": "..."}}]}}
+
+Text:
+{text[:4000]}"""
+
+                    response = await client.post(
+                        f"{ollama_url}/api/generate",
+                        json={"model": model, "prompt": prompt, "stream": False},
+                    )
+                    
+                    if response.status_code == 200:
+                        result = response.json()
+                        answer = result.get("response", "")
+                        
+                        try:
+                            import re
+                            json_match = re.search(r'\{.*\}', answer, re.DOTALL)
+                            if json_match:
+                                data = json.loads(json_match.group())
+                                for r in data.get("records", []):
+                                    results["hlzf"].append({
+                                        "voltage_level": r.get("voltage_level", ""),
+                                        "winter": r.get("winter"),
+                                        "fruehling": r.get("fruehling"),
+                                        "sommer": r.get("sommer"),
+                                        "herbst": r.get("herbst"),
+                                    })
+                                log.info(f"AI extracted {len(results['hlzf'])} HLZF records")
+                        except json.JSONDecodeError:
+                            log.warning("Failed to parse AI HLZF response as JSON")
+                            
+                except Exception as e:
+                    log.error(f"AI HLZF extraction failed: {e}")
+    
+    return results
+
+
 async def crawl_dno_job(ctx: dict, job_id: int) -> dict:
     """
     Main crawl job that orchestrates the DNO data extraction workflow.
@@ -167,71 +323,252 @@ async def crawl_dno_job(ctx: dict, job_id: int) -> dict:
         )
         log.info("Initialization complete")
 
-        # Step 2: Discover sources
+        # Step 2: Discover sources (find PDF URLs for Netzentgelte and Regelungen)
         discover_step_id = await create_job_step(job_id, "Discover Sources")
         await update_job_step(discover_step_id, JobStatus.RUNNING, started_at=datetime.now(timezone.utc))
-        await update_job_status(job_id, JobStatus.RUNNING, progress=20, current_step="Discovering sources")
+        await update_job_status(job_id, JobStatus.RUNNING, progress=15, current_step="Discovering sources")
 
-        # TODO: Implement discovery logic using SearXNG or configured URLs
-        # For now, we just log that this step would happen
+        from app.crawler.pdf_extractor import find_pdf_url_for_dno
+        
+        netzentgelte_url = find_pdf_url_for_dno(dno.name, job.year, "netzentgelte")
+        regelungen_url = find_pdf_url_for_dno(dno.name, job.year, "regelungen")
+        
         sources_found = []
-        if dno.website:
-            sources_found.append(dno.website)
+        if netzentgelte_url:
+            sources_found.append({"type": "netzentgelte", "url": netzentgelte_url})
+        if regelungen_url:
+            sources_found.append({"type": "regelungen", "url": regelungen_url})
+        
+        if not sources_found and dno.website:
+            sources_found.append({"type": "website", "url": dno.website})
 
         await update_job_step(
             discover_step_id,
             JobStatus.COMPLETED,
             completed_at=datetime.now(timezone.utc),
             duration_seconds=2,
-            details={"sources_found": len(sources_found), "urls": sources_found[:5]},
+            details={
+                "sources_found": len(sources_found),
+                "netzentgelte_url": netzentgelte_url,
+                "regelungen_url": regelungen_url,
+            },
         )
-        log.info("Discovery complete", sources_found=len(sources_found))
+        log.info("Discovery complete", sources=len(sources_found), netzentgelte=bool(netzentgelte_url), regelungen=bool(regelungen_url))
 
-        # Step 3: Fetch content
+        # Step 3: Fetch content (download both PDFs)
         fetch_step_id = await create_job_step(job_id, "Fetch Content")
         await update_job_step(fetch_step_id, JobStatus.RUNNING, started_at=datetime.now(timezone.utc))
-        await update_job_status(job_id, JobStatus.RUNNING, progress=40, current_step="Fetching content")
+        await update_job_status(job_id, JobStatus.RUNNING, progress=30, current_step="Downloading PDFs")
 
-        # TODO: Implement fetching logic (HTTP client, Playwright for JS pages)
-        # For now, simulate fetching
+        import httpx
+        from pathlib import Path
+        
+        downloads_dir = Path("/data/downloads")
+        downloads_dir.mkdir(parents=True, exist_ok=True)
+        
+        netzentgelte_path = None
+        regelungen_path = None
+        pdfs_downloaded = 0
+        
+        async with httpx.AsyncClient(follow_redirects=True, timeout=60.0) as client:
+            # Download Netzentgelte PDF
+            if netzentgelte_url:
+                pdf_filename = f"{dno.slug}-netzentgelte-{job.year}.pdf"
+                netzentgelte_path = downloads_dir / pdf_filename
+                try:
+                    response = await client.get(netzentgelte_url)
+                    response.raise_for_status()
+                    netzentgelte_path.write_bytes(response.content)
+                    pdfs_downloaded += 1
+                    log.info(f"Downloaded Netzentgelte PDF", path=str(netzentgelte_path), size=len(response.content))
+                except Exception as e:
+                    log.error(f"Failed to download Netzentgelte PDF: {e}")
+                    netzentgelte_path = None
+            
+            # Download Regelungen PDF
+            if regelungen_url:
+                pdf_filename = f"{dno.slug}-regelungen-{job.year}.pdf"
+                regelungen_path = downloads_dir / pdf_filename
+                try:
+                    response = await client.get(regelungen_url)
+                    response.raise_for_status()
+                    regelungen_path.write_bytes(response.content)
+                    pdfs_downloaded += 1
+                    log.info(f"Downloaded Regelungen PDF", path=str(regelungen_path), size=len(response.content))
+                except Exception as e:
+                    log.error(f"Failed to download Regelungen PDF: {e}")
+                    regelungen_path = None
+
         await update_job_step(
             fetch_step_id,
             JobStatus.COMPLETED,
             completed_at=datetime.now(timezone.utc),
             duration_seconds=5,
-            details={"pages_fetched": 0, "pdfs_downloaded": 0},
+            details={
+                "pdfs_downloaded": pdfs_downloaded,
+                "netzentgelte_path": str(netzentgelte_path) if netzentgelte_path else None,
+                "regelungen_path": str(regelungen_path) if regelungen_path else None,
+            },
         )
-        log.info("Fetch complete")
+        log.info("Fetch complete", pdfs_downloaded=pdfs_downloaded)
 
-        # Step 4: Parse content
+        # Step 4: Parse content (extract data from PDFs)
         parse_step_id = await create_job_step(job_id, "Parse Content")
         await update_job_step(parse_step_id, JobStatus.RUNNING, started_at=datetime.now(timezone.utc))
-        await update_job_status(job_id, JobStatus.RUNNING, progress=60, current_step="Parsing content")
+        await update_job_status(job_id, JobStatus.RUNNING, progress=50, current_step="Extracting data from PDFs")
 
-        # TODO: Implement parsing logic (HTML parser, PDF parser)
+        from app.crawler.pdf_extractor import extract_netzentgelte_from_pdf, extract_hlzf_from_pdf
+        
+        netzentgelte_records = []
+        hlzf_records = []
+        ai_used = False
+        
+        # Extract Netzentgelte
+        if netzentgelte_path and netzentgelte_path.exists():
+            try:
+                netzentgelte_records = extract_netzentgelte_from_pdf(netzentgelte_path)
+                log.info(f"Extracted {len(netzentgelte_records)} Netzentgelte records")
+            except Exception as e:
+                log.error(f"Failed to extract Netzentgelte: {e}")
+        
+        # Extract HLZF
+        if regelungen_path and regelungen_path.exists():
+            try:
+                hlzf_records = extract_hlzf_from_pdf(regelungen_path)
+                log.info(f"Extracted {len(hlzf_records)} HLZF records")
+            except Exception as e:
+                log.error(f"Failed to extract HLZF: {e}")
+        
+        # AI Fallback: If extraction failed or yielded no results, try Ollama
+        import os
+        ollama_url = os.environ.get("OLLAMA_URL", "http://ollama:11434")
+        
+        if not netzentgelte_records or not hlzf_records:
+            log.info("Attempting AI fallback with Ollama", ollama_url=ollama_url)
+            try:
+                ai_results = await _extract_with_ollama(
+                    ollama_url=ollama_url,
+                    netzentgelte_path=netzentgelte_path if not netzentgelte_records else None,
+                    regelungen_path=regelungen_path if not hlzf_records else None,
+                    dno_name=dno.name,
+                    year=job.year,
+                )
+                if ai_results.get("netzentgelte") and not netzentgelte_records:
+                    netzentgelte_records = ai_results["netzentgelte"]
+                    ai_used = True
+                if ai_results.get("hlzf") and not hlzf_records:
+                    hlzf_records = ai_results["hlzf"]
+                    ai_used = True
+            except Exception as e:
+                log.warning(f"AI fallback failed: {e}")
+
         await update_job_step(
             parse_step_id,
             JobStatus.COMPLETED,
             completed_at=datetime.now(timezone.utc),
-            duration_seconds=3,
-            details={"tables_found": 0, "potential_data_items": 0},
+            duration_seconds=5,
+            details={
+                "netzentgelte_count": len(netzentgelte_records),
+                "hlzf_count": len(hlzf_records),
+                "ai_used": ai_used,
+            },
         )
-        log.info("Parsing complete")
+        log.info("Parsing complete", netzentgelte=len(netzentgelte_records), hlzf=len(hlzf_records), ai_used=ai_used)
 
-        # Step 5: Extract and store data
+        # Step 5: Store data in database
         store_step_id = await create_job_step(job_id, "Store Data")
         await update_job_step(store_step_id, JobStatus.RUNNING, started_at=datetime.now(timezone.utc))
-        await update_job_status(job_id, JobStatus.RUNNING, progress=80, current_step="Storing data")
+        await update_job_status(job_id, JobStatus.RUNNING, progress=75, current_step="Storing extracted data")
 
-        # TODO: Implement LLM-based extraction and data storage
+        from app.db import NetzentgelteModel, HLZFModel
+        from sqlalchemy import and_
+        
+        netzentgelte_inserted = 0
+        hlzf_inserted = 0
+        
+        async with get_db_session() as db:
+            # Store Netzentgelte records
+            for record in netzentgelte_records:
+                existing_query = select(NetzentgelteModel).where(
+                    and_(
+                        NetzentgelteModel.dno_id == dno.id,
+                        NetzentgelteModel.year == job.year,
+                        NetzentgelteModel.voltage_level == record["voltage_level"]
+                    )
+                )
+                existing_result = await db.execute(existing_query)
+                existing = existing_result.scalar_one_or_none()
+                
+                if existing:
+                    existing.leistung = record.get("leistung")
+                    existing.arbeit = record.get("arbeit")
+                    existing.leistung_unter_2500h = record.get("leistung_unter_2500h")
+                    existing.arbeit_unter_2500h = record.get("arbeit_unter_2500h")
+                    existing.verification_status = "extracted"
+                    log.info(f"Updated Netzentgelte: {record['voltage_level']}")
+                else:
+                    new_record = NetzentgelteModel(
+                        dno_id=dno.id,
+                        year=job.year,
+                        voltage_level=record["voltage_level"],
+                        leistung=record.get("leistung"),
+                        arbeit=record.get("arbeit"),
+                        leistung_unter_2500h=record.get("leistung_unter_2500h"),
+                        arbeit_unter_2500h=record.get("arbeit_unter_2500h"),
+                        verification_status="extracted",
+                    )
+                    db.add(new_record)
+                    netzentgelte_inserted += 1
+                    log.info(f"Inserted Netzentgelte: {record['voltage_level']}")
+            
+            # Store HLZF records
+            for record in hlzf_records:
+                existing_query = select(HLZFModel).where(
+                    and_(
+                        HLZFModel.dno_id == dno.id,
+                        HLZFModel.year == job.year,
+                        HLZFModel.voltage_level == record["voltage_level"]
+                    )
+                )
+                existing_result = await db.execute(existing_query)
+                existing = existing_result.scalar_one_or_none()
+                
+                if existing:
+                    existing.winter = record.get("winter")
+                    existing.fruehling = record.get("fruehling")
+                    existing.sommer = record.get("sommer")
+                    existing.herbst = record.get("herbst")
+                    existing.verification_status = "extracted"
+                    log.info(f"Updated HLZF: {record['voltage_level']}")
+                else:
+                    new_record = HLZFModel(
+                        dno_id=dno.id,
+                        year=job.year,
+                        voltage_level=record["voltage_level"],
+                        winter=record.get("winter"),
+                        fruehling=record.get("fruehling"),
+                        sommer=record.get("sommer"),
+                        herbst=record.get("herbst"),
+                        verification_status="extracted",
+                    )
+                    db.add(new_record)
+                    hlzf_inserted += 1
+                    log.info(f"Inserted HLZF: {record['voltage_level']}")
+            
+            await db.commit()
+
         await update_job_step(
             store_step_id,
             JobStatus.COMPLETED,
             completed_at=datetime.now(timezone.utc),
-            duration_seconds=2,
-            details={"netzentgelte_records": 0, "hlzf_records": 0},
+            duration_seconds=3,
+            details={
+                "netzentgelte_inserted": netzentgelte_inserted,
+                "hlzf_inserted": hlzf_inserted,
+                "total_records": netzentgelte_inserted + hlzf_inserted,
+            },
         )
-        log.info("Data storage complete")
+        log.info("Data storage complete", netzentgelte=netzentgelte_inserted, hlzf=hlzf_inserted)
 
         # Step 6: Finalize
         finalize_step_id = await create_job_step(job_id, "Finalize")
