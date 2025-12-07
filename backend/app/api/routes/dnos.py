@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.routes.auth import get_current_active_user
@@ -20,6 +20,82 @@ class TriggerCrawlRequest(BaseModel):
     year: int
     data_type: DataType = DataType.ALL
     priority: int = 5
+
+
+class CreateDNORequest(BaseModel):
+    """Request model for creating a new DNO."""
+    name: str
+    slug: str | None = None  # Auto-generate if not provided
+    official_name: str | None = None
+    description: str | None = None
+    region: str | None = None
+    website: str | None = None
+
+
+def _slugify(name: str) -> str:
+    """Generate a URL-friendly slug from a name."""
+    import re
+    # Convert to lowercase
+    slug = name.lower()
+    # Replace spaces and special chars with hyphens
+    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    # Remove leading/trailing hyphens
+    slug = slug.strip('-')
+    # Collapse multiple hyphens
+    slug = re.sub(r'-+', '-', slug)
+    return slug
+
+
+@router.post("/")
+async def create_dno(
+    request: CreateDNORequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+) -> APIResponse:
+    """
+    Create a new DNO.
+    
+    If slug is not provided, it will be auto-generated from the name.
+    """
+    # Generate slug if not provided
+    slug = request.slug if request.slug else _slugify(request.name)
+    
+    # Check for duplicate slug
+    existing_query = select(DNOModel).where(DNOModel.slug == slug)
+    result = await db.execute(existing_query)
+    if result.scalar_one_or_none():
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"A DNO with slug '{slug}' already exists",
+        )
+    
+    # Create DNO
+    dno = DNOModel(
+        name=request.name,
+        slug=slug,
+        official_name=request.official_name,
+        description=request.description,
+        region=request.region,
+        website=request.website,
+    )
+    db.add(dno)
+    await db.commit()
+    await db.refresh(dno)
+    
+    return APIResponse(
+        success=True,
+        message=f"DNO '{dno.name}' created successfully",
+        data={
+            "id": str(dno.id),
+            "slug": dno.slug,
+            "name": dno.name,
+            "official_name": dno.official_name,
+            "description": dno.description,
+            "region": dno.region,
+            "website": dno.website,
+            "created_at": dno.created_at.isoformat() if dno.created_at else None,
+        },
+    )
 
 
 @router.get("/")
@@ -39,6 +115,13 @@ async def list_dnos_detailed(
     
     data = []
     for dno in dnos:
+        # Get netzentgelte count for this DNO
+        count_result = await db.execute(
+            text("SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id"),
+            {"dno_id": dno.id}
+        )
+        netzentgelte_count = count_result.scalar() or 0
+        
         dno_data = {
             "id": str(dno.id),
             "slug": dno.slug,
@@ -47,6 +130,7 @@ async def list_dnos_detailed(
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
+            "netzentgelte_count": netzentgelte_count,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         }
@@ -54,7 +138,7 @@ async def list_dnos_detailed(
         if include_stats:
             # TODO: Add actual stats (data counts, last crawl, etc.)
             dno_data["stats"] = {
-                "netzentgelte_count": 0,
+                "netzentgelte_count": netzentgelte_count,
                 "hlzf_count": 0,
                 "years_available": [],
                 "last_crawl": None,
@@ -110,6 +194,10 @@ async def trigger_crawl(
     
     Creates a new crawl job that will be picked up by the worker.
     """
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from app.core.config import settings
+    
     # Verify DNO exists
     query = select(DNOModel).where(DNOModel.id == dno_id)
     result = await db.execute(query)
@@ -134,7 +222,7 @@ async def trigger_crawl(
             detail="A crawl job for this DNO and year is already in progress",
         )
     
-    # Create crawl job
+    # Create crawl job in database
     job = CrawlJobModel(
         user_id=current_user.id,
         dno_id=dno_id,
@@ -145,6 +233,23 @@ async def trigger_crawl(
     db.add(job)
     await db.commit()
     await db.refresh(job)
+    
+    # Enqueue job to arq worker queue
+    try:
+        redis_pool = await create_pool(
+            RedisSettings.from_dsn(str(settings.redis_url))
+        )
+        await redis_pool.enqueue_job(
+            "crawl_dno_job",
+            job.id,
+            _job_id=f"crawl_{job.id}",
+        )
+        await redis_pool.close()
+    except Exception as e:
+        # Log error but don't fail - job is in DB and can be retried
+        import structlog
+        logger = structlog.get_logger()
+        logger.error("Failed to enqueue job to worker", job_id=job.id, error=str(e))
     
     return APIResponse(
         success=True,
@@ -180,7 +285,28 @@ async def get_dno_data(
             detail="DNO not found",
         )
     
-    # TODO: Implement actual data retrieval
+    # Query netzentgelte data
+    netzentgelte_query = text("""
+        SELECT voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, verification_status
+        FROM netzentgelte
+        WHERE dno_id = :dno_id
+        ORDER BY year DESC, voltage_level
+    """)
+    result = await db.execute(netzentgelte_query, {"dno_id": dno_id})
+    netzentgelte_rows = result.fetchall()
+    
+    netzentgelte = []
+    for row in netzentgelte_rows:
+        netzentgelte.append({
+            "voltage_level": row[0],
+            "year": row[1],
+            "leistung": row[2],  # T >= 2500 h/a
+            "arbeit": row[3],    # T >= 2500 h/a
+            "leistung_unter_2500h": row[4],  # T < 2500 h/a
+            "arbeit_unter_2500h": row[5],
+            "verification_status": row[6],
+        })
+    
     return APIResponse(
         success=True,
         data={
@@ -188,7 +314,7 @@ async def get_dno_data(
                 "id": str(dno.id),
                 "name": dno.name,
             },
-            "netzentgelte": [],
+            "netzentgelte": netzentgelte,
             "hlzf": [],
         },
     )

@@ -73,9 +73,12 @@ search:
     recaptcha_SearxEngineCaptcha: 604800
 
   # remove format to deny access, use lower case.
-  # formats: [html, csv, json, rss]
+  # formats:
+    - json [html, csv, json, rss]
   formats:
+    - json
     - html
+    - json
 
 server:
   # Is overwritten by ${SEARXNG_PORT} and ${SEARXNG_BIND_ADDRESS}

@@ -3,6 +3,7 @@ from arq.connections import RedisSettings
 
 from app.core.config import settings
 from app.db import close_db, init_db
+from app.worker.jobs import crawl_dno_job, discover_sources_job, extract_pdf_job
 
 logger = structlog.get_logger()
 
@@ -33,8 +34,14 @@ class WorkerSettings:
     """
     Arq worker settings.
     """
-    functions = [health_check_job]  # Register job functions here
+    functions = [
+        health_check_job,
+        crawl_dno_job,
+        discover_sources_job,
+        extract_pdf_job,
+    ]
     redis_settings = RedisSettings.from_dsn(str(settings.redis_url))
     on_startup = startup
     on_shutdown = shutdown
-    handle_signals = False 
+    handle_signals = False
+

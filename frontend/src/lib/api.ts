@@ -229,6 +229,40 @@ export const api = {
       const { data } = await apiClient.post(`/dnos/${dno_id}/crawl`, payload);
       return data;
     },
+
+    async create(payload: {
+      name: string;
+      slug?: string;
+      official_name?: string;
+      description?: string;
+      region?: string;
+      website?: string;
+    }): Promise<ApiResponse<DNO>> {
+      const { data } = await apiClient.post("/dnos/", payload);
+      return data;
+    },
+
+    async getData(
+      dno_id: string,
+      params?: { year?: number; data_type?: string }
+    ): Promise<ApiResponse<{
+      dno: { id: string; name: string };
+      netzentgelte: Netzentgelte[];
+      hlzf: HLZF[];
+    }>> {
+      const { data } = await apiClient.get(`/dnos/${dno_id}/data`, { params });
+      return data;
+    },
+
+    async getJobs(
+      dno_id: string,
+      limit?: number
+    ): Promise<ApiResponse<Job[]>> {
+      const { data } = await apiClient.get(`/dnos/${dno_id}/jobs`, {
+        params: { limit: limit || 10 },
+      });
+      return data;
+    },
   },
 
   admin: {

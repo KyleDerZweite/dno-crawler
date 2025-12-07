@@ -3,6 +3,7 @@ export { RegisterPage } from "./RegisterPage";
 export { DashboardPage } from "./DashboardPage";
 export { SearchPage } from "./SearchPage";
 export { DNOsPage } from "./DNOsPage";
+export { DNODetailPage } from "./DNODetailPage";
 export { AdminPage } from "./AdminPage";
 export { SettingsPage } from "./SettingsPage";
 export { JobsPage } from "./JobsPage";

@@ -6,6 +6,7 @@ import { RegisterPage } from "./pages/RegisterPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { SearchPage } from "./pages/SearchPage";
 import { DNOsPage } from "./pages/DNOsPage";
+import { DNODetailPage } from "./pages/DNODetailPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { JobsPage } from "./pages/JobsPage";
@@ -84,6 +85,7 @@ function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="dnos" element={<DNOsPage />} />
+        <Route path="dnos/:id" element={<DNODetailPage />} />
         <Route path="jobs" element={<JobsPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />

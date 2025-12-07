@@ -105,6 +105,27 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.close()
 
 
+from contextlib import asynccontextmanager
+
+
+@asynccontextmanager
+async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
+    """
+    Context manager for getting database session in non-FastAPI contexts.
+    
+    Useful for background workers and standalone scripts.
+    """
+    session = async_session_maker()
+    try:
+        yield session
+    except SQLAlchemyError as e:
+        logger.error("Database error in session", error=str(e))
+        await session.rollback()
+        raise DatabaseError(f"Database operation failed: {e}", original_error=e)
+    finally:
+        await session.close()
+
+
 async def init_db() -> None:
     """Initialize database tables."""
     try:
