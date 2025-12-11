@@ -52,16 +52,6 @@ apiClient.interceptors.response.use(
 );
 
 // Types
-export interface User {
-  id: string;
-  email: string;
-  name: string;
-  role: "pending" | "user" | "admin";
-  is_active: boolean;
-  email_verified: boolean;
-  created_at: string;
-  updated_at?: string;
-}
 
 export interface DNO {
   id: string;
@@ -149,50 +139,22 @@ export interface JobDetails extends Job {
   steps: JobStep[];
 }
 
-export interface Tokens {
-  access_token: string;
-  refresh_token: string;
-  token_type: string;
-  user: User;
+// User info response from /auth/me endpoint
+export interface UserInfo {
+  id: string;
+  email: string;
+  name: string;
+  roles: string[];
+  is_admin: boolean;
 }
 
 // API functions
 export const api = {
   auth: {
-    async login(payload: {
-      username: string;
-      password: string;
-    }): Promise<Tokens> {
-      const formData = new URLSearchParams();
-      formData.append("username", payload.username);
-      formData.append("password", payload.password);
-
-      const { data } = await apiClient.post<Tokens>("/auth/login", formData, {
-        headers: { "Content-Type": "application/x-www-form-urlencoded" },
-      });
+    // Get current user info from backend (validates token)
+    async me(): Promise<ApiResponse<UserInfo>> {
+      const { data } = await apiClient.get("/auth/me");
       return data;
-    },
-
-    async register(payload: {
-      email: string;
-      name: string;
-      password: string;
-    }): Promise<ApiResponse<{ id: string; email: string; name: string }>> {
-      const { data } = await apiClient.post("/auth/register", payload);
-      return data;
-    },
-
-    async me(): Promise<User> {
-      const { data } = await apiClient.get<User>("/auth/me");
-      return data;
-    },
-
-    async logout(): Promise<void> {
-      try {
-        await apiClient.post("/auth/logout");
-      } catch {
-        // Ignore errors on logout
-      }
     },
   },
 
@@ -351,52 +313,10 @@ export const api = {
     async getDashboard(): Promise<
       ApiResponse<{
         dnos: { total: number };
-        users: { pending: number; active: number; admins: number; total: number };
         jobs: { pending: number; running: number };
       }>
     > {
       const { data } = await apiClient.get("/admin/dashboard");
-      return data;
-    },
-
-    async listUsers(params?: {
-      role?: string;
-      page?: number;
-      per_page?: number;
-    }): Promise<ApiResponse<User[]>> {
-      const { data } = await apiClient.get("/admin/users", { params });
-      return data;
-    },
-
-    async getPendingUsers(): Promise<ApiResponse<User[]>> {
-      const { data } = await apiClient.get("/admin/users/pending");
-      return data;
-    },
-
-    async approveUser(
-      user_id: string,
-      approved: boolean,
-      reason?: string
-    ): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.post(`/admin/users/${user_id}/approve`, {
-        approved,
-        reason,
-      });
-      return data;
-    },
-
-    async updateUserRole(
-      user_id: string,
-      role: string
-    ): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.patch(`/admin/users/${user_id}/role`, {
-        role,
-      });
-      return data;
-    },
-
-    async deleteUser(user_id: string): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.delete(`/admin/users/${user_id}`);
       return data;
     },
 

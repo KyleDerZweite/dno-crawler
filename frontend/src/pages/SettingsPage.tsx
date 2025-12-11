@@ -1,7 +1,5 @@
 import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
   Card,
   CardContent,
@@ -9,10 +7,10 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { User, Shield, Bell } from "lucide-react";
+import { User, Shield, ExternalLink } from "lucide-react";
 
 export function SettingsPage() {
-  const { user } = useAuth();
+  const { user, roles, avatar, openSettings } = useAuth();
 
   return (
     <div className="space-y-8">
@@ -34,78 +32,69 @@ export function SettingsPage() {
           <CardDescription>Your account information</CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input value={user?.name || ""} disabled className="bg-muted" />
-            </div>
-            <div className="space-y-2">
-              <Label>Email</Label>
-              <Input value={user?.email || ""} disabled className="bg-muted" />
+          <div className="flex items-center gap-4 pb-4 border-b">
+            {avatar ? (
+              <img
+                src={avatar}
+                alt={user?.name || "Profile"}
+                className="h-16 w-16 rounded-full"
+              />
+            ) : (
+              <div className="h-16 w-16 rounded-full bg-primary/10 flex items-center justify-center text-xl font-bold text-primary">
+                {user?.name?.charAt(0) || user?.email?.charAt(0) || "?"}
+              </div>
+            )}
+            <div>
+              <h3 className="font-semibold text-lg">{user?.name || "Unknown"}</h3>
+              <p className="text-muted-foreground">{user?.email || ""}</p>
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Role</Label>
-            <div className="flex">
-              <span className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20 capitalize">
-                {user?.role}
-              </span>
+            <p className="text-sm text-muted-foreground">Roles</p>
+            <div className="flex flex-wrap gap-2">
+              {roles.map((role) => (
+                <span
+                  key={role}
+                  className="inline-flex items-center rounded-md bg-primary/10 px-2 py-1 text-xs font-medium text-primary ring-1 ring-inset ring-primary/20"
+                >
+                  {role}
+                </span>
+              ))}
+              {roles.length === 0 && (
+                <span className="text-sm text-muted-foreground italic">No roles assigned</span>
+              )}
             </div>
           </div>
           <div className="pt-4">
-            <Button variant="outline">Change Password</Button>
+            <Button onClick={openSettings}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Manage Account in Zitadel
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Notifications */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Bell className="h-5 w-5" />
-            Notifications
-          </CardTitle>
-          <CardDescription>Configure alert preferences</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 border rounded-lg">
-              <div>
-                <p className="font-medium">Email Notifications</p>
-                <p className="text-sm text-muted-foreground">
-                  Receive updates about crawl completions
-                </p>
-              </div>
-              <Button variant="outline" size="sm">
-                Configure
-              </Button>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Security */}
+      {/* Security Info */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
             Security
           </CardTitle>
-          <CardDescription>Account security settings</CardDescription>
+          <CardDescription>Account security is managed through Zitadel</CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-3 border rounded-lg">
-              <div>
-                <p className="font-medium">API Keys</p>
-                <p className="text-sm text-muted-foreground">
-                  Manage API access tokens
-                </p>
-              </div>
-              <Button variant="outline" size="sm">
-                Manage
-              </Button>
+          <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg bg-muted/20">
+            <div>
+              <p className="font-medium">Zitadel Account Settings</p>
+              <p className="text-sm text-muted-foreground">
+                Change password, manage sessions, and configure two-factor authentication
+              </p>
             </div>
+            <Button variant="outline" onClick={openSettings}>
+              <ExternalLink className="mr-2 h-4 w-4" />
+              Open
+            </Button>
           </div>
         </CardContent>
       </Card>

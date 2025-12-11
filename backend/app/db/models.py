@@ -27,7 +27,6 @@ from app.core.models import (
     DataType,
     JobStatus,
     Season,
-    UserRole,
     VerificationStatus,
 )
 from app.db.database import Base
@@ -110,9 +109,8 @@ class NetzentgelteModel(Base, TimestampMixin):
     verification_status: Mapped[str] = mapped_column(
         String(20), default=VerificationStatus.UNVERIFIED.value
     )
-    verified_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id")
-    )
+    # Note: verified_by kept for audit trail but FK removed (users in Zitadel)
+    verified_by: Mapped[int | None] = mapped_column(Integer)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_notes: Mapped[str | None] = mapped_column(Text)
 
@@ -151,9 +149,8 @@ class HLZFModel(Base, TimestampMixin):
     verification_status: Mapped[str] = mapped_column(
         String(20), default=VerificationStatus.UNVERIFIED.value
     )
-    verified_by: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id")
-    )
+    # Note: verified_by kept for audit trail but FK removed (users in Zitadel)
+    verified_by: Mapped[int | None] = mapped_column(Integer)
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Relationships
@@ -185,71 +182,6 @@ class DataSourceModel(Base, TimestampMixin):
     ocr_text: Mapped[str | None] = mapped_column(Text)
 
 
-# ============== User Tables ==============
-
-
-class UserModel(Base, TimestampMixin):
-    """User account."""
-    __tablename__ = "users"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    email: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), default=UserRole.PENDING.value)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    email_verified: Mapped[bool] = mapped_column(Boolean, default=False)
-    verification_status: Mapped[str] = mapped_column(String(50), default="awaiting_approval")
-    approved_by: Mapped[int | None] = mapped_column(Integer, ForeignKey("users.id"))
-    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Relationships
-    sessions: Mapped[list["SessionModel"]] = relationship(back_populates="user")
-    api_keys: Mapped[list["APIKeyModel"]] = relationship(back_populates="user")
-
-
-class SessionModel(Base, TimestampMixin):
-    """User session for JWT management."""
-
-    __tablename__ = "sessions"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE")
-    )
-    token_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    refresh_token_hash: Mapped[str | None] = mapped_column(String(255), unique=True)
-    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
-    refresh_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    ip_address: Mapped[str | None] = mapped_column(String(45))
-    user_agent: Mapped[str | None] = mapped_column(Text)
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
-    last_used: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
-
-    # Relationships
-    user: Mapped["UserModel"] = relationship(back_populates="sessions")
-
-
-class APIKeyModel(Base, TimestampMixin):
-    """API keys for programmatic access."""
-    __tablename__ = "api_keys"
-
-    id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="CASCADE"), index=True
-    )
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    key_hash: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    masked_key: Mapped[str] = mapped_column(String(50), nullable=False)
-    last_used: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Relationships
-    user: Mapped["UserModel"] = relationship(back_populates="api_keys")
-
-
 # ============== Crawl & Job Tables ==============
 
 
@@ -258,9 +190,8 @@ class CrawlJobModel(Base, TimestampMixin):
 
     __tablename__ = "crawl_jobs"
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL")
-    )
+    # Note: user_id kept for audit trail but FK removed (users in Zitadel)
+    user_id: Mapped[int | None] = mapped_column(Integer)
     dno_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
@@ -358,9 +289,8 @@ class QueryLogModel(Base):
     __tablename__ = "query_logs"
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
-    user_id: Mapped[int | None] = mapped_column(
-        Integer, ForeignKey("users.id", ondelete="SET NULL")
-    )
+    # Note: user_id kept for audit trail but FK removed (users in Zitadel)
+    user_id: Mapped[int | None] = mapped_column(Integer)
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
     interpreted_dno: Mapped[str | None] = mapped_column(String(255))
     interpreted_year: Mapped[int | None] = mapped_column(Integer)

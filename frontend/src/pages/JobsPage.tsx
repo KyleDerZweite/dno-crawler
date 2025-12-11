@@ -59,14 +59,14 @@ const statusConfig: Record<JobStatus, { label: string; color: string; icon: Reac
 };
 
 export function JobsPage() {
-  const { user } = useAuth();
+  const { isAdmin } = useAuth();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const isAdmin = user?.role === "admin";
+  const isAdminUser = isAdmin();
 
   // Fetch jobs list
   const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
@@ -75,7 +75,7 @@ export function JobsPage() {
       status: statusFilter === "all" ? undefined : statusFilter,
       per_page: 50
     }),
-    enabled: isAdmin,
+    enabled: isAdminUser,
     refetchInterval: 10000, // Refresh every 10 seconds for live updates
   });
 
@@ -83,7 +83,7 @@ export function JobsPage() {
   const { data: jobDetailsResponse, isLoading: detailsLoading } = useQuery({
     queryKey: ["admin", "job", selectedJobId],
     queryFn: () => api.admin.getJob(selectedJobId!),
-    enabled: isAdmin && !!selectedJobId,
+    enabled: isAdminUser && !!selectedJobId,
     refetchInterval: selectedJobId ? 5000 : false, // Refresh every 5s when viewing details
   });
 
@@ -124,7 +124,7 @@ export function JobsPage() {
     },
   });
 
-  if (!isAdmin) {
+  if (!isAdminUser) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="max-w-md p-8 text-center">
