@@ -9,8 +9,10 @@ import {
     Circle,
     Clock,
     ChevronRight,
+    ChevronDown,
     ArrowLeft,
     Ban,
+    Play,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +24,18 @@ import { api, type SearchJobStatus, type SearchStep } from "@/lib/api";
 // Current year for default filters display
 const CURRENT_YEAR = new Date().getFullYear();
 const LAST_YEAR = CURRENT_YEAR - 1;
+
+// All possible steps in the search workflow (shown upfront)
+const ALL_STEPS = [
+    { key: "Analyzing Input", label: "Analyzing Input" },
+    { key: "Checking Cache", label: "Checking Cache" },
+    { key: "External Search", label: "External Search" },
+    { key: "Analyzing Results", label: "Analyzing Results" },
+    { key: "Finding PDF", label: "Finding PDF" },
+    { key: "Downloading PDF", label: "Downloading PDF" },
+    { key: "Validating PDF", label: "Validating PDF" },
+    { key: "Extracting Data", label: "Extracting Data" },
+];
 
 /**
  * SearchJobPage: Display a specific search job's progress and results
@@ -41,6 +55,7 @@ export default function SearchJobPage() {
     const [isLoading, setIsLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isCancelling, setIsCancelling] = useState(false);
+    const [expandedSteps, setExpandedSteps] = useState<Set<string>>(new Set());
 
     // Cancel handler
     const handleCancel = async () => {
@@ -92,20 +107,6 @@ export default function SearchJobPage() {
 
         return () => clearInterval(pollInterval);
     }, [jobId]);
-
-    // Render step indicator
-    const renderStepIndicator = (step: SearchStep) => {
-        switch (step.status) {
-            case "running":
-                return <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0" />;
-            case "done":
-                return <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />;
-            case "failed":
-                return <XCircle className="w-5 h-5 text-destructive flex-shrink-0" />;
-            default:
-                return <Circle className="w-5 h-5 text-muted-foreground/50 flex-shrink-0" />;
-        }
-    };
 
     const isRunning = jobStatus?.status === "running" || jobStatus?.status === "pending";
     const isComplete = jobStatus?.status === "completed";
@@ -276,62 +277,162 @@ export default function SearchJobPage() {
                 </CardHeader>
                 <CardContent className="p-0">
                     <div className="space-y-1">
-                        {/* Initial pending state */}
-                        {jobStatus.steps_history.length === 0 && isRunning && (
-                            <div className="flex gap-4 items-start py-3 px-2 rounded-lg bg-muted/30">
-                                <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0 mt-0.5" />
-                                <div>
-                                    <p className="font-medium">Starting search...</p>
-                                    <p className="text-sm text-muted-foreground">Initializing</p>
-                                </div>
-                            </div>
-                        )}
+                        {/* Build merged steps: ALL_STEPS with backend status */}
+                        {(() => {
+                            // Create a map of backend steps by label for quick lookup
+                            const stepsMap = new Map<string, SearchStep>();
+                            for (const step of jobStatus.steps_history) {
+                                stepsMap.set(step.label, step);
+                            }
 
-                        {/* Step history */}
-                        {jobStatus.steps_history.map((step, index) => {
-                            const isLast = index === jobStatus.steps_history.length - 1;
-                            const isActive = step.status === "running";
+                            return ALL_STEPS.map((stepDef, index) => {
+                                const backendStep = stepsMap.get(stepDef.key);
+                                const status = backendStep?.status || "pending";
+                                const detail = backendStep?.detail || "";
+                                const isLast = index === ALL_STEPS.length - 1;
+                                const isActive = status === "running";
+                                const isExpanded = expandedSteps.has(stepDef.key);
+                                const hasDetail = status !== "pending" && detail;
 
-                            return (
-                                <div
-                                    key={step.step}
-                                    className={`flex gap-4 items-start py-3 px-2 rounded-lg transition-colors ${isActive ? "bg-primary/5 border border-primary/20" : ""
-                                        }`}
-                                >
-                                    {/* Indicator + connector line */}
-                                    <div className="flex flex-col items-center">
-                                        {renderStepIndicator(step)}
-                                        {!isLast && (
-                                            <div className={`w-0.5 h-6 mt-1 ${step.status === "done" ? "bg-green-500/30" : "bg-muted"
-                                                }`} />
+                                // Toggle expansion
+                                const toggleExpand = () => {
+                                    if (!hasDetail && status === "pending") return;
+                                    setExpandedSteps(prev => {
+                                        const next = new Set(prev);
+                                        if (next.has(stepDef.key)) {
+                                            next.delete(stepDef.key);
+                                        } else {
+                                            next.add(stepDef.key);
+                                        }
+                                        return next;
+                                    });
+                                };
+
+                                // Determine indicator icon
+                                const renderIndicator = () => {
+                                    switch (status) {
+                                        case "running":
+                                            return (
+                                                <div className="w-5 h-5 flex-shrink-0 flex items-center justify-center rounded-full bg-primary/20 animate-pulse">
+                                                    <Play className="w-3 h-3 text-primary fill-primary" />
+                                                </div>
+                                            );
+                                        case "done":
+                                            return <CheckCircle2 className="w-5 h-5 text-green-500 flex-shrink-0" />;
+                                        case "failed":
+                                            return <XCircle className="w-5 h-5 text-destructive flex-shrink-0" />;
+                                        default:
+                                            return <Circle className="w-5 h-5 text-muted-foreground/30 flex-shrink-0" />;
+                                    }
+                                };
+
+                                // Get detailed description for expanded view
+                                const getExpandedDetail = () => {
+                                    if (stepDef.key === "External Search") {
+                                        const inputText = jobStatus.input_text || "";
+                                        return (
+                                            <div className="mt-2 p-3 bg-muted/30 rounded-md text-sm">
+                                                <div className="font-medium text-muted-foreground mb-1">Search Query:</div>
+                                                <div className="text-foreground">"{inputText}"</div>
+                                                {detail && (
+                                                    <>
+                                                        <div className="font-medium text-muted-foreground mt-2 mb-1">Result:</div>
+                                                        <div className="text-foreground">{detail}</div>
+                                                    </>
+                                                )}
+                                            </div>
+                                        );
+                                    }
+                                    if (stepDef.key === "Analyzing Input") {
+                                        return (
+                                            <div className="mt-2 p-3 bg-muted/30 rounded-md text-sm">
+                                                <div className="font-medium text-muted-foreground mb-1">Parsed Address:</div>
+                                                <div className="text-foreground font-mono">{detail}</div>
+                                            </div>
+                                        );
+                                    }
+                                    return detail ? (
+                                        <div className="mt-2 p-3 bg-muted/30 rounded-md text-sm text-foreground">
+                                            {detail}
+                                        </div>
+                                    ) : null;
+                                };
+
+                                // Brief summary for collapsed state
+                                const getBriefStatus = () => {
+                                    if (status === "pending") return null;
+                                    if (status === "running") return "In progress...";
+                                    if (status === "failed") return "Failed";
+                                    // For done: show brief excerpt
+                                    if (detail.length > 40) {
+                                        return detail.slice(0, 37) + "...";
+                                    }
+                                    return detail || "Complete";
+                                };
+
+                                return (
+                                    <div key={stepDef.key}>
+                                        <div
+                                            onClick={status !== "pending" ? toggleExpand : undefined}
+                                            className={`flex gap-4 items-start py-3 px-2 rounded-lg transition-colors ${isActive ? "bg-primary/5 border border-primary/20" :
+                                                    status === "pending" ? "opacity-50" :
+                                                        "hover:bg-muted/30 cursor-pointer"
+                                                }`}
+                                        >
+                                            {/* Indicator + connector line */}
+                                            <div className="flex flex-col items-center">
+                                                {renderIndicator()}
+                                                {!isLast && (
+                                                    <div className={`w-0.5 h-6 mt-1 ${status === "done" ? "bg-green-500/30" :
+                                                            status === "running" ? "bg-primary/30" :
+                                                                "bg-muted/30"
+                                                        }`} />
+                                                )}
+                                            </div>
+
+                                            {/* Content */}
+                                            <div className="flex-1 min-w-0">
+                                                <div className="flex items-center gap-2">
+                                                    <p className={`font-medium ${status === "failed" ? "text-destructive" :
+                                                            status === "pending" ? "text-muted-foreground" : ""
+                                                        }`}>
+                                                        {stepDef.label}
+                                                    </p>
+                                                    {status !== "pending" && (
+                                                        <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""
+                                                            }`} />
+                                                    )}
+                                                </div>
+                                                {!isExpanded && getBriefStatus() && (
+                                                    <p className="text-sm text-muted-foreground truncate">
+                                                        {getBriefStatus()}
+                                                    </p>
+                                                )}
+                                            </div>
+
+                                            {/* Status badge */}
+                                            <Badge
+                                                variant="outline"
+                                                className={`text-xs shrink-0 ${status === "done" ? "border-green-500/50 text-green-500" :
+                                                        status === "running" ? "border-primary/50 text-primary" :
+                                                            status === "failed" ? "border-destructive/50 text-destructive" :
+                                                                "border-muted-foreground/30 text-muted-foreground/50"
+                                                    }`}
+                                            >
+                                                {status}
+                                            </Badge>
+                                        </div>
+
+                                        {/* Expanded details */}
+                                        {isExpanded && status !== "pending" && (
+                                            <div className="ml-9 mb-2">
+                                                {getExpandedDetail()}
+                                            </div>
                                         )}
                                     </div>
-
-                                    {/* Content */}
-                                    <div className="flex-1 min-w-0">
-                                        <p className={`font-medium ${step.status === "failed" ? "text-destructive" : ""
-                                            }`}>
-                                            {step.label}
-                                        </p>
-                                        <p className="text-sm text-muted-foreground truncate">
-                                            {step.detail}
-                                        </p>
-                                    </div>
-
-                                    {/* Status badge */}
-                                    <Badge
-                                        variant="outline"
-                                        className={`text-xs shrink-0 ${step.status === "done" ? "border-green-500/50 text-green-500" :
-                                            step.status === "running" ? "border-primary/50 text-primary" :
-                                                step.status === "failed" ? "border-destructive/50 text-destructive" :
-                                                    ""
-                                            }`}
-                                    >
-                                        {step.status}
-                                    </Badge>
-                                </div>
-                            );
-                        })}
+                                );
+                            });
+                        })()}
                     </div>
                 </CardContent>
             </Card>

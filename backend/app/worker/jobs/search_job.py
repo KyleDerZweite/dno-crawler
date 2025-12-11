@@ -97,20 +97,42 @@ async def _process_nl_search(
         types = filters.get("types", ["netzentgelte", "hlzf"])
         
         # Step 1: Parse the prompt (simplified - assumes address format)
-        agent._report_step("Analyzing Input", "running", f"Parsing: {prompt[:30]}...")
+        agent._report_step("Analyzing Input", "running", f"Parsing: {prompt[:50]}...")
         
-        # Extract address components (basic heuristic)
-        # In production, this would use NLP/LLM
-        parts = prompt.replace(",", " ").split()
-        zip_code = next((p for p in parts if p.isdigit() and len(p) == 5), "")
-        city = next((p for p in parts if p.isalpha() and len(p) > 2), "")
-        street = " ".join(p for p in parts if p not in [zip_code, city])
+        # Extract address components using German address format: "Street, ZIP City"
+        # More robust parsing that handles "An der Ronne 160, 50859 Köln"
+        import re
         
-        if not zip_code:
-            # Try to use LLM to extract address
-            agent._report_step("Analyzing Input", "done", f"Parsed: street={street}, city={city}")
+        # Find ZIP code (5 consecutive digits)
+        zip_match = re.search(r'\b(\d{5})\b', prompt)
+        zip_code = zip_match.group(1) if zip_match else ""
+        
+        if zip_code and zip_match:
+            # City comes AFTER the ZIP code in German format
+            after_zip = prompt[zip_match.end():].strip()
+            # City is typically the first word(s) after ZIP, before any punctuation
+            city_match = re.match(r'^([A-Za-zäöüÄÖÜß\s-]+)', after_zip)
+            city = city_match.group(1).strip() if city_match else ""
+            
+            # Street is everything BEFORE the ZIP (minus the comma)
+            street = prompt[:zip_match.start()].rstrip(', ').strip()
         else:
-            agent._report_step("Analyzing Input", "done", f"ZIP={zip_code}, City={city}")
+            # Fallback: try comma-based splitting
+            parts = [p.strip() for p in prompt.split(',')]
+            if len(parts) >= 2:
+                street = parts[0]
+                # Second part might be "ZIP City"
+                zip_city = parts[1].strip().split()
+                zip_code = zip_city[0] if zip_city and zip_city[0].isdigit() else ""
+                city = " ".join(zip_city[1:]) if len(zip_city) > 1 else ""
+            else:
+                street = prompt
+                city = ""
+        
+        if zip_code and city:
+            agent._report_step("Analyzing Input", "done", f"ZIP={zip_code}, City={city}, Street={street}")
+        else:
+            agent._report_step("Analyzing Input", "done", f"Partial parse: ZIP={zip_code or 'N/A'}, City={city or 'N/A'}")
         
         # Step 2: Resolve DNO
         dno_name = agent.resolve_dno_from_address(zip_code, city, street)
