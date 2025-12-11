@@ -51,7 +51,7 @@ export function DNOsPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const { data: dnosResponse, isLoading, error } = useQuery({
+  const { data: dnosResponse, isLoading } = useQuery({
     queryKey: ["dnos"],
     queryFn: () => api.dnos.list(true),
   });
@@ -267,23 +267,10 @@ export function DNOsPage() {
         </div>
       )}
 
-      {/* Error State */}
-      {error && (
-        <div className="bg-error/10 border border-error/20 rounded-xl p-6">
-          <p className="text-error text-center">
-            Error loading DNOs: {(error as Error).message}
-          </p>
-        </div>
-      )}
-
-      {/* DNO List */}
-      {filteredDnos && (
+      {/* DNO List - show empty state for both errors and empty results */}
+      {!isLoading && (
         <div className="space-y-4">
-          <p className="text-sm text-muted-foreground">
-            Showing {filteredDnos.length} of {dnos?.length || 0} DNOs
-          </p>
-
-          {filteredDnos.length === 0 ? (
+          {(!filteredDnos || filteredDnos.length === 0) ? (
             <div className="text-center py-16">
               <Card className="rounded-2xl p-8 max-w-md mx-auto">
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4 shadow-glow">
@@ -295,21 +282,26 @@ export function DNOsPage() {
                 <p className="text-muted-foreground">
                   {searchTerm
                     ? "No DNOs match your search terms."
-                    : "No DNOs configured yet."}
+                    : "No DNOs have been added yet. Click 'Add DNO' to get started."}
                 </p>
               </Card>
             </div>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {filteredDnos.map((dno) => (
-                <DNOCard
-                  key={dno.id}
-                  dno={dno}
-                  onTriggerCrawl={() => triggerCrawlMutation.mutate(dno.id)}
-                  isCrawling={triggerCrawlMutation.isPending}
-                />
-              ))}
-            </div>
+            <>
+              <p className="text-sm text-muted-foreground">
+                Showing {filteredDnos.length} of {dnos?.length || 0} DNOs
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {filteredDnos.map((dno) => (
+                  <DNOCard
+                    key={dno.id}
+                    dno={dno}
+                    onTriggerCrawl={() => triggerCrawlMutation.mutate(dno.id)}
+                    isCrawling={triggerCrawlMutation.isPending}
+                  />
+                ))}
+              </div>
+            </>
           )}
         </div>
       )}
