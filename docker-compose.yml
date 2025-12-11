@@ -83,7 +83,6 @@ services:
       - OLLAMA_URL=http://ollama:11434
       - SEARXNG_URL=http://searxng:8080
       - ZITADEL_DOMAIN=${ZITADEL_DOMAIN}
-      - CORS_ORIGINS=["http://localhost:5173","http://localhost:3000"]
       - STORAGE_PATH=/data
       - DEBUG=true
     ports:

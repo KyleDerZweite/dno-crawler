@@ -2,9 +2,10 @@
 Core configuration and settings for DNO Crawler.
 """
 
+import json
 import os
 from functools import lru_cache
-from typing import Literal
+from typing import Literal, Any
 
 from pydantic import Field, PostgresDsn, RedisDsn, field_validator, ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -88,7 +89,19 @@ class Settings(BaseSettings):
 
     @property
     def zitadel_jwks_url(self) -> str:
-        return f"https://{self.zitadel_domain}/.well-known/jwks.json"
+        return f"https://{self.zitadel_domain}/oauth/v2/keys"
+
+    @field_validator('cors_origins', mode='before')
+    @classmethod
+    def parse_cors_origins(cls, v: Any) -> list[str]:
+        """Parse CORS origins from JSON string if needed."""
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                # If not valid JSON, treat as comma-separated
+                return [s.strip() for s in v.split(',')]
+        return v
 
     @field_validator('database_url')
     @classmethod

@@ -62,6 +62,8 @@ class SearchJobStatus(BaseModel):
     """Response for search job status (used for polling)."""
     job_id: str
     status: str  # pending | running | completed | failed
+    input_text: str = ""
+    filters: Optional[dict] = None
     current_step: Optional[str] = None
     steps_history: list[dict] = []
     result: Optional[dict] = None
@@ -198,12 +200,62 @@ async def get_search_status(
     return SearchJobStatus(
         job_id=str(job.id),
         status=job.status,
+        input_text=job.input_text,
+        filters=job.filters,
         current_step=job.current_step,
         steps_history=job.steps_history or [],
         result=job.result if job.status == "completed" else None,
         error=job.error_message if job.status == "failed" else None,
         created_at=job.created_at,
     )
+
+
+@router.post(
+    "/{job_id}/cancel",
+    summary="Cancel Search Job",
+    description="Cancel a running or pending search job."
+)
+async def cancel_search(
+    job_id: str,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Cancel a pending or running search job.
+    
+    Sets the job status to 'cancelled'. The worker will check this
+    and stop processing if it hasn't completed yet.
+    """
+    try:
+        job_uuid = UUID(job_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    
+    result = await db.execute(
+        select(SearchJobModel).where(
+            SearchJobModel.id == job_uuid,
+            SearchJobModel.user_id == current_user.id
+        )
+    )
+    job = result.scalar_one_or_none()
+    
+    if not job:
+        raise HTTPException(status_code=404, detail="Search job not found")
+    
+    if job.status in ("completed", "failed", "cancelled"):
+        raise HTTPException(
+            status_code=400, 
+            detail=f"Cannot cancel job with status: {job.status}"
+        )
+    
+    job.status = "cancelled"
+    job.error_message = "Cancelled by user"
+    job.completed_at = datetime.utcnow()
+    await db.commit()
+    
+    logger.info("Search job cancelled", job_id=job_id, user=current_user.email)
+    
+    return {"status": "cancelled", "message": "Search job cancelled"}
 
 
 @router.get(

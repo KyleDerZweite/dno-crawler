@@ -19,7 +19,7 @@ apiClient.interceptors.request.use(
     const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
     const storageKey = `oidc.user:${authority}:${clientId}`;
 
-    const userJson = sessionStorage.getItem(storageKey);
+    const userJson = localStorage.getItem(storageKey);
     if (userJson) {
       try {
         const user = JSON.parse(userJson);
@@ -44,7 +44,7 @@ apiClient.interceptors.response.use(
       const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
       const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
       const storageKey = `oidc.user:${authority}:${clientId}`;
-      sessionStorage.removeItem(storageKey);
+      localStorage.removeItem(storageKey);
       window.location.href = "/";
     }
     return Promise.reject(error);
@@ -165,7 +165,9 @@ export interface SearchStep {
 
 export interface SearchJobStatus {
   job_id: string;
-  status: "pending" | "running" | "completed" | "failed";
+  status: "pending" | "running" | "completed" | "failed" | "cancelled";
+  input_text: string;
+  filters?: SearchFilters;
   current_step?: string;
   steps_history: SearchStep[];
   result?: {
@@ -222,6 +224,11 @@ export const api = {
       const { data } = await apiClient.get("/search/history", {
         params: { limit: limit || 20 },
       });
+      return data;
+    },
+
+    async cancel(jobId: string): Promise<{ status: string; message: string }> {
+      const { data } = await apiClient.post(`/search/${jobId}/cancel`);
       return data;
     },
   },
