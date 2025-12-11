@@ -1,7 +1,6 @@
 export { LoginPage } from "./LoginPage";
 export { RegisterPage } from "./RegisterPage";
 export { DashboardPage } from "./DashboardPage";
-export { SearchPage } from "./SearchPage";
 export { DNOsPage } from "./DNOsPage";
 export { DNODetailPage } from "./DNODetailPage";
 export { AdminPage } from "./AdminPage";

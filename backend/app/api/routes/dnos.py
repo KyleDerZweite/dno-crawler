@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.auth import get_current_active_user
+from app.core.auth import get_current_user, User as AuthUser
 from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType, UserRole
 from app.db import CrawlJobModel, DNOModel, UserModel, get_db
 
@@ -50,7 +50,7 @@ def _slugify(name: str) -> str:
 async def create_dno(
     request: CreateDNORequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """
     Create a new DNO.
@@ -101,7 +101,7 @@ async def create_dno(
 @router.get("/")
 async def list_dnos_detailed(
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
     include_stats: bool = Query(False),
 ) -> APIResponse:
     """
@@ -160,7 +160,7 @@ async def list_dnos_detailed(
 async def get_dno_details(
     dno_id: str,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Get detailed information about a specific DNO by ID or slug."""
     # Try to find by numeric ID first, then by slug
@@ -202,7 +202,7 @@ async def trigger_crawl(
     dno_id: int,
     request: TriggerCrawlRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """
     Trigger a crawl job for a specific DNO.
@@ -284,7 +284,7 @@ async def trigger_crawl(
 async def get_dno_data(
     dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
     year: int | None = Query(None),
     data_type: DataType | None = Query(None),
 ) -> APIResponse:
@@ -363,7 +363,7 @@ async def get_dno_data(
 async def get_dno_crawl_jobs(
     dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
     limit: int = Query(10, ge=1, le=50),
 ) -> APIResponse:
     """Get recent crawl jobs for a DNO."""
@@ -410,10 +410,10 @@ async def update_netzentgelte(
     record_id: int,
     request: UpdateNetzentgelteRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Update a Netzentgelte record (admin only)."""
-    if current_user.role != UserRole.ADMIN.value:
+    if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -458,10 +458,10 @@ async def delete_netzentgelte(
     dno_id: int,
     record_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Delete a Netzentgelte record (admin only)."""
-    if current_user.role != UserRole.ADMIN.value:
+    if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -505,10 +505,10 @@ async def update_hlzf(
     record_id: int,
     request: UpdateHLZFRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Update an HLZF record (admin only)."""
-    if current_user.role != UserRole.ADMIN.value:
+    if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -553,10 +553,10 @@ async def delete_hlzf(
     dno_id: int,
     record_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Delete an HLZF record (admin only)."""
-    if current_user.role != UserRole.ADMIN.value:
+    if not current_user.is_admin:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
@@ -590,7 +590,7 @@ async def delete_hlzf(
 async def list_dno_files(
     dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[UserModel, Depends(get_current_active_user)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """List available PDF files for a DNO."""
     import os

@@ -9,12 +9,26 @@ export const apiClient = axios.create({
   },
 });
 
-// Request interceptor to add auth token
+// Request interceptor to add auth token from OIDC session
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    const token = localStorage.getItem("token");
-    if (token) {
-      config.headers.set("Authorization", `Bearer ${token}`);
+    // Get token from OIDC storage
+    // react-oidc-context stores user in sessionStorage with key pattern:
+    // oidc.user:<authority>:<client_id>
+    const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
+    const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
+    const storageKey = `oidc.user:${authority}:${clientId}`;
+
+    const userJson = sessionStorage.getItem(storageKey);
+    if (userJson) {
+      try {
+        const user = JSON.parse(userJson);
+        if (user.access_token) {
+          config.headers.set("Authorization", `Bearer ${user.access_token}`);
+        }
+      } catch {
+        // Invalid JSON, ignore
+      }
     }
     return config;
   },
@@ -25,11 +39,13 @@ apiClient.interceptors.request.use(
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    const isLoginRequest = error.config?.url?.endsWith("auth/login");
-
-    if (error.response?.status === 401 && !isLoginRequest) {
-      localStorage.removeItem("token");
-      window.location.href = "/login";
+    if (error.response?.status === 401) {
+      // Token expired or invalid - clear OIDC storage and redirect
+      const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
+      const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
+      const storageKey = `oidc.user:${authority}:${clientId}`;
+      sessionStorage.removeItem(storageKey);
+      window.location.href = "/";
     }
     return Promise.reject(error);
   }

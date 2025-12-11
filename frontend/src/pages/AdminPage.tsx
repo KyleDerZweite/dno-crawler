@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
 import { api, type User } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -43,11 +43,11 @@ export function AdminPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <Card className="max-w-md p-8 text-center">
-            <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-            <p className="text-muted-foreground">
-              You need administrator privileges to access this page.
-            </p>
+          <Shield className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
+          <p className="text-muted-foreground">
+            You need administrator privileges to access this page.
+          </p>
         </Card>
       </div>
     );
@@ -158,11 +158,10 @@ function UserRow({ user }: { user: User }) {
     <div className="flex items-center justify-between p-4 border border-border/50 rounded-lg hover:bg-accent/5 transition-colors">
       <div className="flex items-center gap-4">
         <div
-          className={`w-10 h-10 rounded-full flex items-center justify-center ${
-            user.role === "admin"
+          className={`w-10 h-10 rounded-full flex items-center justify-center ${user.role === "admin"
               ? "bg-purple-500/10 text-purple-500"
               : "bg-blue-500/10 text-blue-500"
-          }`}
+            }`}
         >
           {user.email.charAt(0).toUpperCase()}
         </div>

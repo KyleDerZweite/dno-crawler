@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import func, select, delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.api.routes.auth import get_admin_user
+from app.core.auth import require_admin, User as AuthUser
 from app.core.models import APIResponse, UserRole
 from app.core.config import settings
 from app.db import (
@@ -42,7 +42,7 @@ class UpdateUserRoleRequest(BaseModel):
 @router.get("/dashboard")
 async def admin_dashboard(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get admin dashboard statistics."""
     # Count DNOs
@@ -90,7 +90,7 @@ async def admin_dashboard(
 @router.get("/users")
 async def list_users(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
     role: UserRole | None = Query(None),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -127,7 +127,7 @@ async def list_users(
 @router.get("/users/pending")
 async def list_pending_users(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """List users awaiting approval."""
     query = (
@@ -157,7 +157,7 @@ async def approve_user(
     user_id: int,
     request: ApproveUserRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Approve or reject a pending user."""
     query = select(UserModel).where(UserModel.id == user_id)
@@ -179,7 +179,7 @@ async def approve_user(
     if request.approved:
         user.role = UserRole.USER.value
         user.verification_status = "approved"
-        user.approved_by = admin.id
+        # Note: approved_by left as None since Zitadel admin isn't a local user
         message = "User approved successfully"
     else:
         user.is_active = False
@@ -196,14 +196,10 @@ async def update_user_role(
     user_id: int,
     request: UpdateUserRoleRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Update a user's role."""
-    if user_id == admin.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot change your own role",
-        )
+    # Note: Can't prevent self-modification since Zitadel admin ID != local DB user ID
     
     query = select(UserModel).where(UserModel.id == user_id)
     result = await db.execute(query)
@@ -228,14 +224,10 @@ async def update_user_role(
 async def delete_user(
     user_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Delete a user."""
-    if user_id == admin.id:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot delete yourself",
-        )
+    # Note: Can't prevent self-deletion since Zitadel admin ID != local DB user ID
     
     query = select(UserModel).where(UserModel.id == user_id)
     result = await db.execute(query)
@@ -259,7 +251,7 @@ async def delete_user(
 @router.get("/jobs")
 async def list_all_jobs(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
     status_filter: str | None = Query(None, alias="status"),
     page: int = Query(1, ge=1),
     per_page: int = Query(20, ge=1, le=100),
@@ -322,7 +314,7 @@ async def list_all_jobs(
 async def get_job_details(
     job_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get detailed information about a specific job including steps."""
     from sqlalchemy.orm import selectinload
@@ -393,7 +385,7 @@ class CreateJobRequest(BaseModel):
 async def create_standalone_job(
     request: CreateJobRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Create a standalone job (admin only)."""
     # Verify DNO exists
@@ -408,13 +400,14 @@ async def create_standalone_job(
         )
     
     # Create job based on type
+    # Note: user_id is None since Zitadel admin isn't a local user
     job = CrawlJobModel(
-        user_id=admin.id,
+        user_id=None,
         dno_id=request.dno_id,
         year=request.year,
         data_type=request.data_type,
         priority=request.priority,
-        current_step=f"Created ({request.job_type})",
+        current_step=f"Created by {admin.email} ({request.job_type})",
     )
     db.add(job)
     await db.commit()
@@ -454,7 +447,7 @@ async def create_standalone_job(
 async def rerun_job(
     job_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Rerun a failed or completed job."""
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
@@ -474,13 +467,14 @@ async def rerun_job(
         )
     
     # Create a new job based on the old one
+    # Note: user_id is None since Zitadel admin isn't a local user
     new_job = CrawlJobModel(
-        user_id=admin.id,
+        user_id=None,
         dno_id=job.dno_id,
         year=job.year,
         data_type=job.data_type,
         priority=job.priority,
-        current_step=f"Rerun of job {job_id}",
+        current_step=f"Rerun of job {job_id} by {admin.email}",
     )
     db.add(new_job)
     await db.commit()
@@ -516,7 +510,7 @@ async def rerun_job(
 async def cancel_job(
     job_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Cancel a pending job or mark a running job for cancellation."""
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
@@ -548,7 +542,7 @@ async def cancel_job(
 @router.post("/normalize-voltage-levels")
 async def normalize_voltage_levels(
     db: Annotated[AsyncSession, Depends(get_db)],
-    admin: Annotated[UserModel, Depends(get_admin_user)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Normalize voltage level names across Netzentgelte and HLZF tables."""
     from app.db import HLZFModel

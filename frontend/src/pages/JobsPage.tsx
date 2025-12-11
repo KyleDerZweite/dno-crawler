@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Job, type JobDetails, type DNO } from "@/lib/api";
-import { useAuth } from "@/lib/auth";
+import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -71,7 +71,7 @@ export function JobsPage() {
   // Fetch jobs list
   const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
     queryKey: ["admin", "jobs", statusFilter],
-    queryFn: () => api.admin.listJobs({ 
+    queryFn: () => api.admin.listJobs({
       status: statusFilter === "all" ? undefined : statusFilter,
       per_page: 50
     }),
@@ -101,8 +101,8 @@ export function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof AxiosError 
-        ? error.response?.data?.detail ?? error.message 
+      const message = error instanceof AxiosError
+        ? error.response?.data?.detail ?? error.message
         : "Unknown error";
       toast({ variant: "destructive", title: "Failed to rerun job", description: message });
     },
@@ -117,8 +117,8 @@ export function JobsPage() {
       queryClient.invalidateQueries({ queryKey: ["admin", "job", selectedJobId] });
     },
     onError: (error: unknown) => {
-      const message = error instanceof AxiosError 
-        ? error.response?.data?.detail ?? error.message 
+      const message = error instanceof AxiosError
+        ? error.response?.data?.detail ?? error.message
         : "Unknown error";
       toast({ variant: "destructive", title: "Failed to cancel job", description: message });
     },
@@ -163,8 +163,8 @@ export function JobsPage() {
             Monitor and manage crawl/extraction jobs
           </p>
         </div>
-        <CreateJobDialog 
-          open={createDialogOpen} 
+        <CreateJobDialog
+          open={createDialogOpen}
           onOpenChange={setCreateDialogOpen}
         />
       </div>
@@ -198,7 +198,7 @@ export function JobsPage() {
           <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
           <h3 className="text-lg font-semibold mb-2">No jobs found</h3>
           <p className="text-muted-foreground mb-4">
-            {statusFilter !== "all" 
+            {statusFilter !== "all"
               ? `No ${statusFilter} jobs at the moment.`
               : "No extraction jobs have been created yet."}
           </p>
@@ -210,9 +210,9 @@ export function JobsPage() {
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
-            <JobCard 
-              key={job.id} 
-              job={job} 
+            <JobCard
+              key={job.id}
+              job={job}
               onClick={() => setSelectedJobId(job.id)}
             />
           ))}
@@ -227,7 +227,7 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const StatusIcon = config.icon;
 
   return (
-    <Card 
+    <Card
       className="p-4 cursor-pointer hover:shadow-md transition-shadow"
       onClick={onClick}
     >
@@ -247,13 +247,13 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
             </div>
           </div>
         </div>
-        
+
         <div className="flex items-center gap-4">
           {/* Progress bar for running jobs */}
           {job.status === "running" && (
             <div className="w-32">
               <div className="h-2 bg-secondary rounded-full overflow-hidden">
-                <div 
+                <div
                   className="h-full bg-primary transition-all duration-300"
                   style={{ width: `${job.progress}%` }}
                 />
@@ -261,12 +261,12 @@ function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
               <span className="text-xs text-muted-foreground">{job.progress}%</span>
             </div>
           )}
-          
+
           <div className="text-right text-sm text-muted-foreground">
             <div>{new Date(job.created_at).toLocaleDateString()}</div>
             <div>{new Date(job.created_at).toLocaleTimeString()}</div>
           </div>
-          
+
           <ChevronRight className="h-5 w-5 text-muted-foreground" />
         </div>
       </div>
@@ -343,7 +343,7 @@ function JobDetailView({
           <div className="text-sm text-muted-foreground mb-1">Progress</div>
           <div className="flex items-center gap-2">
             <div className="flex-1 h-2 bg-secondary rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full bg-primary transition-all"
                 style={{ width: `${job.progress}%` }}
               />
@@ -501,8 +501,8 @@ function CreateJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
       setJobType("crawl");
     },
     onError: (error: unknown) => {
-      const message = error instanceof AxiosError 
-        ? error.response?.data?.detail ?? error.message 
+      const message = error instanceof AxiosError
+        ? error.response?.data?.detail ?? error.message
         : "Unknown error";
       toast({ variant: "destructive", title: "Failed to create job", description: message });
     },
@@ -523,7 +523,7 @@ function CreateJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
             Create a standalone extraction job for a specific DNO and year.
           </DialogDescription>
         </DialogHeader>
-        
+
         <div className="space-y-4 py-4">
           <div className="space-y-2">
             <Label>DNO</Label>
@@ -585,8 +585,8 @@ function CreateJobDialog({ open, onOpenChange }: { open: boolean; onOpenChange: 
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button 
-            onClick={() => createMutation.mutate()} 
+          <Button
+            onClick={() => createMutation.mutate()}
             disabled={!dnoId || createMutation.isPending}
           >
             {createMutation.isPending ? (

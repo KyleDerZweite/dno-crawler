@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button"
-import { useAuth } from "@/lib/auth"
+import { useAuth } from "@/lib/use-auth"
 import { cn } from "@/lib/utils"
 import {
   Activity,
@@ -27,11 +27,11 @@ const adminNavigation = [
 ]
 
 export function Layout() {
-  const { user, logout } = useAuth()
+  const { user, logout, isAdmin, avatar, roles } = useAuth()
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const allNavigation = user?.role === 'admin'
+  const allNavigation = isAdmin()
     ? [...navigation, ...adminNavigation]
     : navigation
 
@@ -137,19 +137,23 @@ export function Layout() {
           )}
           {user && (
             <div className="flex items-center gap-4 mb-4">
-              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-violet-600 p-[1px] shadow-lg shadow-primary/20">
-                <div className="h-full w-full rounded-[11px] bg-sidebar flex items-center justify-center">
-                  <span className="text-sm font-bold text-primary">
-                    {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
-                  </span>
-                </div>
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-violet-600 p-[1px] shadow-lg shadow-primary/20 overflow-hidden">
+                {avatar ? (
+                  <img src={avatar} alt={user?.name || 'User'} className="h-full w-full rounded-[11px] object-cover" />
+                ) : (
+                  <div className="h-full w-full rounded-[11px] bg-sidebar flex items-center justify-center">
+                    <span className="text-sm font-bold text-primary">
+                      {user?.name?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase() || "U"}
+                    </span>
+                  </div>
+                )}
               </div>
               <div className="flex flex-col overflow-hidden">
                 <span className="text-sm font-semibold text-white truncate">
                   {user?.name || user?.email}
                 </span>
                 <span className="text-[10px] text-muted-foreground uppercase tracking-wider font-bold">
-                  {user?.role}
+                  {roles.join(', ') || 'Member'}
                 </span>
               </div>
             </div>
