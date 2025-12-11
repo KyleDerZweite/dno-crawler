@@ -137,6 +137,46 @@ async def get_current_user(
         )
 
 
+async def get_optional_user(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+) -> Optional[User]:
+    """
+    Dependency to get the current user if authenticated, or None if not.
+    
+    Usage:
+        @router.get("/public-or-private")
+        async def endpoint(user: Optional[User] = Depends(get_optional_user)):
+            if user:
+                return {"personalized": True}
+            return {"personalized": False}
+    """
+    if not credentials:
+        return None
+    
+    token = credentials.credentials
+    
+    try:
+        jwks = await fetch_jwks()
+        signing_key = get_signing_key(token, jwks)
+        
+        claims = jwt.decode(
+            token,
+            signing_key,
+            algorithms=["RS256"],
+            issuer=auth_settings.issuer,
+            options={"verify_aud": False},
+        )
+        
+        return User(
+            id=claims.get("sub", ""),
+            email=claims.get("email", ""),
+            name=claims.get("name", claims.get("preferred_username", "")),
+            roles=extract_roles(claims),
+        )
+    except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+        return None
+
+
 async def require_admin(user: User = Depends(get_current_user)) -> User:
     """
     Dependency that requires the user to have ADMIN role.

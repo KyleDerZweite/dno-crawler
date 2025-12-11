@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     storage_path: str = "./data"
     downloads_path: str = "./data/downloads"
 
+    # Rate Limiting for DDGS Search
+    ddgs_request_delay_seconds: int = 5  # Hard cap: wait 5s between searches
+    ddgs_batch_delay_seconds: int = 8    # Delay between DNOs in batch mode
+    ddgs_rate_limit_cooldown: int = 60   # Cooldown if we hit rate limit (429/418)
+    ddgs_timeout: int = 20               # Timeout for DDGS requests
+
+    # LLM Models
+    ollama_fast_model: str = "ministral:3b"  # For text parsing (DNO name extraction)
+
     # Zitadel auth helper properties
     @property
     def zitadel_issuer(self) -> str:

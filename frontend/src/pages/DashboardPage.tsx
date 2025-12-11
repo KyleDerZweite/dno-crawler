@@ -13,7 +13,8 @@ import {
   Activity,
   TrendingUp,
   Clock,
-  Loader2
+  Loader2,
+  Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -86,6 +87,12 @@ export function DashboardPage() {
         </CardHeader>
         <CardContent className="p-0 flex flex-wrap gap-4">
           <Button asChild>
+            <Link to="/search" className="flex items-center gap-2">
+              <Search className="h-4 w-4" />
+              Search DNOs
+            </Link>
+          </Button>
+          <Button variant="outline" asChild>
             <Link to="/dnos" className="flex items-center gap-2">
               <Database className="h-4 w-4" />
               View DNOs

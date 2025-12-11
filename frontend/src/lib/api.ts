@@ -148,12 +148,80 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
+// Search Job types for natural language search with Timeline UI
+export interface SearchFilters {
+  years: number[];
+  types: string[];
+}
+
+export interface SearchStep {
+  step: number;
+  label: string;
+  status: "pending" | "running" | "done" | "failed";
+  detail: string;
+  started_at?: string;
+  completed_at?: string;
+}
+
+export interface SearchJobStatus {
+  job_id: string;
+  status: "pending" | "running" | "completed" | "failed";
+  current_step?: string;
+  steps_history: SearchStep[];
+  result?: {
+    dno_name: string;
+    netzentgelte: Record<number, unknown[]>;
+    hlzf: Record<number, unknown[]>;
+  };
+  error?: string;
+  created_at: string;
+}
+
+export interface SearchJobListItem {
+  job_id: string;
+  input_text: string;
+  status: string;
+  created_at: string;
+  completed_at?: string;
+}
+
 // API functions
 export const api = {
   auth: {
     // Get current user info from backend (validates token)
     async me(): Promise<ApiResponse<UserInfo>> {
       const { data } = await apiClient.get("/auth/me");
+      return data;
+    },
+  },
+
+  // Natural language search with Timeline UI
+  search: {
+    async create(
+      prompt: string,
+      filters?: SearchFilters
+    ): Promise<{ job_id: string; status: string; message: string }> {
+      const { data } = await apiClient.post("/search", {
+        prompt,
+        filters: filters || { years: [2024, 2025], types: ["netzentgelte", "hlzf"] },
+      });
+      return data;
+    },
+
+    async getStatus(jobId: string): Promise<SearchJobStatus> {
+      const { data } = await apiClient.get(`/search/${jobId}/status`);
+      return data;
+    },
+
+    async getJob(jobId: string): Promise<SearchJobStatus> {
+      const { data } = await apiClient.get(`/search/${jobId}`);
+      return data;
+    },
+
+    async getHistory(limit?: number): Promise<SearchJobListItem[]> {
+      const { data } = await apiClient.get("/search/history", {
+        params: { limit: limit || 20 },
+      });
       return data;
     },
   },

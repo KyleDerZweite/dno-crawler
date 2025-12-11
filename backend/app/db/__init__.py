@@ -8,6 +8,7 @@ from app.db.models import (
     CrawlJobModel,
     CrawlJobStepModel,
     DataSourceModel,
+    DNOAddressCacheModel,
     DNOCrawlConfigModel,
     DNOModel,
     ExtractionStrategyModel,
@@ -30,6 +31,7 @@ __all__ = [
     "DatabaseError",
     # Models
     "DNOModel",
+    "DNOAddressCacheModel",
     "DNOCrawlConfigModel",
     "NetzentgelteModel",
     "HLZFModel",
@@ -42,3 +44,4 @@ __all__ = [
     "QueryLogModel",
     "SystemLogModel",
 ]
+

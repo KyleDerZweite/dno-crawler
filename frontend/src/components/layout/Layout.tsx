@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  Search,
   Settings,
   Shield,
   X,
@@ -17,6 +18,7 @@ import { Link, Outlet, useLocation } from "react-router-dom"
 
 const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
+  { name: "Search", href: "/search", icon: Search },
   { name: "DNOs", href: "/dnos", icon: Database },
   { name: "Settings", href: "/settings", icon: Settings },
 ]
@@ -39,6 +41,7 @@ export function Layout() {
   const path = location.pathname;
   const pageMap: Record<string, string> = {
     "/dashboard": "Dashboard",
+    "/search": "Search",
     "/dnos": "DNOs",
     "/jobs": "Jobs",
     "/admin": "Admin",

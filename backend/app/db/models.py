@@ -66,6 +66,26 @@ class DNOModel(Base, TimestampMixin):
     strategies: Mapped[list["ExtractionStrategyModel"]] = relationship(back_populates="dno")
 
 
+class DNOAddressCacheModel(Base, TimestampMixin):
+    """Cache for address → DNO mappings.
+    
+    Used by SearchAgent to avoid redundant external searches.
+    Key: (zip_code, street_name) → dno_name
+    """
+    __tablename__ = "dno_address_cache"
+    __table_args__ = (
+        Index("idx_dno_address_cache_lookup", "zip_code", "street_name"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    zip_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
+    street_name: Mapped[str] = mapped_column(String(255), nullable=False)  # Normalized
+    dno_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=1.0)  # 0.0-1.0
+    source: Mapped[str | None] = mapped_column(String(50))  # "ddgs", "manual", etc.
+    hit_count: Mapped[int] = mapped_column(Integer, default=1)  # Times this cache was used
+
+
 class DNOCrawlConfigModel(Base, TimestampMixin):
     """Crawl configuration for a DNO."""
     __tablename__ = "dno_crawl_configs"
@@ -320,3 +340,42 @@ class SystemLogModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+# ============== Search Jobs (Natural Language UI) ==============
+
+
+class SearchJobModel(Base, TimestampMixin):
+    """Search job for natural language queries with step-by-step progress tracking.
+    
+    Drives the "Task Timeline" UI pattern in the frontend.
+    Steps are stored as JSON for simple polling without joins.
+    """
+    __tablename__ = "search_jobs"
+    __table_args__ = (
+        Index("idx_search_jobs_user_created", "user_id", "created_at"),
+    )
+
+    id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
+    user_id: Mapped[str | None] = mapped_column(String(255), index=True)  # Zitadel user ID
+    
+    # Input
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)  # Natural language query
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {"years": [2024, 2025], "types": ["netzentgelte", "hlzf"]}
+    
+    # Status
+    status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | running | completed | failed
+    current_step: Mapped[str | None] = mapped_column(String(255))
+    
+    # Step History (JSON array for timeline UI)
+    # Format: [{"step": 1, "label": "Analyzing Input", "status": "done", "detail": "Found ZIP: 50667", "started_at": "...", "completed_at": "..."}]
+    steps_history: Mapped[list] = mapped_column(JSON, default=list)
+    
+    # Result
+    result: Mapped[dict | None] = mapped_column(JSON)  # Final extracted data (DNO info, netzentgelte, hlzf)
+    error_message: Mapped[str | None] = mapped_column(Text)
+    
+    # Timing
+    started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+

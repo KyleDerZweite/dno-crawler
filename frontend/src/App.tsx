@@ -7,6 +7,7 @@ import { DNODetailPage } from "./pages/DNODetailPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { JobsPage } from "./pages/JobsPage";
+import SearchPage from "./pages/SearchPage";
 
 function LoginRedirect() {
   const { isAuthenticated, isLoading, login } = useAuth();
@@ -52,6 +53,7 @@ function App() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
+        <Route path="search" element={<SearchPage />} />
         <Route path="dnos" element={<DNOsPage />} />
         <Route path="dnos/:id" element={<DNODetailPage />} />
         <Route path="jobs" element={<JobsPage />} />
