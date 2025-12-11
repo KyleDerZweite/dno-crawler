@@ -4,7 +4,6 @@ Database package initialization.
 
 from app.db.database import Base, async_session_maker, close_db, engine, get_db, get_db_session, init_db, DatabaseError
 from app.db.models import (
-    APIKeyModel,
     CrawlAttemptModel,
     CrawlJobModel,
     CrawlJobStepModel,
@@ -15,10 +14,8 @@ from app.db.models import (
     HLZFModel,
     NetzentgelteModel,
     QueryLogModel,
-    SessionModel,
     StrategyInsightModel,
     SystemLogModel,
-    UserModel,
 )
 
 __all__ = [
@@ -37,9 +34,6 @@ __all__ = [
     "NetzentgelteModel",
     "HLZFModel",
     "DataSourceModel",
-    "UserModel",
-    "SessionModel",
-    "APIKeyModel",
     "CrawlJobModel",
     "CrawlJobStepModel",
     "ExtractionStrategyModel",

@@ -23,10 +23,6 @@ from app.core.exceptions import (
     ResourceNotFoundError,
 )
 from app.db import DatabaseError, close_db, init_db
-from app.db.database import async_session_maker
-from sqlalchemy import select
-from app.db.models import UserModel
-from app.core.security import get_password_hash
 
 logger = structlog.get_logger()
 
@@ -37,29 +33,6 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     # Startup
     logger.info("Starting DNO Crawler API", version=settings.app_version)
     await init_db()
-    # Create an initial admin user from environment variables (if provided)
-    try:
-        if settings.admin_email and settings.admin_password:
-            async with async_session_maker() as session:
-                res = await session.execute(select(UserModel).where(UserModel.email == settings.admin_email))
-                existing = res.scalar_one_or_none()
-                if not existing:
-                    admin_name = settings.admin_username or settings.admin_email
-                    admin = UserModel(
-                        email=settings.admin_email,
-                        password_hash=get_password_hash(settings.admin_password),
-                        name=admin_name,
-                        role="admin",
-                        is_active=True,
-                        email_verified=True,
-                    )
-                    session.add(admin)
-                    await session.commit()
-                    logger.info("Created initial admin user from env", email=settings.admin_email)
-                else:
-                    logger.info("Admin user already exists, skipping creation", email=settings.admin_email)
-    except Exception as e:
-        logger.error("Failed to ensure initial admin user", error=str(e))
     logger.info("Database initialized")
     
     yield

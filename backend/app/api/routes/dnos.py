@@ -10,8 +10,8 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import get_current_user, User as AuthUser
-from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType, UserRole
-from app.db import CrawlJobModel, DNOModel, UserModel, get_db
+from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
+from app.db import CrawlJobModel, DNOModel, get_db
 
 router = APIRouter()
 
@@ -238,12 +238,14 @@ async def trigger_crawl(
         )
     
     # Create crawl job in database
+    # Note: user_id is None since Zitadel user IDs are strings, not local DB integers
     job = CrawlJobModel(
-        user_id=current_user.id,
+        user_id=None,
         dno_id=dno_id,
         year=request.year,
         data_type=request.data_type.value,
         priority=request.priority,
+        current_step=f"Triggered by {current_user.email}",
     )
     db.add(job)
     await db.commit()
