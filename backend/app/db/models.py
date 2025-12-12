@@ -350,18 +350,32 @@ class SearchJobModel(Base, TimestampMixin):
     
     Drives the "Task Timeline" UI pattern in the frontend.
     Steps are stored as JSON for simple polling without joins.
+    
+    Batch jobs share a batch_id and have batch_index/batch_total for progress tracking.
     """
     __tablename__ = "search_jobs"
     __table_args__ = (
         Index("idx_search_jobs_user_created", "user_id", "created_at"),
+        Index("idx_search_jobs_batch", "batch_id"),
     )
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[str | None] = mapped_column(String(255), index=True)  # Zitadel user ID
     
+    # Batch grouping - jobs from same batch share batch_id
+    batch_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    batch_index: Mapped[int | None] = mapped_column(Integer)  # 1-based index: "Job 2 of 8"
+    batch_total: Mapped[int | None] = mapped_column(Integer)  # Total jobs in batch
+    
+    # Pre-resolved data (from DNO resolution phase)
+    dno_name: Mapped[str | None] = mapped_column(String(255))  # Resolved DNO name
+    dno_coordinates: Mapped[dict | None] = mapped_column(JSON)  # {"lat": ..., "lon": ...}
+    year: Mapped[int | None] = mapped_column(Integer)  # Target year (2024, 2025)
+    data_type: Mapped[str | None] = mapped_column(String(20))  # "netzentgelte" or "hlzf"
+    
     # Input
-    input_text: Mapped[str] = mapped_column(Text, nullable=False)  # Natural language query
-    filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {"years": [2024, 2025], "types": ["netzentgelte", "hlzf"]}
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)  # Display label
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {\"years\": [2024, 2025], \"types\": [\"netzentgelte\", \"hlzf\"]}
     
     # Status
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | running | completed | failed

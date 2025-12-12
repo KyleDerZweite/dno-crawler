@@ -115,6 +115,14 @@ class SearchJobStatus(BaseModel):
     result: Optional[dict] = None
     error: Optional[str] = None
     created_at: datetime
+    # Batch fields
+    batch_id: Optional[str] = None
+    batch_index: Optional[int] = None
+    batch_total: Optional[int] = None
+    dno_name: Optional[str] = None
+    dno_coordinates: Optional[dict] = None
+    year: Optional[int] = None
+    data_type: Optional[str] = None
 
 
 class SearchJobListItem(BaseModel):
@@ -214,7 +222,7 @@ async def create_search(
 @router.post(
     "/batch",
     summary="Start Batch Search",
-    description="Start multiple search jobs from structured payloads. Returns list of job_ids for tracking."
+    description="Start multiple search jobs from structured payloads. Pre-resolves DNOs and creates sub-jobs for each year/type combination."
 )
 async def create_batch_search(
     request: BatchSearchRequest,
@@ -222,64 +230,173 @@ async def create_batch_search(
     current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    Start multiple search jobs from a batch of structured payloads.
+    Start batch search with two phases:
     
-    Supports three input types:
-    - address: Street + PLZ/City (will geocode → DNO lookup)
-    - dno: Direct DNO name (skip geocoding)
-    - coordinates: Lat/Lon (direct DNO lookup)
+    Phase 1: DNO Resolution (synchronous)
+    - Address → VNB Digital API → DNO name + coordinates
+    - Coordinates → VNB Digital API → DNO name
+    - DNO name → pass through
     
-    Each payload becomes a separate job, all inherit the same filters.
+    Phase 2: Create Sub-Jobs
+    - For each resolved DNO, create jobs for each year × type combination
+    - E.g., 2 DNOs × 2 years × 2 types = 8 jobs
+    
+    Returns batch_id for tracking all jobs together.
     """
+    from uuid import uuid4
+    from app.services.vnb_digital import VNBDigitalClient
+    
     log = logger.bind(
         batch_size=len(request.payloads),
         user=current_user.email if current_user else "anonymous"
     )
     log.info("Creating batch search")
     
+    # Generate batch ID for grouping
+    batch_id = uuid4()
+    
+    # Phase 1: Resolve all DNOs first
+    vnb_client = VNBDigitalClient(request_delay=1.0)
+    resolved_dnos = []  # List of {"dno_name": ..., "coordinates": {...}, "source_label": ...}
+    
+    for payload in request.payloads:
+        source_label = payload.get_display_label()
+        dno_info = {"dno_name": None, "coordinates": None, "source_label": source_label}
+        
+        try:
+            if payload.type == "address" and payload.address:
+                # Address → VNB Digital API → DNO + coordinates
+                full_address = f"{payload.address.street}, {payload.address.plz_city}"
+                
+                # First get coordinates
+                location = vnb_client.search_address(full_address)
+                if location:
+                    dno_info["coordinates"] = {"lat": location.latitude, "lon": location.longitude}
+                    # Then get DNO from coordinates
+                    vnbs = vnb_client.lookup_by_coordinates(location.latitude, location.longitude)
+                    if vnbs:
+                        # Find electricity (Strom) DNO
+                        for vnb in vnbs:
+                            if vnb.sparte == "Strom":
+                                dno_info["dno_name"] = vnb.name
+                                break
+                        if not dno_info["dno_name"] and vnbs:
+                            dno_info["dno_name"] = vnbs[0].name
+                
+            elif payload.type == "coordinates" and payload.coordinates:
+                # Coordinates → VNB Digital API → DNO
+                lat = payload.coordinates.latitude
+                lon = payload.coordinates.longitude
+                dno_info["coordinates"] = {"lat": lat, "lon": lon}
+                
+                vnbs = vnb_client.lookup_by_coordinates(lat, lon)
+                if vnbs:
+                    for vnb in vnbs:
+                        if vnb.sparte == "Strom":
+                            dno_info["dno_name"] = vnb.name
+                            break
+                    if not dno_info["dno_name"] and vnbs:
+                        dno_info["dno_name"] = vnbs[0].name
+                
+            elif payload.type == "dno" and payload.dno:
+                # Direct DNO name - pass through
+                dno_info["dno_name"] = payload.dno.dno_name
+            
+            log.debug("DNO resolved", source=source_label, dno=dno_info["dno_name"])
+            
+        except Exception as e:
+            log.warning("DNO resolution failed", source=source_label, error=str(e))
+        
+        if dno_info["dno_name"]:
+            resolved_dnos.append(dno_info)
+    
+    if not resolved_dnos:
+        raise HTTPException(
+            status_code=400, 
+            detail="Could not resolve any DNO names from the provided inputs"
+        )
+    
+    # Phase 2: Create sub-jobs for each DNO × year × type
     job_ids = []
+    years = request.filters.years
+    types = request.filters.types
+    
+    # Calculate total jobs
+    total_jobs = len(resolved_dnos) * len(years) * len(types)
+    job_index = 0
     
     try:
         redis_pool = await create_pool(
             RedisSettings.from_dsn(str(settings.redis_url))
         )
         
-        for payload in request.payloads:
-            # Create job record with structured input
-            job = SearchJobModel(
-                user_id=current_user.id if current_user else None,
-                input_text=payload.get_display_label(),  # For display in history
-                filters={
-                    "years": request.filters.years,
-                    "types": request.filters.types,
-                },
-                status="pending",
-                steps_history=[],
-            )
-            db.add(job)
-            await db.commit()
-            await db.refresh(job)
+        for dno_info in resolved_dnos:
+            dno_name = dno_info["dno_name"]
+            coordinates = dno_info["coordinates"]
+            source_label = dno_info["source_label"]
             
-            job_id = str(job.id)
-            job_ids.append(job_id)
-            
-            # Queue to ARQ worker with structured payload
-            await redis_pool.enqueue_job(
-                "job_process_search_request",
-                job_id=job_id,
-                payload=payload.model_dump(),
-                filters=request.filters.model_dump(),
-            )
-            
-            log.debug("Batch job created", job_id=job_id, type=payload.type)
+            for year in years:
+                for data_type in types:
+                    job_index += 1
+                    
+                    # Generate display label
+                    type_label = "Netzentgelte" if data_type == "netzentgelte" else "HLZF"
+                    input_text = f"{year} {type_label} - {dno_name}"
+                    
+                    # Create job record
+                    job = SearchJobModel(
+                        user_id=current_user.id if current_user else None,
+                        batch_id=batch_id,
+                        batch_index=job_index,
+                        batch_total=total_jobs,
+                        dno_name=dno_name,
+                        dno_coordinates=coordinates,
+                        year=year,
+                        data_type=data_type,
+                        input_text=input_text,
+                        filters={
+                            "years": [year],
+                            "types": [data_type],
+                            "source_label": source_label,
+                        },
+                        status="pending",
+                        steps_history=[],
+                    )
+                    db.add(job)
+                    await db.commit()
+                    await db.refresh(job)
+                    
+                    job_id = str(job.id)
+                    job_ids.append(job_id)
+                    
+                    # Queue to ARQ worker
+                    await redis_pool.enqueue_job(
+                        "job_process_search_request",
+                        job_id=job_id,
+                        payload={
+                            "type": "dno",
+                            "dno": {"dno_name": dno_name},
+                        },
+                        filters={
+                            "years": [year],
+                            "types": [data_type],
+                        },
+                    )
+                    
+                    log.debug("Sub-job created", job_id=job_id, job_index=job_index)
         
         await redis_pool.close()
         
-        log.info("Batch search queued", count=len(job_ids))
+        log.info("Batch search queued", batch_id=str(batch_id), total_jobs=total_jobs)
         
         return {
+            "batch_id": str(batch_id),
             "job_ids": job_ids,
             "count": len(job_ids),
+            "resolved_dnos": [
+                {"dno_name": d["dno_name"], "source": d["source_label"], "coordinates": d["coordinates"]}
+                for d in resolved_dnos
+            ],
             "status": "queued",
         }
         
@@ -329,7 +446,101 @@ async def get_search_status(
         result=job.result if job.status == "completed" else None,
         error=job.error_message if job.status == "failed" else None,
         created_at=job.created_at,
+        # Batch fields
+        batch_id=str(job.batch_id) if job.batch_id else None,
+        batch_index=job.batch_index,
+        batch_total=job.batch_total,
+        dno_name=job.dno_name,
+        dno_coordinates=job.dno_coordinates,
+        year=job.year,
+        data_type=job.data_type,
     )
+
+
+@router.get(
+    "/batch/{batch_id}",
+    summary="Get Batch Search Status",
+    description="Get status of all jobs in a batch. Use for BatchProgressPage UI."
+)
+async def get_batch_status(
+    batch_id: str,
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get the status of all jobs in a batch.
+    
+    Returns:
+    - jobs: List of all jobs with their status and progress
+    - resolved_dnos: DNO names that were resolved
+    - progress: Overall completion percentage
+    - current_job: Index of currently running job
+    """
+    try:
+        batch_uuid = UUID(batch_id)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Invalid batch ID format")
+    
+    result = await db.execute(
+        select(SearchJobModel)
+        .where(SearchJobModel.batch_id == batch_uuid)
+        .order_by(SearchJobModel.batch_index)
+    )
+    jobs = result.scalars().all()
+    
+    if not jobs:
+        raise HTTPException(status_code=404, detail="Batch not found")
+    
+    # Calculate progress
+    completed = sum(1 for j in jobs if j.status == "completed")
+    failed = sum(1 for j in jobs if j.status == "failed")
+    running = sum(1 for j in jobs if j.status == "running")
+    pending = sum(1 for j in jobs if j.status == "pending")
+    
+    current_job_index = None
+    for j in jobs:
+        if j.status == "running":
+            current_job_index = j.batch_index
+            break
+    
+    # Build job list with essential info
+    job_list = []
+    for j in jobs:
+        job_list.append({
+            "job_id": str(j.id),
+            "batch_index": j.batch_index,
+            "batch_total": j.batch_total,
+            "input_text": j.input_text,
+            "dno_name": j.dno_name,
+            "year": j.year,
+            "data_type": j.data_type,
+            "status": j.status,
+            "current_step": j.current_step,
+            "steps_history": j.steps_history or [],
+            "error": j.error_message,
+        })
+    
+    # Determine overall batch status
+    if running > 0:
+        batch_status = "running"
+    elif pending > 0 and completed == 0 and failed == 0:
+        batch_status = "pending"
+    elif pending == 0 and running == 0:
+        batch_status = "completed" if failed == 0 else "completed_with_errors"
+    else:
+        batch_status = "running"
+    
+    return {
+        "batch_id": batch_id,
+        "status": batch_status,
+        "total_jobs": len(jobs),
+        "completed": completed,
+        "failed": failed,
+        "running": running,
+        "pending": pending,
+        "progress_percent": int((completed + failed) / len(jobs) * 100) if jobs else 0,
+        "current_job_index": current_job_index,
+        "jobs": job_list,
+    }
 
 
 @router.post(

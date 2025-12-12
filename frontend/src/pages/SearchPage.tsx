@@ -212,9 +212,9 @@ export default function SearchPage() {
 
             const response = await api.search.createBatch(payloads, filters);
 
-            // Navigate to first job (TODO: could go to batch view)
-            if (response.job_ids.length > 0) {
-                navigate(`/search/${response.job_ids[0]}`);
+            // Navigate to batch view
+            if (response.batch_id) {
+                navigate(`/search/batch/${response.batch_id}`);
             }
         } catch (err) {
             setError("Failed to start batch search. Please try again.");

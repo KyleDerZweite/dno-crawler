@@ -177,6 +177,49 @@ export interface SearchJobStatus {
   };
   error?: string;
   created_at: string;
+  // Batch fields
+  batch_id?: string;
+  batch_index?: number;
+  batch_total?: number;
+  dno_name?: string;
+  dno_coordinates?: { lat: number; lon: number };
+  year?: number;
+  data_type?: string;
+}
+
+export interface BatchJobItem {
+  job_id: string;
+  batch_index: number;
+  batch_total: number;
+  input_text: string;
+  dno_name: string;
+  year: number;
+  data_type: string;
+  status: "pending" | "running" | "completed" | "failed";
+  current_step?: string;
+  steps_history: SearchStep[];
+  error?: string;
+}
+
+export interface BatchStatus {
+  batch_id: string;
+  status: "pending" | "running" | "completed" | "completed_with_errors";
+  total_jobs: number;
+  completed: number;
+  failed: number;
+  running: number;
+  pending: number;
+  progress_percent: number;
+  current_job_index?: number;
+  jobs: BatchJobItem[];
+}
+
+export interface BatchCreateResponse {
+  batch_id: string;
+  job_ids: string[];
+  count: number;
+  resolved_dnos: { dno_name: string; source: string; coordinates?: { lat: number; lon: number } }[];
+  status: string;
 }
 
 export interface SearchJobListItem {
@@ -257,11 +300,16 @@ export const api = {
     async createBatch(
       payloads: QueuePayload[],
       filters?: SearchFilters
-    ): Promise<{ job_ids: string[]; count: number }> {
+    ): Promise<BatchCreateResponse> {
       const { data } = await apiClient.post("/search/batch", {
         payloads,
         filters: filters || { years: [2024, 2025], types: ["netzentgelte", "hlzf"] },
       });
+      return data;
+    },
+
+    async getBatchStatus(batchId: string): Promise<BatchStatus> {
+      const { data } = await apiClient.get(`/search/batch/${batchId}`);
       return data;
     },
   },
