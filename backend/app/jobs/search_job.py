@@ -136,17 +136,17 @@ async def _process_nl_search(
             _report_step(sync_db, job_id, "Analyzing Input", "done", f"Partial parse: ZIP={zip_code or 'N/A'}, City={city or 'N/A'}")
         
         # Step 2: Resolve DNO using services
-        _report_step(sync_db, job_id, "Checking Cache", "running", f"Looking for {zip_code}")
+        _report_step(sync_db, job_id, "Checking Address Mapping", "running", f"Looking for {zip_code}")
         
-        # First check cache
+        # First check existing address → DNO mapping in database
         norm_street = resolver.normalize_street(street)
-        cached = resolver.check_cache(zip_code, norm_street)
+        existing_dno = resolver.check_address_mapping(zip_code, norm_street)
         
-        if cached:
-            dno_name = cached
-            _report_step(sync_db, job_id, "Checking Cache", "done", f"Cache hit: {cached}")
+        if existing_dno:
+            dno_name = existing_dno
+            _report_step(sync_db, job_id, "Checking Address Mapping", "done", f"Found: {existing_dno}")
         else:
-            _report_step(sync_db, job_id, "Checking Cache", "done", "Miss (no cached result)")
+            _report_step(sync_db, job_id, "Checking Address Mapping", "done", "No existing mapping")
             
             # Search via DDGS
             _report_step(sync_db, job_id, "External Search", "running", "Querying DuckDuckGo...")
@@ -165,7 +165,7 @@ async def _process_nl_search(
             dno_name = llm_extractor.extract_dno_name(results, zip_code)
             
             if dno_name:
-                resolver.save_to_cache(zip_code, norm_street, dno_name)
+                resolver.save_address_mapping(zip_code, norm_street, dno_name)
                 _report_step(sync_db, job_id, "Analyzing Results", "done", f"Found: {dno_name}")
             else:
                 _report_step(sync_db, job_id, "Analyzing Results", "failed", "Could not identify DNO")

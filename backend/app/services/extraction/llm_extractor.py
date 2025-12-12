@@ -10,7 +10,7 @@ import json
 from pathlib import Path
 from typing import Optional, Any
 
-import httpx
+import ollama
 import pdfplumber
 import structlog
 
@@ -195,7 +195,7 @@ Text:
         model: Optional[str] = None
     ) -> Optional[str]:
         """
-        Call Ollama API synchronously.
+        Call Ollama using the official Python module.
         
         Args:
             prompt: The prompt to send to the model
@@ -207,26 +207,25 @@ Text:
         model = model or settings.ollama_model
         
         try:
-            with httpx.Client(timeout=settings.ollama_timeout) as client:
-                response = client.post(
-                    f"{settings.ollama_url}/api/generate",
-                    json={"model": model, "prompt": prompt, "stream": False},
-                )
-                
-                if response.status_code == 200:
-                    return response.json().get("response", "")
-                else:
-                    self.log.warning("Ollama request failed", status=response.status_code)
-                    
+            response = ollama.generate(
+                model=model,
+                prompt=prompt,
+                options={
+                    "temperature": 0.1,  # Low temperature for consistent output
+                    "num_predict": 512,  # Limit output length
+                }
+            )
+            
+            return response.get("response", "")
+            
         except Exception as e:
-            self.log.error("Ollama call failed", error=str(e))
+            self.log.error("Ollama call failed", error=str(e), model=model)
         
         return None
 
 
-# Async version for use in crawl_job.py
+# Async version for use in async jobs
 async def extract_with_ollama_async(
-    ollama_url: str,
     netzentgelte_path: Optional[str],
     regelungen_path: Optional[str],
     dno_name: str,
@@ -235,8 +234,9 @@ async def extract_with_ollama_async(
     """
     Async version of LLM extraction for use in async jobs.
     
+    Uses ollama.AsyncClient for async operations.
+    
     Args:
-        ollama_url: URL to Ollama API
         netzentgelte_path: Path to Netzentgelte PDF (if extraction needed)
         regelungen_path: Path to Regelungen PDF (if extraction needed)
         dno_name: Name of the DNO
@@ -248,28 +248,27 @@ async def extract_with_ollama_async(
     log = logger.bind(dno=dno_name, year=year)
     results: dict[str, list] = {"netzentgelte": [], "hlzf": []}
     
-    model = "qwen3-vl:2b"  # Vision-capable model for PDF understanding
+    model = settings.ollama_model
     
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    try:
         # Check if Ollama is available
-        try:
-            health = await client.get(f"{ollama_url}/api/tags")
-            if health.status_code != 200:
-                log.warning("Ollama not available")
-                return results
-        except Exception as e:
-            log.warning(f"Ollama connection failed: {e}")
+        models = ollama.list()
+        if not models:
+            log.warning("No Ollama models available")
             return results
-        
-        # Extract Netzentgelte with AI
-        if netzentgelte_path:
-            pdf_path = Path(netzentgelte_path)
-            if pdf_path.exists():
-                try:
-                    with pdfplumber.open(pdf_path) as pdf:
-                        text = "\n".join([p.extract_text() or "" for p in pdf.pages[:5]])
-                    
-                    prompt = f"""Extract the Netzentgelte (network charges) data from this text for {dno_name} {year}.
+    except Exception as e:
+        log.warning(f"Ollama connection failed: {e}")
+        return results
+    
+    # Extract Netzentgelte with AI
+    if netzentgelte_path:
+        pdf_path = Path(netzentgelte_path)
+        if pdf_path.exists():
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    text = "\n".join([p.extract_text() or "" for p in pdf.pages[:5]])
+                
+                prompt = f"""Extract the Netzentgelte (network charges) data from this text for {dno_name} {year}.
 
 Look for a table with voltage levels (Hochspannung, Umspannung HS/MS, Mittelspannung, Umspannung MS/NS, Niederspannung) and 4 price columns:
 1. Leistungspreis < 2500h
@@ -283,50 +282,49 @@ Return JSON only, no other text:
 Text:
 {text[:4000]}"""
 
-                    response = await client.post(
-                        f"{ollama_url}/api/generate",
-                        json={"model": model, "prompt": prompt, "stream": False},
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        answer = result.get("response", "")
-                        
-                        try:
-                            json_match = re.search(r'\{.*\}', answer, re.DOTALL)
-                            if json_match:
-                                data = json.loads(json_match.group())
-                                for r in data.get("records", []):
-                                    results["netzentgelte"].append({
-                                        "voltage_level": r.get("voltage_level", ""),
-                                        "leistung_unter_2500h": r.get("lp_unter"),
-                                        "arbeit_unter_2500h": r.get("ap_unter"),
-                                        "leistung": r.get("lp"),
-                                        "arbeit": r.get("ap"),
-                                    })
-                                log.info(f"AI extracted {len(results['netzentgelte'])} Netzentgelte records")
-                        except json.JSONDecodeError:
-                            log.warning("Failed to parse AI response as JSON")
-                            
-                except Exception as e:
-                    log.error(f"AI Netzentgelte extraction failed: {e}")
-        
-        # Extract HLZF with AI
-        if regelungen_path:
-            pdf_path = Path(regelungen_path)
-            if pdf_path.exists():
+                response = ollama.generate(
+                    model=model,
+                    prompt=prompt,
+                    options={"temperature": 0.1, "num_predict": 512}
+                )
+                
+                answer = response.get("response", "")
+                
                 try:
-                    with pdfplumber.open(pdf_path) as pdf:
-                        text = ""
-                        for page in pdf.pages:
-                            page_text = page.extract_text() or ""
-                            if "hochlast" in page_text.lower():
-                                text += page_text + "\n"
+                    json_match = re.search(r'\{.*\}', answer, re.DOTALL)
+                    if json_match:
+                        data = json.loads(json_match.group())
+                        for r in data.get("records", []):
+                            results["netzentgelte"].append({
+                                "voltage_level": r.get("voltage_level", ""),
+                                "leistung_unter_2500h": r.get("lp_unter"),
+                                "arbeit_unter_2500h": r.get("ap_unter"),
+                                "leistung": r.get("lp"),
+                                "arbeit": r.get("ap"),
+                            })
+                        log.info(f"AI extracted {len(results['netzentgelte'])} Netzentgelte records")
+                except json.JSONDecodeError:
+                    log.warning("Failed to parse AI response as JSON")
                         
-                        if not text:
-                            text = "\n".join([p.extract_text() or "" for p in pdf.pages[10:15]])
+            except Exception as e:
+                log.error(f"AI Netzentgelte extraction failed: {e}")
+    
+    # Extract HLZF with AI
+    if regelungen_path:
+        pdf_path = Path(regelungen_path)
+        if pdf_path.exists():
+            try:
+                with pdfplumber.open(pdf_path) as pdf:
+                    text = ""
+                    for page in pdf.pages:
+                        page_text = page.extract_text() or ""
+                        if "hochlast" in page_text.lower():
+                            text += page_text + "\n"
                     
-                    prompt = f"""Extract the Hochlastzeitfenster (HLZF - peak load time windows) from this text for {dno_name} {year}.
+                    if not text:
+                        text = "\n".join([p.extract_text() or "" for p in pdf.pages[10:15]])
+                
+                prompt = f"""Extract the Hochlastzeitfenster (HLZF - peak load time windows) from this text for {dno_name} {year}.
 
 Look for a table with:
 - Rows: Voltage levels (Hochspannungsnetz, Umspannung zur Mittelspannung, Mittelspannungsnetz, etc.)
@@ -339,32 +337,31 @@ Return JSON only:
 Text:
 {text[:4000]}"""
 
-                    response = await client.post(
-                        f"{ollama_url}/api/generate",
-                        json={"model": model, "prompt": prompt, "stream": False},
-                    )
-                    
-                    if response.status_code == 200:
-                        result = response.json()
-                        answer = result.get("response", "")
+                response = ollama.generate(
+                    model=model,
+                    prompt=prompt,
+                    options={"temperature": 0.1, "num_predict": 512}
+                )
+                
+                answer = response.get("response", "")
+                
+                try:
+                    json_match = re.search(r'\{.*\}', answer, re.DOTALL)
+                    if json_match:
+                        data = json.loads(json_match.group())
+                        for r in data.get("records", []):
+                            results["hlzf"].append({
+                                "voltage_level": r.get("voltage_level", ""),
+                                "winter": r.get("winter"),
+                                "fruehling": r.get("fruehling"),
+                                "sommer": r.get("sommer"),
+                                "herbst": r.get("herbst"),
+                            })
+                        log.info(f"AI extracted {len(results['hlzf'])} HLZF records")
+                except json.JSONDecodeError:
+                    log.warning("Failed to parse AI HLZF response as JSON")
                         
-                        try:
-                            json_match = re.search(r'\{.*\}', answer, re.DOTALL)
-                            if json_match:
-                                data = json.loads(json_match.group())
-                                for r in data.get("records", []):
-                                    results["hlzf"].append({
-                                        "voltage_level": r.get("voltage_level", ""),
-                                        "winter": r.get("winter"),
-                                        "fruehling": r.get("fruehling"),
-                                        "sommer": r.get("sommer"),
-                                        "herbst": r.get("herbst"),
-                                    })
-                                log.info(f"AI extracted {len(results['hlzf'])} HLZF records")
-                        except json.JSONDecodeError:
-                            log.warning("Failed to parse AI HLZF response as JSON")
-                            
-                except Exception as e:
-                    log.error(f"AI HLZF extraction failed: {e}")
+            except Exception as e:
+                log.error(f"AI HLZF extraction failed: {e}")
     
     return results

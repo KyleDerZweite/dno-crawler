@@ -1,7 +1,9 @@
 """
 DNO Resolver service for address → DNO name resolution.
 
-Extracted from SearchAgent. Uses cache + web search + LLM.
+Resolves addresses to DNO names using:
+1. Database lookup for known address → DNO mappings
+2. Web search + LLM extraction for unknown addresses
 """
 
 import re
@@ -21,7 +23,7 @@ class DNOResolver:
     Resolve address to DNO (Distribution Network Operator) name.
     
     Uses a three-tier approach:
-    1. Check database cache for known address → DNO mappings
+    1. Check database for known address → DNO mappings
     2. Web search via SearchEngine to find DNO candidates
     3. LLM extraction to identify DNO name from search results
     """
@@ -31,7 +33,7 @@ class DNOResolver:
         Initialize the DNO resolver.
         
         Args:
-            db_session: Optional database session for caching
+            db_session: Optional database session for address mappings
         """
         self.db = db_session
         self.log = logger.bind(component="DNOResolver")
@@ -59,12 +61,12 @@ class DNOResolver:
         """
         log = self.log.bind(zip_code=zip_code, city=city)
         
-        # 1. Normalize & Check Cache
+        # 1. Normalize & Check existing address mapping
         norm_street = self.normalize_street(street)
-        cached = self.check_cache(zip_code, norm_street)
-        if cached:
-            log.info("Cache hit", dno=cached)
-            return cached
+        existing_dno = self.check_address_mapping(zip_code, norm_street)
+        if existing_dno:
+            log.info("Found existing address mapping", dno=existing_dno)
+            return existing_dno
         
         # 2. If we have a search engine, perform web search
         if search_engine and llm_extractor:
@@ -79,7 +81,7 @@ class DNOResolver:
             # 3. LLM extraction
             dno_name = llm_extractor.extract_dno_name(results, zip_code)
             if dno_name:
-                self.save_to_cache(zip_code, norm_street, dno_name)
+                self.save_address_mapping(zip_code, norm_street, dno_name)
                 log.info("DNO resolved", dno=dno_name)
                 return dno_name
             
@@ -97,8 +99,8 @@ class DNOResolver:
             .replace(" ", "")
         )
     
-    def check_cache(self, zip_code: str, norm_street: str) -> Optional[str]:
-        """Check DB cache for existing DNO mapping."""
+    def check_address_mapping(self, zip_code: str, norm_street: str) -> Optional[str]:
+        """Check database for existing address → DNO mapping."""
         if not self.db:
             return None
         
@@ -121,18 +123,18 @@ class DNOResolver:
                 return cache_entry.dno_name
                 
         except Exception as e:
-            self.log.warning("Cache lookup failed", error=str(e))
+            self.log.warning("Address mapping lookup failed", error=str(e))
         
         return None
     
-    def save_to_cache(
+    def save_address_mapping(
         self, 
         zip_code: str, 
         norm_street: str, 
         dno_name: str,
         confidence: float = 0.9
     ) -> None:
-        """Save DNO mapping to cache."""
+        """Save address → DNO mapping to database."""
         if not self.db:
             return
         
@@ -167,10 +169,10 @@ class DNOResolver:
                 self.db.add(cache_entry)
             
             self.db.commit()
-            self.log.info("Saved to cache", zip=zip_code, dno=dno_name)
+            self.log.info("Saved address mapping", zip=zip_code, dno=dno_name)
             
         except Exception as e:
-            self.log.warning("Cache save failed", error=str(e))
+            self.log.warning("Address mapping save failed", error=str(e))
             try:
                 self.db.rollback()
             except:

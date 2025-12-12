@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import admin, auth, crawl, dnos, files, health, public, search
+from app.api.routes import admin, auth, dnos, files, health, public, search
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -67,8 +67,7 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["Health"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(files.router, prefix="/api/v1/files", tags=["Files"])
-    app.include_router(crawl.router, prefix="/api/v1/crawl", tags=["Crawl"])  # SearchAgent batch
-    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # NL Search UI
+    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # Main search API
     app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Must be before public
     app.include_router(public.router, prefix="/api/v1", tags=["Public"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])

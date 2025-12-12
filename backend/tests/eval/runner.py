@@ -8,9 +8,9 @@ Evaluates local Ollama models on three metrics:
 3. Accuracy: Percentage of valid outputs with correct extracted data
 
 Usage:
-    python nlp_eval.py                    # Run with all available models
-    python nlp_eval.py --model gemma3:1b  # Run with specific model
-    python nlp_eval.py --verbose          # Show detailed output
+    python runner.py                    # Run with all available models
+    python runner.py --model gemma3:1b  # Run with specific model
+    python runner.py --verbose          # Show detailed output
 """
 
 import json

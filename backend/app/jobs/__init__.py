@@ -33,12 +33,7 @@ async def shutdown(ctx):
     await close_db()
     logger.info("Worker shutdown complete.")
 
-
 # Import job functions
-# Legacy crawl jobs (to be deprecated) - still from old location for compatibility
-from app.worker.jobs import crawl_dno_job, discover_sources_job, extract_pdf_job
-
-# New search job from this package
 from app.jobs.search_job import job_process_search_request
 
 
@@ -47,9 +42,6 @@ class WorkerSettings:
     
     functions = [
         health_check_job,
-        crawl_dno_job,
-        discover_sources_job,
-        extract_pdf_job,
         job_process_search_request,
     ]
     redis_settings = RedisSettings.from_dsn(str(settings.redis_url))
