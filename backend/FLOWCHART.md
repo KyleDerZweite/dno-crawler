@@ -1,89 +1,102 @@
 ```mermaid
 flowchart TD
     %% --- Styles ---
-    classDef input fill:#e3f2fd,stroke:#1565c0,stroke-width:2px;
+    classDef ui fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef action fill:#b3e5fc,stroke:#0277bd,stroke-width:2px,shape:rect;
+    classDef storage fill:#fff9c4,stroke:#fbc02d,stroke-width:2px,stroke-dasharray: 5 5;
     classDef process fill:#f3e5f5,stroke:#4a148c,stroke-width:2px;
-    classDef logic fill:#fff9c4,stroke:#fbc02d,stroke-width:2px;
+    classDef logic fill:#fffde7,stroke:#fbc02d,stroke-width:2px;
     classDef db fill:#e0f2f1,stroke:#00695c,stroke-width:2px;
-    classDef strategy fill:#ffe0b2,stroke:#ef6c00,stroke-width:2px;
     classDef endNode fill:#c8e6c9,stroke:#2e7d32,stroke-width:2px;
+    classDef progress fill:#ffccbc,stroke:#bf360c,stroke-width:2px,stroke-dasharray: 5 5;
 
-    %% --- 1. Initialization ---
-    subgraph Inputs ["1. Input & NLP"]
-        UserInput([User Text Input]) --> NLP[NLP Processing]
-        NLP -->|Outputs: Jobs List| JobLoop
+    %% --- PHASE 1: UI & Payload ---
+    subgraph UI_Layer ["1. UI & Payload"]
+        direction TB
         
-        note1[params: Target Year, Region]
-        UserInput -.- note1
+        subgraph Inputs ["Input Section"]
+            InputAddr["Street + City"]
+            InputDNO["DNO Name"]
+            InputCoords["Lat / Lon"]
+            Filters["Filters"]
+        end
+
+        AddBtn{{<b>+ ADD TO PAYLOAD</b>}}
+        PayloadQueue[("<b>Search Payload / Queue</b><br/>[List of Jobs]")]
+        StartBtn((<b>START BATCH</b>))
+        
+        %% NEW: Live Progress Element
+        LiveUI["<b>Live Progress UI</b><br/>(Progress Bar / Logs)"]
+
+        Inputs --> AddBtn --> PayloadQueue --> StartBtn
+        AddBtn -.->|Reset| Inputs
     end
 
-    %% --- 2. Resolution Loop ---
-    subgraph JobProcessing ["For Each Job"]
+    %% --- PHASE 2: Execution Loop ---
+    subgraph Execution ["2. Execution Pipeline"]
         direction TB
-        JobLoop(Start Job) --> AddrCheck{Has Address?}
         
-        AddrCheck -- Yes --> GetCoords[Get Coordinates]
-        GetCoords --> GetDNO[Get DNO Name]
-        AddrCheck -- No --> CheckDNOInput{Has DNO Name?}
-        CheckDNOInput -- Yes --> GetDNO
+        StartBtn --> JobIterator{<b>Next Job in Payload?</b>}
         
-        %% --- 3. The Brain (DB Check & Strategy) ---
-        GetDNO --> DBQuery[Query Database]
+        %% LOOP EXIT: Only update website when ALL jobs are done
+        JobIterator -- "No / Empty" --> FinalUpdate([<b>13. Final Website Update</b><br/>Refresh Data Table])
+
+        %% LOOP CONTINUE: Process Job
+        JobIterator -- "Yes" --> RouteJob[Load Job Data]
         
-        DB[("<b>Database</b><br/>Tables: DNO_Data, Search_Strategies")]
+        %% --- Router ---
+        RouteJob --> CheckInputType{Input Type?}
+        CheckInputType -- "Address" --> GetCoords["Geocoding API"] --> GetDNOLookup
+        CheckInputType -- "Lat/Lon" --> GetDNOLookup["DNO Lookup API"]
+        CheckInputType -- "DNO Name" --> MergePoint
+        GetDNOLookup --> MergePoint(DNO Identified)
+        
+        %% --- The Brain ---
+        MergePoint --> DBQuery[Query Database]
+        DB[("<b>Database</b>")]
         DBQuery <--> DB
-        
         DBQuery --> DataCheck{Data Status?}
         
-        %% Path A: Data Exists
-        DataCheck -- "<b>Complete Match</b><br/>(DNO + Year found)" --> UpdateWeb
-        
-        %% Path B: Partial Match (Optimization/Heuristic)
-        DataCheck -- "<b>Partial Match</b><br/>(DNO found, Year missing)" --> LoadStrat[Load Learned Strategy]
-        
-        %% Path C: No Match (Cold Start)
-        DataCheck -- "<b>No Match</b><br/>(New DNO)" --> DefaultStrat[Load Default Strategy]
+        %% Paths
+        DataCheck -- "Complete Match" --> EmitProgress
+        DataCheck -- "Partial Match" --> LoadStrat[Load Learned Strategy]
+        DataCheck -- "No Match" --> DefaultStrat[Load Default Strategy]
 
-        %% --- 4. Strategy Refinement ---
-        subgraph StrategyEngine ["Search Strategy Engine"]
-            LoadStrat --> RefineStrat["<b>Refine Strategy</b><br/>Logic: Heuristics / Backwards Search<br/><i>e.g. Try '/archive/' or replace '2025' with '2023'</i>"]
-            DefaultStrat --> GenQuery["Generate Search Query<br/><i>Template: DNO Name + 'Netzentgelte' + Year</i>"]
-            RefineStrat --> GenQuery
-        end
+        %% --- Strategy Engine ---
+        LoadStrat & DefaultStrat --> GenQuery["Generate/Refine Query"]
         
-        %% --- 5. Execution (Search & Crawl) ---
-        GenQuery --> Search["<b>5. Web Search (DDGS)</b><br/><i>Uses generated URL/Query</i>"]
-        Search --> Crawl["<b>6. Crawl & Analyze</b><br/><i>HTML, Tables, Links</i>"]
+        %% --- Execution ---
+        GenQuery --> Search["Web Search (DDGS)"]
+        Search --> Crawl["Crawl & Analyze"]
+        Crawl --> IsRelevant{"Relevant?"}
         
-        Crawl --> IsRelevant{"<b>7. Relevant Data?</b><br/><i>Check: Filetypes, Table Headers</i>"}
+        IsRelevant -- "Link Found" --> Crawl
+        IsRelevant -- "No Data" --> LogFail[Log Failure]
+        IsRelevant -- "Target Found" --> Download[Download & Extract]
         
-        %% Recursive Loop
-        IsRelevant -- "Found Links (Deep Search)" --> Crawl
-        IsRelevant -- "No Data / Fail" --> LogFail[Log Failure & Flag]
+        Download --> Validate{"Validate"}
+        Validate -- "Mismatch" --> ManualReview[Flag for Review]
         
-        %% --- 6. Extraction ---
-        IsRelevant -- "Found Target (PDF/Table)" --> Download[9. Download Files]
-        Download --> Extract["10. Extraction Pipeline<br/><i>OCR / Table Parsing</i>"]
+        %% --- Saving ---
+        Validate -- "Valid" --> LearnStep["Learning Step"]
+        LearnStep --> SaveDB[("Save to DB")]
         
-        %% --- 7. Validation ---
-        Extract --> Validate{"<b>11. Validate</b><br/><i>Compare Pipeline Outputs</i>"}
-        Validate -- "Mismatch" --> ManualReview[Flag for Manual Review]
+        %% --- LIVE PROGRESS FEEDBACK LOOP ---
+        LogFail & ManualReview & SaveDB --> EmitProgress{{<b>Emit Progress Event</b><br/><i>'Job X Completed'</i>}}
         
-        %% --- 8. Learning & Saving ---
-        Validate -- "Valid" --> LearnStep["<b>Learning Step</b><br/>Extract successful patterns:<br/>- URL Structure<br/>- File Naming Schema"]
+        %% 1. Send signal to UI (Async)
+        EmitProgress -.->|WebSocket / State Update| LiveUI
         
-        LearnStep --> SaveDB[("<b>12. Save to DB</b><br/>1. Actual Data<br/>2. Updated Search Strategy")]
+        %% 2. Loop back to Iterator to get next job
+        EmitProgress --> JobIterator
     end
 
-    %% --- 9. Final Output ---
-    SaveDB --> UpdateWeb(["<b>13. Update Website</b><br/>Display Data"])
-    ManualReview --> UpdateWeb
-
     %% --- Class Assignments ---
-    class UserInput,NLP input;
-    class GetCoords,GetDNO,Crawl,Download,Extract,RefineStrat,GenQuery,LearnStep,Search process;
-    class AddrCheck,CheckDNOInput,DataCheck,IsRelevant,Validate logic;
+    class Inputs,PayloadQueue,LiveUI ui;
+    class AddBtn,StartBtn action;
+    class GetCoords,GetDNOLookup,Crawl,Download,GenQuery,LearnStep,Search process;
+    class JobIterator,CheckInputType,DataCheck,IsRelevant,Validate logic;
     class DB,SaveDB db;
-    class LoadStrat,DefaultStrat strategy;
-    class UpdateWeb endNode;
+    class FinalUpdate endNode;
+    class EmitProgress progress;
 ```

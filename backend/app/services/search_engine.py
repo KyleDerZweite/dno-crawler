@@ -1,7 +1,12 @@
 """
-Search Engine service for web search abstraction.
+Search Engine service for PDF/website discovery via DDGS.
 
-Extracted from SearchAgent. Wraps DDGS with rate limiting.
+STILL ACTIVE: Used for finding PDF URLs for Netzentgelte/HLZF data.
+NOT used for DNO name resolution (that's now handled by VNBDigitalClient).
+
+Functions:
+- safe_search(): General web search with rate limiting
+- find_pdf_url(): Targeted search for DNO PDF documents
 """
 
 import time

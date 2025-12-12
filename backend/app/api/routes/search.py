@@ -46,6 +46,52 @@ class SearchFilters(BaseModel):
     )
 
 
+# ============================================================================
+# Structured Input Models (for batch search)
+# ============================================================================
+
+
+class AddressInput(BaseModel):
+    """Address input with street and PLZ+City."""
+    street: str = Field(..., min_length=1, description="Street + housenumber")
+    plz_city: str = Field(..., min_length=3, description="PLZ + City (e.g., '50859 Köln')")
+
+
+class DNOInput(BaseModel):
+    """Direct DNO name input."""
+    dno_name: str = Field(..., min_length=2, description="DNO name")
+
+
+class CoordinatesInput(BaseModel):
+    """Geographic coordinates input."""
+    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
+    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
+
+
+class SearchPayloadItem(BaseModel):
+    """A single search payload - one of three types."""
+    type: str = Field(..., pattern="^(address|dno|coordinates)$")
+    address: Optional[AddressInput] = None
+    dno: Optional[DNOInput] = None
+    coordinates: Optional[CoordinatesInput] = None
+    
+    def get_display_label(self) -> str:
+        """Generate a display label for this search item."""
+        if self.type == "address" and self.address:
+            return f"{self.address.street}, {self.address.plz_city}"
+        elif self.type == "dno" and self.dno:
+            return self.dno.dno_name
+        elif self.type == "coordinates" and self.coordinates:
+            return f"({self.coordinates.latitude:.4f}, {self.coordinates.longitude:.4f})"
+        return "Unknown"
+
+
+class BatchSearchRequest(BaseModel):
+    """Batch of search payloads to queue."""
+    payloads: list[SearchPayloadItem] = Field(..., min_length=1)
+    filters: SearchFilters = Field(default_factory=SearchFilters)
+
+
 class SearchRequest(BaseModel):
     """Request to start a natural language search."""
     prompt: str = Field(
@@ -164,6 +210,82 @@ async def create_search(
         log.error("Failed to create search job", error=str(e))
         raise HTTPException(status_code=500, detail=f"Failed to start search: {str(e)}")
 
+
+@router.post(
+    "/batch",
+    summary="Start Batch Search",
+    description="Start multiple search jobs from structured payloads. Returns list of job_ids for tracking."
+)
+async def create_batch_search(
+    request: BatchSearchRequest,
+    db: AsyncSession = Depends(get_db),
+    current_user: Optional[User] = Depends(get_optional_user),
+):
+    """
+    Start multiple search jobs from a batch of structured payloads.
+    
+    Supports three input types:
+    - address: Street + PLZ/City (will geocode → DNO lookup)
+    - dno: Direct DNO name (skip geocoding)
+    - coordinates: Lat/Lon (direct DNO lookup)
+    
+    Each payload becomes a separate job, all inherit the same filters.
+    """
+    log = logger.bind(
+        batch_size=len(request.payloads),
+        user=current_user.email if current_user else "anonymous"
+    )
+    log.info("Creating batch search")
+    
+    job_ids = []
+    
+    try:
+        redis_pool = await create_pool(
+            RedisSettings.from_dsn(str(settings.redis_url))
+        )
+        
+        for payload in request.payloads:
+            # Create job record with structured input
+            job = SearchJobModel(
+                user_id=current_user.id if current_user else None,
+                input_text=payload.get_display_label(),  # For display in history
+                filters={
+                    "years": request.filters.years,
+                    "types": request.filters.types,
+                },
+                status="pending",
+                steps_history=[],
+            )
+            db.add(job)
+            await db.commit()
+            await db.refresh(job)
+            
+            job_id = str(job.id)
+            job_ids.append(job_id)
+            
+            # Queue to ARQ worker with structured payload
+            await redis_pool.enqueue_job(
+                "job_process_search_request",
+                job_id=job_id,
+                payload=payload.model_dump(),
+                filters=request.filters.model_dump(),
+            )
+            
+            log.debug("Batch job created", job_id=job_id, type=payload.type)
+        
+        await redis_pool.close()
+        
+        log.info("Batch search queued", count=len(job_ids))
+        
+        return {
+            "job_ids": job_ids,
+            "count": len(job_ids),
+            "status": "queued",
+        }
+        
+    except Exception as e:
+        log.error("Failed to create batch search", error=str(e))
+        raise HTTPException(status_code=500, detail=f"Failed to start batch search: {str(e)}")
 
 @router.get(
     "/{job_id}/status",

@@ -37,6 +37,11 @@ class LLMExtractor:
         zip_code: str
     ) -> Optional[str]:
         """
+        DEPRECATED: Use VNBDigitalClient from app.services.vnb_digital instead.
+        
+        This method is no longer used. DNO name resolution is now handled by the
+        VNB Digital GraphQL API which provides direct, reliable lookups.
+        
         Use LLM to analyze search snippets and identify the DNO.
         
         Args:
@@ -46,6 +51,13 @@ class LLMExtractor:
         Returns:
             DNO name if identified, None otherwise
         """
+        import warnings
+        warnings.warn(
+            "extract_dno_name is deprecated. Use VNBDigitalClient.resolve_address_to_dno() instead.",
+            DeprecationWarning,
+            stacklevel=2
+        )
+        
         if not search_results:
             return None
         

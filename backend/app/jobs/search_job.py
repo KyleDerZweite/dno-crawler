@@ -23,9 +23,9 @@ logger = structlog.get_logger()
 
 async def job_process_search_request(
     ctx: dict, 
-    # Legacy format
+    # Structured payload format (from batch search)
     payload: Optional[dict] = None,
-    # New NL search format
+    # NL search format
     job_id: Optional[str] = None,
     prompt: Optional[str] = None,
     filters: Optional[dict] = None,
@@ -36,20 +36,25 @@ async def job_process_search_request(
     Runs strictly one at a time due to max_jobs=1 in WorkerSettings.
     
     Supports two modes:
-    1. Legacy: payload dict with 'type' field
+    1. Structured: payload dict with 'type' field (address/dno/coordinates) + job_id
     2. NL Search: job_id + prompt + filters for Timeline UI
     """
     log = logger.bind(job_id=job_id)
     
-    # Determine mode
-    is_nl_search = job_id is not None and prompt is not None
+    # Mode 1: Structured payload from batch search (has job_id and payload with type)
+    if job_id is not None and payload is not None:
+        payload_type = payload.get("type")
+        if payload_type in ("address", "dno", "coordinates"):
+            return await _process_structured_search(ctx, job_id, payload, filters or {})
+        else:
+            log.error("Unknown payload type", payload_type=payload_type)
+            return {"status": "error", "message": f"Unknown payload type: {payload_type}"}
     
-    if is_nl_search:
+    # Mode 2: NL search (job_id + prompt)
+    if job_id is not None and prompt is not None:
         return await _process_nl_search(ctx, job_id, prompt, filters or {})
-    elif payload:
-        return await _process_legacy_search(ctx, payload)
-    else:
-        return {"status": "error", "message": "Invalid job parameters"}
+    
+    return {"status": "error", "message": "Invalid job parameters"}
 
 
 async def _process_nl_search(
@@ -90,6 +95,7 @@ async def _process_nl_search(
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
     from app.core.config import settings
+    from app.services.vnb_digital import VNBDigitalClient
     
     # Create sync engine for services
     sync_engine = create_engine(str(settings.database_url).replace("+asyncpg", ""))
@@ -100,6 +106,7 @@ async def _process_nl_search(
         search_engine = SearchEngine()
         downloader = PDFDownloader()
         llm_extractor = LLMExtractor()
+        vnb_client = VNBDigitalClient(request_delay=1.0)
         
         # Parse filters
         years = filters.get("years", [2024, 2025])
@@ -108,7 +115,7 @@ async def _process_nl_search(
         # Step 1: Parse the prompt (simplified - assumes address format)
         _report_step(sync_db, job_id, "Analyzing Input", "running", f"Parsing: {prompt[:50]}...")
         
-        # Extract address components
+        # Extract address components using _parse_plz_city
         import re
         
         zip_match = re.search(r'\b(\d{5})\b', prompt)
@@ -135,40 +142,29 @@ async def _process_nl_search(
         else:
             _report_step(sync_db, job_id, "Analyzing Input", "done", f"Partial parse: ZIP={zip_code or 'N/A'}, City={city or 'N/A'}")
         
-        # Step 2: Resolve DNO using services
-        _report_step(sync_db, job_id, "Checking Address Mapping", "running", f"Looking for {zip_code}")
+        # Step 2: Resolve DNO - first check cache, then VNB Digital API
+        _report_step(sync_db, job_id, "Checking Cache", "running", f"Looking for {zip_code}")
         
-        # First check existing address → DNO mapping in database
+        # Check existing address → DNO mapping in database
         norm_street = resolver.normalize_street(street)
         existing_dno = resolver.check_address_mapping(zip_code, norm_street)
         
         if existing_dno:
             dno_name = existing_dno
-            _report_step(sync_db, job_id, "Checking Address Mapping", "done", f"Found: {existing_dno}")
+            _report_step(sync_db, job_id, "Checking Cache", "done", f"Found: {existing_dno}")
         else:
-            _report_step(sync_db, job_id, "Checking Address Mapping", "done", "No existing mapping")
+            _report_step(sync_db, job_id, "Checking Cache", "done", "No cached mapping")
             
-            # Search via DDGS
-            _report_step(sync_db, job_id, "External Search", "running", "Querying DuckDuckGo...")
-            query = f"Netzbetreiber Strom {zip_code} {city} {street}"
-            results = search_engine.safe_search(query)
+            # Use VNB Digital API for address lookup
+            _report_step(sync_db, job_id, "External Search", "running", "Querying VNB Digital API...")
             
-            if not results:
-                _report_step(sync_db, job_id, "External Search", "failed", "No search results found")
-                await _mark_job_failed(job_id, f"Could not find DNO for: {prompt}")
-                return {"status": "not_found", "message": "Could not resolve DNO"}
-            
-            _report_step(sync_db, job_id, "External Search", "done", f"Found {len(results)} results")
-            
-            # LLM extraction
-            _report_step(sync_db, job_id, "Analyzing Results", "running", "AI extracting DNO name...")
-            dno_name = llm_extractor.extract_dno_name(results, zip_code)
+            dno_name = vnb_client.resolve_address_to_dno(prompt)
             
             if dno_name:
                 resolver.save_address_mapping(zip_code, norm_street, dno_name)
-                _report_step(sync_db, job_id, "Analyzing Results", "done", f"Found: {dno_name}")
+                _report_step(sync_db, job_id, "External Search", "done", f"Found: {dno_name}")
             else:
-                _report_step(sync_db, job_id, "Analyzing Results", "failed", "Could not identify DNO")
+                _report_step(sync_db, job_id, "External Search", "failed", "VNB Digital API returned no results")
                 await _mark_job_failed(job_id, f"Could not find DNO for: {prompt}")
                 return {"status": "not_found", "message": "Could not resolve DNO"}
         
@@ -214,6 +210,228 @@ async def _process_nl_search(
         log.info("NL search completed", dno=dno_name)
         return {"status": "completed", "dno_name": dno_name}
 
+
+async def _process_structured_search(
+    ctx: dict,
+    job_id: str,
+    payload: dict,
+    filters: dict,
+) -> dict:
+    """
+    Process structured search from batch submission.
+    
+    Supports three input types:
+    - address: street + plz_city → VNB Digital API → DNO
+    - dno: direct DNO name → skip to PDF search
+    - coordinates: lat/lon → VNB Digital API → DNO
+    """
+    payload_type = payload.get("type")
+    log = logger.bind(job_id=job_id, type=payload_type)
+    log.info("Processing structured search")
+    
+    # Mark job as running
+    async with get_db_session() as db:
+        from sqlalchemy import select
+        from app.db.models import SearchJobModel
+        
+        result = await db.execute(
+            select(SearchJobModel).where(SearchJobModel.id == job_id)
+        )
+        job = result.scalar_one_or_none()
+        
+        if not job:
+            log.error("Job not found", job_id=job_id)
+            return {"status": "error", "message": "Job not found"}
+        
+        job.status = "running"
+        job.started_at = datetime.utcnow()
+        await db.commit()
+    
+    # Process with synchronous services
+    from sqlalchemy import create_engine
+    from sqlalchemy.orm import Session
+    from app.core.config import settings
+    from app.services.vnb_digital import VNBDigitalClient
+    
+    sync_engine = create_engine(str(settings.database_url).replace("+asyncpg", ""))
+    
+    with Session(sync_engine) as sync_db:
+        resolver = DNOResolver(db_session=sync_db)
+        search_engine = SearchEngine()
+        downloader = PDFDownloader()
+        llm_extractor = LLMExtractor()
+        vnb_client = VNBDigitalClient(request_delay=1.0)
+        
+        years = filters.get("years", [2024, 2025])
+        types = filters.get("types", ["netzentgelte", "hlzf"])
+        
+        dno_name = None
+        
+        # ================================================================
+        # Route based on input type
+        # ================================================================
+        
+        if payload_type == "address":
+            # Parse address input
+            addr_data = payload.get("address", {})
+            street = addr_data.get("street", "").strip()
+            plz_city = addr_data.get("plz_city", "").strip()
+            
+            _report_step(sync_db, job_id, "Analyzing Input", "running", f"Parsing: {street}, {plz_city}")
+            
+            # Flexible PLZ + City parsing
+            zip_code, city = _parse_plz_city(plz_city)
+            
+            if zip_code and city:
+                _report_step(sync_db, job_id, "Analyzing Input", "done", f"ZIP={zip_code}, City={city}, Street={street}")
+            else:
+                _report_step(sync_db, job_id, "Analyzing Input", "done", f"Partial parse: ZIP={zip_code or 'N/A'}, City={city or 'N/A'}")
+            
+            # Check cache first
+            _report_step(sync_db, job_id, "Checking Cache", "running", f"Looking for {zip_code}")
+            
+            norm_street = resolver.normalize_street(street)
+            existing_dno = resolver.check_address_mapping(zip_code, norm_street)
+            
+            if existing_dno:
+                dno_name = existing_dno
+                _report_step(sync_db, job_id, "Checking Cache", "done", f"Found: {existing_dno}")
+            else:
+                _report_step(sync_db, job_id, "Checking Cache", "done", "No cached mapping")
+                
+                # Use VNB Digital API for address lookup
+                _report_step(sync_db, job_id, "External Search", "running", "Querying VNB Digital API...")
+                
+                # Build full address string
+                full_address = f"{street}, {plz_city}"
+                dno_name = vnb_client.resolve_address_to_dno(full_address)
+                
+                if dno_name:
+                    # Cache the result
+                    resolver.save_address_mapping(zip_code, norm_street, dno_name)
+                    _report_step(sync_db, job_id, "External Search", "done", f"Found: {dno_name}")
+                else:
+                    _report_step(sync_db, job_id, "External Search", "failed", "VNB Digital API returned no results")
+                    await _mark_job_failed(job_id, f"Could not find DNO for: {street}, {plz_city}")
+                    return {"status": "not_found", "message": "Could not resolve DNO"}
+        
+        elif payload_type == "dno":
+            # Direct DNO name - skip geocoding
+            dno_data = payload.get("dno", {})
+            dno_name = dno_data.get("dno_name", "").strip()
+            
+            _report_step(sync_db, job_id, "Analyzing Input", "running", f"Using DNO: {dno_name}")
+            _report_step(sync_db, job_id, "Analyzing Input", "done", f"DNO: {dno_name}")
+            _report_step(sync_db, job_id, "Checking Cache", "done", "Direct DNO input - skipped")
+        
+        elif payload_type == "coordinates":
+            # Coordinates - use VNB Digital API directly
+            coords_data = payload.get("coordinates", {})
+            lat = coords_data.get("latitude")
+            lon = coords_data.get("longitude")
+            
+            _report_step(sync_db, job_id, "Analyzing Input", "running", f"Coordinates: ({lat}, {lon})")
+            _report_step(sync_db, job_id, "Analyzing Input", "done", f"Lat={lat}, Lon={lon}")
+            
+            # Use VNB Digital API for coordinate lookup
+            _report_step(sync_db, job_id, "External Search", "running", "Querying VNB Digital API by coordinates...")
+            
+            dno_name = vnb_client.resolve_coordinates_to_dno(lat, lon)
+            
+            if dno_name:
+                _report_step(sync_db, job_id, "External Search", "done", f"Found: {dno_name}")
+            else:
+                _report_step(sync_db, job_id, "External Search", "failed", "VNB Digital API returned no results")
+                await _mark_job_failed(job_id, f"Could not find DNO for coordinates: ({lat}, {lon})")
+                return {"status": "not_found", "message": "Could not resolve DNO from coordinates"}
+        
+        else:
+            await _mark_job_failed(job_id, f"Unknown payload type: {payload_type}")
+            return {"status": "error", "message": f"Unknown payload type: {payload_type}"}
+        
+        # ================================================================
+        # Process PDFs for the identified DNO
+        # ================================================================
+        
+        if not dno_name:
+            await _mark_job_failed(job_id, "No DNO name resolved")
+            return {"status": "error", "message": "No DNO name resolved"}
+        
+        all_results = {
+            "dno_name": dno_name,
+            "netzentgelte": {},
+            "hlzf": {},
+        }
+        
+        for year in years:
+            if "netzentgelte" in types:
+                result = _find_and_process_pdf(
+                    sync_db, job_id, dno_name, year,
+                    search_engine, downloader, llm_extractor
+                )
+                if result.get("status") == "success":
+                    all_results["netzentgelte"][year] = result.get("records", [])
+            
+            if "hlzf" in types:
+                result = _extract_hlzf(
+                    sync_db, job_id, dno_name, year,
+                    search_engine, downloader, llm_extractor
+                )
+                if result.get("status") == "success":
+                    all_results["hlzf"][year] = result.get("records", [])
+        
+        # Mark job as completed
+        async with get_db_session() as db:
+            from sqlalchemy import select
+            from app.db.models import SearchJobModel
+            
+            result = await db.execute(
+                select(SearchJobModel).where(SearchJobModel.id == job_id)
+            )
+            job = result.scalar_one_or_none()
+            if job:
+                job.status = "completed"
+                job.result = all_results
+                job.completed_at = datetime.utcnow()
+                await db.commit()
+        
+        log.info("Structured search completed", dno=dno_name)
+        return {"status": "completed", "dno_name": dno_name}
+
+
+def _parse_plz_city(plz_city: str) -> tuple[str, str]:
+    """
+    Parse PLZ + City from various formats.
+    
+    Handles:
+    - "50859 Köln"
+    - "Köln 50859"
+    - "50859, Köln"
+    - "Köln, 50859"
+    """
+    import re
+    
+    # Clean up the input
+    text = plz_city.strip()
+    text = re.sub(r'\s*,\s*', ' ', text)  # Replace comma with space
+    text = re.sub(r'\s+', ' ', text)  # Normalize whitespace
+    
+    # Find the 5-digit PLZ
+    plz_match = re.search(r'\b(\d{5})\b', text)
+    if not plz_match:
+        # No PLZ found, try to guess
+        return "", text
+    
+    plz = plz_match.group(1)
+    
+    # Remove PLZ from text to get city
+    city = text[:plz_match.start()] + text[plz_match.end():]
+    city = city.strip()
+    
+    # Clean up city name (remove extra spaces, leading/trailing punctuation)
+    city = re.sub(r'^[\s,.-]+|[\s,.-]+$', '', city)
+    
+    return plz, city
 
 def _find_and_process_pdf(
     db: "Session",
@@ -409,81 +627,3 @@ async def _mark_job_failed(job_id: str, message: str) -> None:
             job.error_message = message
             job.completed_at = datetime.utcnow()
             await db.commit()
-
-
-async def _process_legacy_search(ctx: dict, payload: dict) -> dict:
-    """Process legacy search request (existing crawl.py endpoints)."""
-    log = logger.bind(job_type=payload.get('type'))
-    log.info("Processing legacy search request")
-    
-    # Initialize services
-    db = ctx.get('db')
-    resolver = DNOResolver(db_session=db)
-    search_engine = SearchEngine()
-    downloader = PDFDownloader()
-    llm_extractor = LLMExtractor()
-    
-    job_type = payload.get('type')
-    
-    if job_type == 'address':
-        zip_code = payload.get('zip', '')
-        city = payload.get('city', '')
-        street = payload.get('street', '')
-        year = payload.get('year', 2025)
-        
-        log.info("Resolving DNO from address", zip=zip_code, city=city)
-        
-        dno_name = resolver.resolve(zip_code, city, street, search_engine, llm_extractor)
-        
-        if not dno_name:
-            return {
-                "status": "not_found",
-                "message": f"Could not find DNO for address: {zip_code} {city}",
-            }
-        
-        # Find and process PDF
-        url = search_engine.find_pdf_url(dno_name, year)
-        if url:
-            pdf_path = downloader.download(url, dno_name, year)
-            if pdf_path:
-                data = extract_netzentgelte_from_pdf(pdf_path)
-                if not data:
-                    data = llm_extractor.extract_netzentgelte(pdf_path, dno_name, year)
-                
-                return {
-                    "status": "success",
-                    "dno": dno_name,
-                    "year": year,
-                    "records": data,
-                    "resolved_dno": dno_name,
-                    "input": {"zip": zip_code, "city": city, "street": street},
-                }
-        
-        return {"status": "not_found", "resolved_dno": dno_name}
-        
-    elif job_type == 'batch_dno':
-        dno_names = payload.get('dno_names', [])
-        year = payload.get('year', 2025)
-        
-        log.info("Processing DNO batch", count=len(dno_names))
-        
-        results = []
-        for dno in dno_names:
-            url = search_engine.find_pdf_url(dno, year)
-            if url:
-                pdf_path = downloader.download(url, dno, year)
-                if pdf_path:
-                    data = extract_netzentgelte_from_pdf(pdf_path)
-                    results.append({"dno": dno, "status": "success", "records": data})
-                    continue
-            results.append({"dno": dno, "status": "not_found"})
-        
-        return {
-            "status": "completed",
-            "total": len(dno_names),
-            "results": results,
-        }
-        
-    else:
-        log.error("Unknown job type", job_type=job_type)
-        return {"status": "error", "message": f"Unknown job type: {job_type}"}

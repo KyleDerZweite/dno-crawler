@@ -187,6 +187,28 @@ export interface SearchJobListItem {
   completed_at?: string;
 }
 
+// Batch search payload types
+export interface AddressPayload {
+  street: string;
+  plz_city: string;
+}
+
+export interface DNOPayload {
+  dno_name: string;
+}
+
+export interface CoordinatesPayload {
+  longitude: number;
+  latitude: number;
+}
+
+export interface QueuePayload {
+  type: "address" | "dno" | "coordinates";
+  address?: AddressPayload;
+  dno?: DNOPayload;
+  coordinates?: CoordinatesPayload;
+}
+
 // API functions
 export const api = {
   auth: {
@@ -229,6 +251,17 @@ export const api = {
 
     async cancel(jobId: string): Promise<{ status: string; message: string }> {
       const { data } = await apiClient.post(`/search/${jobId}/cancel`);
+      return data;
+    },
+
+    async createBatch(
+      payloads: QueuePayload[],
+      filters?: SearchFilters
+    ): Promise<{ job_ids: string[]; count: number }> {
+      const { data } = await apiClient.post("/search/batch", {
+        payloads,
+        filters: filters || { years: [2024, 2025], types: ["netzentgelte", "hlzf"] },
+      });
       return data;
     },
   },

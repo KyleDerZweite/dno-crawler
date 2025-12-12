@@ -1,9 +1,15 @@
 """
-DNO Resolver service for address → DNO name resolution.
+DNO Resolver service for address → DNO name caching.
 
-Resolves addresses to DNO names using:
-1. Database lookup for known address → DNO mappings
-2. Web search + LLM extraction for unknown addresses
+PRIMARY DNO RESOLUTION is now handled by VNBDigitalClient (app.services.vnb_digital).
+
+This module provides:
+1. Database caching layer for address → DNO mappings
+2. Cache lookup methods used by search jobs before calling VNB Digital API
+3. Cache save methods for storing new resolutions
+
+DEPRECATED: The resolve() method with search_engine/llm_extractor is no longer used.
+Use VNBDigitalClient.resolve_address_to_dno() for primary DNO resolution.
 """
 
 import re
