@@ -31,61 +31,6 @@ class LLMExtractor:
         """Initialize the LLM extractor."""
         self.log = logger.bind(component="LLMExtractor")
     
-    def extract_dno_name(
-        self, 
-        search_results: list[dict], 
-        zip_code: str
-    ) -> Optional[str]:
-        """
-        DEPRECATED: Use VNBDigitalClient from app.services.vnb_digital instead.
-        
-        This method is no longer used. DNO name resolution is now handled by the
-        VNB Digital GraphQL API which provides direct, reliable lookups.
-        
-        Use LLM to analyze search snippets and identify the DNO.
-        
-        Args:
-            search_results: List of search result dicts with 'title', 'body'
-            zip_code: Postal code being searched
-            
-        Returns:
-            DNO name if identified, None otherwise
-        """
-        import warnings
-        warnings.warn(
-            "extract_dno_name is deprecated. Use VNBDigitalClient.resolve_address_to_dno() instead.",
-            DeprecationWarning,
-            stacklevel=2
-        )
-        
-        if not search_results:
-            return None
-        
-        snippets = "\n".join([
-            f"- {r.get('title', '')}: {r.get('body', '')}" 
-            for r in search_results
-        ])
-        
-        prompt = f"""Analyze these search results for the German Grid Operator (Netzbetreiber) for ZIP {zip_code}.
-Return ONLY the company name, nothing else. If unsure, return "UNKNOWN".
-
-Results:
-{snippets}"""
-        
-        response = self.call_ollama(prompt, model=settings.ollama_fast_model)
-        
-        if response and response.strip() != "UNKNOWN":
-            # Clean up the response
-            name = response.strip().strip('"').strip("'")
-            # Remove any thinking or extra text
-            if "\n" in name:
-                name = name.split("\n")[0]
-            # Basic validation - should be a reasonable company name
-            if len(name) > 2 and len(name) < 100:
-                return name
-        
-        return None
-    
     def extract_netzentgelte(
         self, 
         pdf_path: Path, 

@@ -1,8 +1,8 @@
 """
 Search job handler for the ARQ worker.
 
-This job orchestrates the services layer for search requests.
-Supports both legacy crawl jobs and new natural language search with Timeline UI.
+Orchestrates search requests using VNB Digital API for DNO resolution
+and DDGS for PDF discovery. Supports structured batch search and NL search.
 """
 
 from datetime import datetime

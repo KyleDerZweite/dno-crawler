@@ -1,15 +1,12 @@
 """
 DNO Resolver service for address → DNO name caching.
 
-PRIMARY DNO RESOLUTION is now handled by VNBDigitalClient (app.services.vnb_digital).
+Provides database caching layer for address → DNO mappings:
+- check_address_mapping(): Lookup existing cached mapping
+- save_address_mapping(): Store new mapping in cache
+- normalize_street(): Normalize street names for cache keys
 
-This module provides:
-1. Database caching layer for address → DNO mappings
-2. Cache lookup methods used by search jobs before calling VNB Digital API
-3. Cache save methods for storing new resolutions
-
-DEPRECATED: The resolve() method with search_engine/llm_extractor is no longer used.
-Use VNBDigitalClient.resolve_address_to_dno() for primary DNO resolution.
+NOTE: Primary DNO resolution is handled by VNBDigitalClient (app.services.vnb_digital).
 """
 
 import re
@@ -43,57 +40,6 @@ class DNOResolver:
         """
         self.db = db_session
         self.log = logger.bind(component="DNOResolver")
-    
-    def resolve(
-        self, 
-        zip_code: str, 
-        city: str, 
-        street: str,
-        search_engine: Optional["SearchEngine"] = None,
-        llm_extractor: Optional["LLMExtractor"] = None,
-    ) -> Optional[str]:
-        """
-        Determine the DNO name from an address.
-        
-        Args:
-            zip_code: German postal code (PLZ)
-            city: City name
-            street: Street name
-            search_engine: Optional SearchEngine instance for web search
-            llm_extractor: Optional LLMExtractor instance for result analysis
-            
-        Returns:
-            DNO name if found, None otherwise
-        """
-        log = self.log.bind(zip_code=zip_code, city=city)
-        
-        # 1. Normalize & Check existing address mapping
-        norm_street = self.normalize_street(street)
-        existing_dno = self.check_address_mapping(zip_code, norm_street)
-        if existing_dno:
-            log.info("Found existing address mapping", dno=existing_dno)
-            return existing_dno
-        
-        # 2. If we have a search engine, perform web search
-        if search_engine and llm_extractor:
-            query = f"Netzbetreiber Strom {zip_code} {city} {street}"
-            log.info("Searching external", query=query)
-            
-            results = search_engine.safe_search(query)
-            if not results:
-                log.warning("No search results found")
-                return None
-            
-            # 3. LLM extraction
-            dno_name = llm_extractor.extract_dno_name(results, zip_code)
-            if dno_name:
-                self.save_address_mapping(zip_code, norm_street, dno_name)
-                log.info("DNO resolved", dno=dno_name)
-                return dno_name
-            
-            log.warning("Could not extract DNO from results")
-        
-        return None
     
     def normalize_street(self, street: str) -> str:
         """Normalize street name for cache key."""
