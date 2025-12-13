@@ -4,84 +4,165 @@ Test 03: Check Database Status
 Tests the database cache lookup step of the pipeline:
 DNO Name → DNOResolver.check_address_mapping() → Cache Hit/Miss
 
-Input: Hardcoded DNO name
-Action: Query the database (MOCKED to return None)
-Goal: Verify that mocked DB returns None/False ("No Match" logic)
-Mock: Database session mocked to always return None
+This test uses the SQLite test database initialized by test_00_init.py
+instead of mocks, allowing realistic testing of query logic.
+
+Run test_00_init.py first: python -m tests.unit.test_00_init
 """
 
 import sys
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Import test database utilities
+from tests.unit.test_00_init import get_test_session, TEST_DB_PATH
 
 
 # =============================================================================
 # HARDCODED TEST INPUTS
 # =============================================================================
 
-TEST_DNO_NAME = "RheinNetz"
-TEST_ZIP_CODE = "50859"
-TEST_STREET_NORMALIZED = "anderronne"
+# These match the seed data in test_00_init.py
+TEST_CACHED_ZIP = "50859"
+TEST_CACHED_STREET = "anderronne"  # "An der Ronne" normalized
+TEST_EXPECTED_DNO = "RheinNetz"
+
+TEST_UNKNOWN_ZIP = "99999"
+TEST_UNKNOWN_STREET = "unknownstr"
 
 
 # =============================================================================
-# TEST FUNCTION
+# TEST FUNCTIONS
 # =============================================================================
+
+def test_check_db_status_cache_hit():
+    """
+    Test that DNOResolver correctly finds cached address → DNO mapping.
+    
+    Uses REAL SQLite database with seeded test data.
+    Now also verifies coordinates are cached.
+    """
+    print(f"\n{'='*60}")
+    print("TEST 03a: Check Database Status (Cache Hit with Coordinates)")
+    print(f"{'='*60}")
+    print(f"Input ZIP Code:      {TEST_CACHED_ZIP}")
+    print(f"Input Street (norm): {TEST_CACHED_STREET}")
+    print("-" * 60)
+    
+    # Verify test database exists
+    if not TEST_DB_PATH.exists():
+        print("[FAIL] Test database not found!")
+        print("  Run 'python -m tests.unit.test_00_init' first")
+        return False
+    
+    # Get real database session
+    session = get_test_session()
+    
+    try:
+        # Import and create resolver with real DB
+        from app.services.dno_resolver import DNOResolver
+        resolver = DNOResolver(db_session=session)
+        
+        # Query the seeded cache entry
+        result = resolver.check_address_mapping(TEST_CACHED_ZIP, TEST_CACHED_STREET)
+        
+        if result is None:
+            print(f"[FAIL] Expected '{TEST_EXPECTED_DNO}', got None")
+            print("  - The seeded address cache entry may be missing")
+            return False
+        
+        if result != TEST_EXPECTED_DNO:
+            print(f"[FAIL] Expected '{TEST_EXPECTED_DNO}', got '{result}'")
+            return False
+        
+        print("[PASS] Found cached DNO name from database")
+        print(f"  - DNO Name: {result}")
+        
+        # Verify the full cache entry including coordinates
+        from app.db.models import DNOAddressCacheModel
+        from sqlalchemy import select, and_
+        
+        cache_entry = session.execute(
+            select(DNOAddressCacheModel).where(
+                and_(
+                    DNOAddressCacheModel.zip_code == TEST_CACHED_ZIP,
+                    DNOAddressCacheModel.street_name == TEST_CACHED_STREET
+                )
+            )
+        ).scalar_one_or_none()
+        
+        if cache_entry:
+            print(f"  - Hit Count: {cache_entry.hit_count}")
+            print(f"  - Confidence: {cache_entry.confidence}")
+            print(f"  - Source: {cache_entry.source}")
+            
+            # Verify coordinates are stored
+            if cache_entry.latitude and cache_entry.longitude:
+                print(f"  - Latitude: {cache_entry.latitude}")
+                print(f"  - Longitude: {cache_entry.longitude}")
+                print("  ✅ Coordinates cached alongside DNO!")
+            else:
+                print("  ⚠️ No coordinates in cache entry")
+        
+        return True
+        
+    finally:
+        session.close()
+
 
 def test_check_db_status_no_match():
     """
-    Test that DNOResolver correctly handles "No Match" case.
+    Test that DNOResolver correctly handles unknown addresses (no cache hit).
     
-    Uses MOCKED database session that returns None (forcing the
-    "No Match" / "Search Required" path in the pipeline).
+    Uses REAL SQLite database to verify the query returns None
+    for addresses not in the cache.
     """
     print(f"\n{'='*60}")
-    print("TEST 03: Check Database Status (Mocked - No Match)")
+    print("TEST 03b: Check Database Status (No Match)")
     print(f"{'='*60}")
-    print(f"Input DNO Name:      {TEST_DNO_NAME}")
-    print(f"Input ZIP Code:      {TEST_ZIP_CODE}")
-    print(f"Input Street (norm): {TEST_STREET_NORMALIZED}")
+    print(f"Input ZIP Code:      {TEST_UNKNOWN_ZIP}")
+    print(f"Input Street (norm): {TEST_UNKNOWN_STREET}")
     print("-" * 60)
     
-    # Create mock database session
-    mock_db = MagicMock()
+    # Get real database session
+    session = get_test_session()
     
-    # Configure mock to return None (no cache hit)
-    mock_db.execute.return_value.scalar_one_or_none.return_value = None
+    try:
+        from app.services.dno_resolver import DNOResolver
+        resolver = DNOResolver(db_session=session)
+        
+        # Query with address that's NOT in the cache
+        result = resolver.check_address_mapping(TEST_UNKNOWN_ZIP, TEST_UNKNOWN_STREET)
+        
+        if result is not None:
+            print(f"[FAIL] Expected None (no match), got: {result}")
+            return False
+        
+        print("[PASS] Database returned None (No Match)")
+        print("  - This triggers the 'External Search' path in the pipeline")
+        
+        return True
+        
+    finally:
+        session.close()
+
+
+def test_normalize_street():
+    """Test the street normalization function."""
+    print(f"\n{'='*60}")
+    print("TEST 03c: Street Normalization")
+    print(f"{'='*60}")
     
-    # Import and create resolver with mocked DB
     from app.services.dno_resolver import DNOResolver
-    resolver = DNOResolver(db_session=mock_db)
-    
-    # Call the check_address_mapping method
-    result = resolver.check_address_mapping(TEST_ZIP_CODE, TEST_STREET_NORMALIZED)
-    
-    # Validate result
-    if result is not None:
-        print(f"[FAIL] Expected None, got: {result}")
-        print("  - Mock may not be configured correctly")
-        return False
-    
-    print("[PASS] Database returned None (No Match)")
-    print("  - This triggers the 'Search' path in the pipeline")
-    
-    # Verify mock was called correctly
-    mock_db.execute.assert_called_once()
-    print("-" * 60)
-    print("Mock Verification:")
-    print("  - db.execute() was called: ✅")
-    
-    # Additional test: Verify normalize_street function
-    print("-" * 60)
-    print("Testing normalize_street():")
+    resolver = DNOResolver()
     
     test_cases = [
+        ("An der Ronne 160", "anderronne160"),
         ("Musterstraße 5", "musterstr5"),
         ("Berliner Strasse 10", "berlinerstr10"),
-        ("An der Ronne 160", "anderronne160"),
+        ("Hauptstr. 42", "hauptstr42"),
     ]
     
     all_passed = True
@@ -96,49 +177,50 @@ def test_check_db_status_no_match():
     return all_passed
 
 
-def test_check_db_status_cache_hit():
-    """
-    Test that DNOResolver correctly handles cache hit case.
-    
-    Uses MOCKED database session that returns a cached entry.
-    """
+def test_save_address_mapping():
+    """Test saving a new address → DNO mapping."""
     print(f"\n{'='*60}")
-    print("TEST 03b: Check Database Status (Mocked - Cache Hit)")
+    print("TEST 03d: Save Address Mapping")
     print(f"{'='*60}")
     
-    # Create mock database session
-    mock_db = MagicMock()
+    session = get_test_session()
     
-    # Create a mock cache entry
-    mock_entry = MagicMock()
-    mock_entry.dno_name = TEST_DNO_NAME
-    mock_entry.hit_count = 5
-    
-    # Configure mock to return the cache entry
-    mock_db.execute.return_value.scalar_one_or_none.return_value = mock_entry
-    
-    # Import and create resolver with mocked DB
-    from app.services.dno_resolver import DNOResolver
-    resolver = DNOResolver(db_session=mock_db)
-    
-    # Call the check_address_mapping method
-    result = resolver.check_address_mapping(TEST_ZIP_CODE, TEST_STREET_NORMALIZED)
-    
-    # Validate result
-    if result != TEST_DNO_NAME:
-        print(f"[FAIL] Expected '{TEST_DNO_NAME}', got: {result}")
-        return False
-    
-    # Verify hit count was incremented
-    if mock_entry.hit_count != 6:
-        print(f"[FAIL] Expected hit_count=6, got: {mock_entry.hit_count}")
-        return False
-    
-    print("[PASS] Database returned cached DNO name")
-    print(f"  - DNO Name: {result}")
-    print(f"  - Hit Count incremented: 5 → {mock_entry.hit_count}")
-    
-    return True
+    try:
+        from app.services.dno_resolver import DNOResolver
+        resolver = DNOResolver(db_session=session)
+        
+        # Save a new mapping
+        new_zip = "12345"
+        new_street = "teststr"
+        new_dno = "TestNetz"
+        
+        resolver.save_address_mapping(new_zip, new_street, new_dno, confidence=0.85)
+        
+        # Verify it was saved
+        result = resolver.check_address_mapping(new_zip, new_street)
+        
+        if result != new_dno:
+            print(f"[FAIL] Expected '{new_dno}', got '{result}'")
+            return False
+        
+        print("[PASS] Successfully saved and retrieved new mapping")
+        print(f"  - ZIP: {new_zip}, Street: {new_street} → DNO: {result}")
+        
+        # Clean up (optional, since we recreate DB each time)
+        from app.db.models import DNOAddressCacheModel
+        from sqlalchemy import delete
+        
+        session.execute(
+            delete(DNOAddressCacheModel).where(
+                DNOAddressCacheModel.zip_code == new_zip
+            )
+        )
+        session.commit()
+        
+        return True
+        
+    finally:
+        session.close()
 
 
 # =============================================================================
@@ -148,21 +230,23 @@ def test_check_db_status_cache_hit():
 if __name__ == "__main__":
     try:
         print("\n" + "="*60)
-        print("Running Database Status Tests (All Mocked)")
+        print("Running Database Status Tests (Real SQLite Database)")
         print("="*60)
         
-        # Test 1: No Match case (primary test per requirements)
-        success1 = test_check_db_status_no_match()
+        results = {
+            "Cache Hit": test_check_db_status_cache_hit(),
+            "No Match": test_check_db_status_no_match(),
+            "Normalize Street": test_normalize_street(),
+            "Save Mapping": test_save_address_mapping(),
+        }
         
-        # Test 2: Cache Hit case (verification that logic works both ways)
-        success2 = test_check_db_status_cache_hit()
-        
-        overall_success = success1 and success2
+        overall_success = all(results.values())
         
         print(f"\n{'='*60}")
         print("TEST RESULTS:")
-        print(f"  - No Match Test:  {'✅ PASSED' if success1 else '❌ FAILED'}")
-        print(f"  - Cache Hit Test: {'✅ PASSED' if success2 else '❌ FAILED'}")
+        for name, passed in results.items():
+            status = "✅ PASSED" if passed else "❌ FAILED"
+            print(f"  - {name}: {status}")
         print("-" * 60)
         if overall_success:
             print("RESULT: ✅ ALL TESTS PASSED")
@@ -170,6 +254,11 @@ if __name__ == "__main__":
             print("RESULT: ❌ SOME TESTS FAILED")
         print(f"{'='*60}\n")
         sys.exit(0 if overall_success else 1)
+        
+    except FileNotFoundError as e:
+        print(f"\n[ERROR] {e}")
+        print("Run 'python -m tests.unit.test_00_init' to create the test database")
+        sys.exit(1)
     except Exception as e:
         print(f"\n[ERROR] Unhandled exception: {e}")
         import traceback

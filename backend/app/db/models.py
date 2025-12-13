@@ -67,10 +67,12 @@ class DNOModel(Base, TimestampMixin):
 
 
 class DNOAddressCacheModel(Base, TimestampMixin):
-    """Cache for address → DNO mappings.
+    """Cache for address → coordinates + DNO mappings.
     
-    Used by SearchAgent to avoid redundant external searches.
-    Key: (zip_code, street_name) → dno_name
+    Used to avoid redundant external API calls. A single cache entry
+    stores both the geocoding result (lat/lon) and the DNO resolution.
+    
+    Key: (zip_code, street_name) → {latitude, longitude, dno_name}
     """
     __tablename__ = "dno_address_cache"
     __table_args__ = (
@@ -80,9 +82,17 @@ class DNOAddressCacheModel(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     zip_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     street_name: Mapped[str] = mapped_column(String(255), nullable=False)  # Normalized
+    
+    # Geocoding result
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    
+    # DNO resolution result
     dno_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    
+    # Metadata
     confidence: Mapped[float] = mapped_column(Float, default=1.0)  # 0.0-1.0
-    source: Mapped[str | None] = mapped_column(String(50))  # "ddgs", "manual", etc.
+    source: Mapped[str | None] = mapped_column(String(50))  # "vnb_digital", "manual", etc.
     hit_count: Mapped[int] = mapped_column(Integer, default=1)  # Times this cache was used
 
 

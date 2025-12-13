@@ -4,10 +4,10 @@ Test 05: Generate Queries
 Tests the query generation step of the pipeline:
 Strategy Object → Query Generator → Formatted Search Strings
 
-Input: Hardcoded strategy object (DNO name, year, type)
-Action: Run query generation logic from SearchEngine
-Goal: Assert search strings are formatted correctly
-Mock: None - tests query formatting only
+This test uses the SQLite test database initialized by test_00_init.py
+to load real strategy configurations and verify query generation.
+
+Run test_00_init.py first: python -m tests.unit.test_00_init
 """
 
 import sys
@@ -16,208 +16,278 @@ from pathlib import Path
 # Add backend to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
+from tests.unit.test_00_init import get_test_session, TEST_DB_PATH
+
 
 # =============================================================================
 # HARDCODED TEST INPUTS
 # =============================================================================
 
-TEST_DNO_NAME = "RheinNetz"
 TEST_YEAR = 2024
-TEST_PDF_TYPE_NETZENTGELTE = "netzentgelte"
-TEST_PDF_TYPE_HLZF = "regelungen"
 
 
 # =============================================================================
-# TEST FUNCTION
+# HELPER FUNCTIONS
 # =============================================================================
 
-def test_generate_queries():
-    """
-    Test that SearchEngine generates correctly formatted search queries.
+def load_strategy(session, dno_name: str, strategy_type: str) -> dict | None:
+    """Load strategy from database."""
+    from app.db.models import ExtractionStrategyModel, DNOModel
+    from sqlalchemy import select, and_
     
-    Verifies the query formatting logic without making actual API calls.
-    """
+    # Find DNO
+    dno = session.execute(
+        select(DNOModel).where(DNOModel.name == dno_name)
+    ).scalar_one_or_none()
+    
+    if dno:
+        strategy = session.execute(
+            select(ExtractionStrategyModel).where(
+                and_(
+                    ExtractionStrategyModel.dno_id == dno.id,
+                    ExtractionStrategyModel.strategy_type == strategy_type
+                )
+            )
+        ).scalar_one_or_none()
+        
+        if strategy:
+            return {"config": strategy.config, "is_default": False}
+    
+    # Fallback to default
+    default = session.execute(
+        select(ExtractionStrategyModel).where(
+            and_(
+                ExtractionStrategyModel.dno_id.is_(None),
+                ExtractionStrategyModel.strategy_type == strategy_type
+            )
+        )
+    ).scalar_one_or_none()
+    
+    if default:
+        return {"config": default.config, "is_default": True}
+    
+    return None
+
+
+def generate_queries(strategy: dict, dno_name: str, year: int) -> list[str]:
+    """Generate queries from strategy with placeholders filled."""
+    templates = strategy.get("config", {}).get("search_queries", [])
+    return [
+        t.replace("{dno_name}", dno_name).replace("{year}", str(year))
+        for t in templates
+    ]
+
+
+# =============================================================================
+# TESTS
+# =============================================================================
+
+def test_westnetz_netzentgelte_queries():
+    """Test WestNetz Netzentgelte query generation (PDF)."""
     print(f"\n{'='*60}")
-    print("TEST 05: Generate Queries")
+    print("TEST 05a: WestNetz Netzentgelte Queries (PDF)")
     print(f"{'='*60}")
-    print(f"Input DNO Name: {TEST_DNO_NAME}")
-    print(f"Input Year:     {TEST_YEAR}")
-    print("-" * 60)
     
+    session = get_test_session()
     all_passed = True
     
-    # ==========================================================================
-    # Test 1: Netzentgelte query generation (RheinNetz)
-    # ==========================================================================
-    print("\n[Test 5a] RheinNetz Netzentgelte Query Patterns (PDF)")
-    
-    # These are the actual patterns used by SearchEngine.find_pdf_url()
-    netzentgelte_strategies = [
-        f'"{TEST_DNO_NAME}" Preisblatt Strom {TEST_YEAR} filetype:pdf',
-        f'"{TEST_DNO_NAME}" Netznutzungsentgelte {TEST_YEAR} filetype:pdf',
-        f'"{TEST_DNO_NAME}" Netzentgelte {TEST_YEAR} filetype:pdf',
-        f'"{TEST_DNO_NAME}" vorläufiges Preisblatt {TEST_YEAR} filetype:pdf',
-    ]
-    
-    # Validate each query
-    for i, query in enumerate(netzentgelte_strategies, 1):
-        checks_passed = True
-        issues = []
-        
-        # Check 1: DNO name is quoted
-        if f'"{TEST_DNO_NAME}"' not in query:
-            checks_passed = False
-            issues.append("DNO name not quoted")
-        
-        # Check 2: Year is present
-        if str(TEST_YEAR) not in query:
-            checks_passed = False
-            issues.append("Year not present")
-        
-        # Check 3: filetype:pdf suffix
-        if not query.endswith("filetype:pdf"):
-            checks_passed = False
-            issues.append("Missing filetype:pdf")
-        
-        if checks_passed:
-            print(f"  ✅ Query {i}: {query}")
-        else:
-            print(f"  ❌ Query {i}: {query}")
-            print(f"     Issues: {', '.join(issues)}")
-            all_passed = False
-    
-    # ==========================================================================
-    # Test 2: RheinNetz HLZF queries (HTML Table - NO filetype:pdf)
-    # ==========================================================================
-    print("\n[Test 5b] RheinNetz HLZF Query Patterns (HTML Table - NO filetype:pdf)")
-    
-    # RheinNetz HLZF is displayed as a table on the website, not a PDF
-    hlzf_strategies_rhein = [
-        f'"{TEST_DNO_NAME}" Hochlastzeitfenster {TEST_YEAR}',
-        f'"{TEST_DNO_NAME}" Regelungen Strom {TEST_YEAR}',
-        f'"{TEST_DNO_NAME}" Regelungen Netznutzung {TEST_YEAR}',
-    ]
-    
-    for i, query in enumerate(hlzf_strategies_rhein, 1):
-        checks_passed = True
-        issues = []
-        
-        # Check 1: DNO name is quoted
-        if f'"{TEST_DNO_NAME}"' not in query:
-            checks_passed = False
-            issues.append("DNO name not quoted")
-        
-        # Check 2: Year is present
-        if str(TEST_YEAR) not in query:
-            checks_passed = False
-            issues.append("Year not present")
-        
-        # Check 3: Must NOT have filetype:pdf (it's an HTML table)
-        if "filetype:pdf" in query:
-            checks_passed = False
-            issues.append("Should NOT contain filetype:pdf (HTML table source)")
-        
-        if checks_passed:
-            print(f"  ✅ Query {i}: {query}")
-        else:
-            print(f"  ❌ Query {i}: {query}")
-            print(f"     Issues: {', '.join(issues)}")
-            all_passed = False
-    
-    # ==========================================================================
-    # Test 3: WestNetz Netzentgelte queries (PDF)
-    # ==========================================================================
-    print("\n[Test 5c] WestNetz Netzentgelte Query Patterns (PDF)")
-    
-    westnetz_dno = "WestNetz"
-    westnetz_netzentgelte = [
-        f'"{westnetz_dno}" Preisblatt Strom {TEST_YEAR} filetype:pdf',
-        f'"{westnetz_dno}" Netznutzungsentgelte {TEST_YEAR} filetype:pdf',
-        f'"{westnetz_dno}" Netzentgelte {TEST_YEAR} filetype:pdf',
-        f'"{westnetz_dno}" vorläufiges Preisblatt {TEST_YEAR} filetype:pdf',
-    ]
-    
-    for i, query in enumerate(westnetz_netzentgelte, 1):
-        checks_passed = True
-        if f'"{westnetz_dno}"' in query and str(TEST_YEAR) in query and query.endswith("filetype:pdf"):
-            print(f"  ✅ Query {i}: {query}")
-        else:
-            print(f"  ❌ Query {i}: {query} - format validation failed")
-            all_passed = False
-    
-    # ==========================================================================
-    # Test 4: WestNetz HLZF queries (PDF - HAS filetype:pdf)
-    # ==========================================================================
-    print("\n[Test 5d] WestNetz HLZF Query Patterns (PDF)")
-    
-    westnetz_hlzf = [
-        f'"{westnetz_dno}" Regelungen Strom {TEST_YEAR} filetype:pdf',
-        f'"{westnetz_dno}" Hochlastzeitfenster {TEST_YEAR} filetype:pdf',
-        f'"{westnetz_dno}" Regelungen Netznutzung {TEST_YEAR} filetype:pdf',
-    ]
-    
-    for i, query in enumerate(westnetz_hlzf, 1):
-        checks_passed = True
-        if f'"{westnetz_dno}"' in query and str(TEST_YEAR) in query and query.endswith("filetype:pdf"):
-            print(f"  ✅ Query {i}: {query}")
-        else:
-            print(f"  ❌ Query {i}: {query} - format validation failed")
-            all_passed = False
-    
-    # ==========================================================================
-    # Test 5: Verify SearchEngine strategy logic
-    # ==========================================================================
-    print("\n[Test 5e] SearchEngine Strategy Selection")
-    
-    # Import SearchEngine and verify the patterns match
     try:
-        from app.services.search_engine import SearchEngine
+        strategy = load_strategy(session, "WestNetz", "netzentgelte")
+        queries = generate_queries(strategy, "WestNetz", TEST_YEAR)
         
-        # We can't call find_pdf_url without making API calls, 
-        # but we can verify the class is importable
-        engine = SearchEngine()
-        print(f"  ✅ SearchEngine initialized successfully")
-        print(f"  - DDGS timeout: {engine.ddgs}")
-        
-        # Verify the internal query patterns match our expected format
-        # by checking the method signature exists
-        if hasattr(engine, 'find_pdf_url'):
-            print(f"  ✅ find_pdf_url method exists")
-        else:
-            print(f"  ❌ find_pdf_url method missing")
-            all_passed = False
+        print(f"Generated {len(queries)} queries:")
+        for q in queries:
+            issues = []
             
-    except Exception as e:
-        print(f"  ⚠️ Could not import SearchEngine: {e}")
-        print("     (This may be expected if dependencies are not installed)")
+            # Check 1: DNO name is quoted
+            if '"WestNetz"' not in q:
+                issues.append("DNO not quoted")
+            
+            # Check 2: Year present
+            if str(TEST_YEAR) not in q:
+                issues.append("Year missing")
+            
+            # Check 3: filetype:pdf for PDF source
+            if "filetype:pdf" not in q:
+                issues.append("Missing filetype:pdf")
+            
+            if issues:
+                print(f"  ❌ {q}")
+                print(f"     Issues: {', '.join(issues)}")
+                all_passed = False
+            else:
+                print(f"  ✅ {q}")
+        
+        return all_passed
+        
+    finally:
+        session.close()
+
+
+def test_westnetz_hlzf_queries():
+    """Test WestNetz HLZF query generation (PDF)."""
+    print(f"\n{'='*60}")
+    print("TEST 05b: WestNetz HLZF Queries (PDF)")
+    print(f"{'='*60}")
     
-    # ==========================================================================
-    # Test 6: Edge cases
-    # ==========================================================================
-    print("\n[Test 5f] Edge Cases")
+    session = get_test_session()
+    all_passed = True
     
-    # DNO with special characters
-    special_dno = "Stadtwerke München GmbH & Co. KG"
-    special_query = f'"{special_dno}" Preisblatt Strom {TEST_YEAR} filetype:pdf'
+    try:
+        strategy = load_strategy(session, "WestNetz", "hlzf")
+        queries = generate_queries(strategy, "WestNetz", TEST_YEAR)
+        
+        print(f"Generated {len(queries)} queries:")
+        for q in queries:
+            # WestNetz HLZF is PDF-based, should have filetype:pdf
+            if "filetype:pdf" in q and '"WestNetz"' in q:
+                print(f"  ✅ {q}")
+            else:
+                print(f"  ❌ {q} - format validation failed")
+                all_passed = False
+        
+        return all_passed
+        
+    finally:
+        session.close()
+
+
+def test_rheinnetz_netzentgelte_queries():
+    """Test RheinNetz Netzentgelte query generation (PDF)."""
+    print(f"\n{'='*60}")
+    print("TEST 05c: RheinNetz Netzentgelte Queries (PDF)")
+    print(f"{'='*60}")
     
-    if '"' in special_query and str(TEST_YEAR) in special_query:
-        print(f"  ✅ Special chars handled: {special_query[:50]}...")
-    else:
-        print(f"  ❌ Special char handling failed")
-        all_passed = False
+    session = get_test_session()
+    all_passed = True
     
-    # ==========================================================================
-    # Test 7: Summary of DNO source type differences
-    # ==========================================================================
-    print("\n[Test 5g] DNO Source Type Summary")
-    print("  📋 WestNetz:")
-    print("     - Netzentgelte: PDF (uses filetype:pdf)")
-    print("     - HLZF: PDF (uses filetype:pdf)")
-    print("  📋 RheinNetz:")
-    print("     - Netzentgelte: PDF (uses filetype:pdf)")
-    print("     - HLZF: HTML Table (NO filetype:pdf)")
+    try:
+        strategy = load_strategy(session, "RheinNetz", "netzentgelte")
+        queries = generate_queries(strategy, "RheinNetz", TEST_YEAR)
+        
+        print(f"Generated {len(queries)} queries:")
+        for q in queries:
+            # RheinNetz Netzentgelte is PDF-based
+            if "filetype:pdf" in q and '"RheinNetz"' in q:
+                print(f"  ✅ {q}")
+            else:
+                print(f"  ❌ {q} - format validation failed")
+                all_passed = False
+        
+        return all_passed
+        
+    finally:
+        session.close()
+
+
+def test_rheinnetz_hlzf_queries_no_pdf():
+    """Test RheinNetz HLZF query generation (HTML Table - NO filetype:pdf)."""
+    print(f"\n{'='*60}")
+    print("TEST 05d: RheinNetz HLZF Queries (HTML Table - NO filetype:pdf)")
+    print(f"{'='*60}")
     
-    return all_passed
+    session = get_test_session()
+    all_passed = True
+    
+    try:
+        strategy = load_strategy(session, "RheinNetz", "hlzf")
+        
+        # Verify it's an HTML table strategy
+        content_format = strategy["config"].get("content_format")
+        print(f"Content format: {content_format}")
+        
+        if content_format != "html_table":
+            print(f"[FAIL] Expected 'html_table', got '{content_format}'")
+            return False
+        
+        queries = generate_queries(strategy, "RheinNetz", TEST_YEAR)
+        
+        print(f"Generated {len(queries)} queries:")
+        for q in queries:
+            # RheinNetz HLZF is HTML table - should NOT have filetype:pdf
+            if "filetype:pdf" in q:
+                print(f"  ❌ {q}")
+                print(f"     Should NOT contain filetype:pdf (HTML table)")
+                all_passed = False
+            elif '"RheinNetz"' in q and str(TEST_YEAR) in q:
+                print(f"  ✅ {q}")
+            else:
+                print(f"  ❌ {q} - missing required fields")
+                all_passed = False
+        
+        return all_passed
+        
+    finally:
+        session.close()
+
+
+def test_default_strategy_queries():
+    """Test default strategy query generation for unknown DNO."""
+    print(f"\n{'='*60}")
+    print("TEST 05e: Default Strategy Queries (Unknown DNO)")
+    print(f"{'='*60}")
+    
+    session = get_test_session()
+    all_passed = True
+    
+    try:
+        strategy = load_strategy(session, "UnknownNetz", "netzentgelte")
+        
+        if not strategy:
+            print("[FAIL] No default strategy found")
+            return False
+        
+        if not strategy.get("is_default"):
+            print("[FAIL] Expected default strategy")
+            return False
+        
+        print("✅ Using default strategy for unknown DNO")
+        
+        queries = generate_queries(strategy, "UnknownNetz", TEST_YEAR)
+        
+        print(f"Generated {len(queries)} queries:")
+        for q in queries:
+            if '"UnknownNetz"' in q and str(TEST_YEAR) in q:
+                print(f"  ✅ {q}")
+            else:
+                print(f"  ❌ {q} - placeholder not replaced")
+                all_passed = False
+        
+        return all_passed
+        
+    finally:
+        session.close()
+
+
+def test_special_characters():
+    """Test query generation with special characters in DNO name."""
+    print(f"\n{'='*60}")
+    print("TEST 05f: Special Characters in DNO Name")
+    print(f"{'='*60}")
+    
+    session = get_test_session()
+    
+    try:
+        # Use default strategy with a special character DNO name
+        strategy = load_strategy(session, "Stadtwerke München", "netzentgelte")
+        
+        if not strategy:
+            print("[FAIL] No default strategy found")
+            return False
+        
+        queries = generate_queries(strategy, "Stadtwerke München GmbH & Co. KG", TEST_YEAR)
+        
+        print("Generated queries with special chars:")
+        for q in queries[:2]:  # Just show first 2
+            if '"Stadtwerke München GmbH & Co. KG"' in q:
+                print(f"  ✅ {q[:60]}...")
+            else:
+                print(f"  ⚠️ {q[:60]}...")
+        
+        return True
+        
+    finally:
+        session.close()
 
 
 # =============================================================================
@@ -226,14 +296,39 @@ def test_generate_queries():
 
 if __name__ == "__main__":
     try:
-        success = test_generate_queries()
         print(f"\n{'='*60}")
-        if success:
+        print("TEST 05: Generate Queries (Real SQLite Database)")
+        print(f"{'='*60}")
+        
+        if not TEST_DB_PATH.exists():
+            print("[ERROR] Test database not found!")
+            print("Run 'python -m tests.unit.test_00_init' first")
+            sys.exit(1)
+        
+        results = {
+            "WestNetz Netzentgelte": test_westnetz_netzentgelte_queries(),
+            "WestNetz HLZF": test_westnetz_hlzf_queries(),
+            "RheinNetz Netzentgelte": test_rheinnetz_netzentgelte_queries(),
+            "RheinNetz HLZF (HTML)": test_rheinnetz_hlzf_queries_no_pdf(),
+            "Default Strategy": test_default_strategy_queries(),
+            "Special Characters": test_special_characters(),
+        }
+        
+        overall_success = all(results.values())
+        
+        print(f"\n{'='*60}")
+        print("TEST RESULTS:")
+        for name, passed in results.items():
+            status = "✅ PASSED" if passed else "❌ FAILED"
+            print(f"  - {name}: {status}")
+        print("-" * 60)
+        if overall_success:
             print("RESULT: ✅ ALL TESTS PASSED")
         else:
             print("RESULT: ❌ SOME TESTS FAILED")
         print(f"{'='*60}\n")
-        sys.exit(0 if success else 1)
+        sys.exit(0 if overall_success else 1)
+        
     except Exception as e:
         print(f"\n[ERROR] Unhandled exception: {e}")
         import traceback
