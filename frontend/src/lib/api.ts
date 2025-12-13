@@ -228,6 +228,11 @@ export interface SearchJobListItem {
   status: string;
   created_at: string;
   completed_at?: string;
+  // Batch info for grouped display
+  batch_id?: string;
+  batch_total?: number;
+  batch_completed?: number;
+  dno_names?: string[];
 }
 
 // Batch search payload types
@@ -294,6 +299,31 @@ export const api = {
 
     async cancel(jobId: string): Promise<{ status: string; message: string }> {
       const { data } = await apiClient.post(`/search/${jobId}/cancel`);
+      return data;
+    },
+
+    async listJobs(params?: { status?: string; limit?: number }): Promise<{
+      jobs: {
+        job_id: string;
+        input_text: string;
+        status: string;
+        dno_name?: string;
+        year?: number;
+        data_type?: string;
+        current_step?: string;
+        queue_position?: number;
+        batch_id?: string;
+        batch_index?: number;
+        batch_total?: number;
+        created_at?: string;
+        started_at?: string;
+        completed_at?: string;
+        error?: string;
+      }[];
+      total: number;
+      queue_length: number;
+    }> {
+      const { data } = await apiClient.get("/search/jobs", { params });
       return data;
     },
 

@@ -91,10 +91,12 @@ export default function SearchPage() {
     const [isSubmitting, setIsSubmitting] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch search history
+    // Fetch search history (auto-refresh every 5s while running jobs)
     const { data: history, isLoading: historyLoading } = useQuery({
         queryKey: ["search-history"],
         queryFn: () => api.search.getHistory(20),
+        refetchInterval: 5000,  // Refresh every 5 seconds
+        refetchOnWindowFocus: true,  // Refresh when tab becomes active
     });
 
     // Toggle filter
@@ -553,7 +555,14 @@ export default function SearchPage() {
                             <Card
                                 key={item.job_id}
                                 className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => navigate(`/search/${item.job_id}`)}
+                                onClick={() => {
+                                    // Navigate to batch view if it's a batch, otherwise job view
+                                    if (item.batch_id) {
+                                        navigate(`/search/batch/${item.batch_id}`);
+                                    } else {
+                                        navigate(`/search/${item.job_id}`);
+                                    }
+                                }}
                             >
                                 <div className="flex items-center gap-3">
                                     {getStatusIcon(item.status)}
@@ -563,9 +572,16 @@ export default function SearchPage() {
                                             {formatDate(item.created_at)}
                                         </p>
                                     </div>
-                                    <Badge variant="outline" className="shrink-0 text-xs">
-                                        {item.status}
-                                    </Badge>
+                                    {item.batch_id && item.batch_total ? (
+                                        // Show batch progress
+                                        <Badge variant="outline" className="shrink-0 text-xs">
+                                            {item.batch_completed ?? 0}/{item.batch_total}
+                                        </Badge>
+                                    ) : (
+                                        <Badge variant="outline" className="shrink-0 text-xs">
+                                            {item.status}
+                                        </Badge>
+                                    )}
                                 </div>
                             </Card>
                         ))}

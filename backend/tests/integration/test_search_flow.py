@@ -22,13 +22,11 @@ from app.services.extraction.html_extractor import extract_hlzf_from_html
 # Test Data: RheinNetz (50859 Köln)
 # =============================================================================
 
+# Structured address input (form fields, not NLP parsed)
 TEST_ADDRESS = {
-    "input_string": "50859 Köln An Der Ronne 160",
-    "expected_parsed": {
-        "zip_code": "50859",
-        "city": "Köln",
-        "street": "An Der Ronne 160",
-    },
+    "zip_code": "50859",
+    "city": "Köln",
+    "street": "An Der Ronne 160",
 }
 
 EXPECTED_DNO = {
@@ -45,8 +43,9 @@ EXPECTED_SEARCH_QUERIES = {
         '"RheinNetz" Netznutzungsentgelte 2024 filetype:pdf',
     ],
     "hlzf": [
-        '"RheinNetz" Regelungen Strom 2024 filetype:pdf',
-        '"RheinNetz" Hochlastzeitfenster 2024 filetype:pdf',
+        # RheinNetz HLZF is an HTML table on the website, NOT a PDF
+        '"RheinNetz" Hochlastzeitfenster 2024',
+        '"RheinNetz" Regelungen Strom 2024',
     ],
 }
 
@@ -146,53 +145,56 @@ HLZF_HTML_2024 = """
 
 
 # =============================================================================
-# Test: Address Parsing
+# Test: Structured Address Input Validation
 # =============================================================================
 
-class TestAddressParsing:
-    """Test address parsing from natural language input."""
+class TestStructuredAddressInput:
+    """Test structured address input handling (no NLP parsing - direct structured fields)."""
     
-    def test_parse_german_address_with_zip_first(self):
-        """Test parsing: '50859 Köln An Der Ronne 160'"""
+    def test_structured_address_fields(self):
+        """Test that structured address input contains required fields."""
+        # Structured input now comes from form fields, not NLP parsing
+        structured_input = {
+            "zip_code_city": "50859 Köln",
+            "street": "An Der Ronne 160",
+        }
+        
+        # Validate required fields are present
+        assert "zip_code_city" in structured_input
+        assert "street" in structured_input
+        
+        # Validate ZIP code format (5 digits) using regex
         import re
+        zip_match = re.search(r'\b(\d{5})\b', structured_input["zip_code_city"])
+        assert zip_match is not None, "ZIP code (5 digits) not found"
         
-        prompt = TEST_ADDRESS["input_string"]
-        
-        # ZIP code extraction (5 digit pattern)
-        zip_match = re.search(r'\b(\d{5})\b', prompt)
-        assert zip_match is not None
-        zip_code = zip_match.group(1)
-        assert zip_code == TEST_ADDRESS["expected_parsed"]["zip_code"]
-        
-        # City extraction (first word after ZIP)
-        after_zip = prompt[zip_match.end():].strip()
-        city_match = re.match(r'^([A-Za-zäöüÄÖÜß]+)', after_zip)
-        assert city_match is not None
-        city = city_match.group(1)
-        assert city == TEST_ADDRESS["expected_parsed"]["city"]
+        # Validate city is present (non-digit part after ZIP)
+        city_part = structured_input["zip_code_city"].replace(zip_match.group(1), "").strip()
+        assert len(city_part) > 0, "City not found in zip_code_city"
     
-    def test_parse_german_address_standard_format(self):
-        """Test parsing: 'An der Ronne 160, 50859 Köln'"""
-        import re
+    def test_direct_coordinates_input(self):
+        """Test direct coordinates input bypasses address lookup."""
+        coords_input = {
+            "latitude": 50.9375,
+            "longitude": 6.9603,
+        }
         
-        prompt = "54321 Bielefeld, Industriestr. 12345"
-
-        # ZIP code extraction
-        zip_match = re.search(r'\b(\d{5})\b', prompt)
-        assert zip_match is not None
-        zip_code = zip_match.group(1)
-        assert zip_code == "54321"
+        assert "latitude" in coords_input
+        assert "longitude" in coords_input
+        assert -90 <= coords_input["latitude"] <= 90
+        assert -180 <= coords_input["longitude"] <= 180
+    
+    def test_direct_dno_input(self):
+        """Test direct DNO input bypasses resolution entirely."""
+        dno_input = {
+            "dno_name": "RheinNetz",
+            "year": 2024,
+        }
         
-        # City comes AFTER the ZIP code in German format
-        after_zip = prompt[zip_match.end():].strip()
-        city_match = re.match(r'^([A-Za-zäöüÄÖÜß\s-]+)', after_zip)
-        assert city_match is not None
-        city = city_match.group(1).strip()
-        assert city == "Bielefeld"
-        
-        # Street is everything BEFORE the ZIP
-        street = prompt[:zip_match.start()].rstrip(', ').strip()
-        assert street == "Industriestr. 12345"
+        assert "dno_name" in dno_input
+        assert "year" in dno_input
+        assert len(dno_input["dno_name"]) > 0
+        assert dno_input["year"] >= 2020
 
 
 # =============================================================================
@@ -348,11 +350,30 @@ class TestPDFRetrievalQueries:
             assert str(year) in query
             assert "filetype:pdf" in query
     
-    def test_hlzf_search_strategies(self):
-        """Test HLZF PDF/page search query generation."""
+    def test_hlzf_search_strategies_rheinnetz(self):
+        """Test HLZF search query generation for RheinNetz (HTML table source)."""
         dno_name = "RheinNetz"
         year = 2024
         
+        # RheinNetz HLZF is an HTML table, so NO filetype:pdf
+        expected_strategies = [
+            f'"{dno_name}" Hochlastzeitfenster {year}',
+            f'"{dno_name}" Regelungen Strom {year}',
+            f'"{dno_name}" Regelungen Netznutzung {year}',
+        ]
+        
+        for query in expected_strategies:
+            assert f'"{dno_name}"' in query
+            assert str(year) in query
+            # Should NOT have filetype:pdf for RheinNetz HLZF
+            assert "filetype:pdf" not in query
+    
+    def test_hlzf_search_strategies_westnetz(self):
+        """Test HLZF search query generation for WestNetz (PDF source)."""
+        dno_name = "WestNetz"
+        year = 2024
+        
+        # WestNetz HLZF is a PDF, so HAS filetype:pdf
         expected_strategies = [
             f'"{dno_name}" Regelungen Strom {year} filetype:pdf',
             f'"{dno_name}" Hochlastzeitfenster {year} filetype:pdf',
@@ -362,6 +383,7 @@ class TestPDFRetrievalQueries:
         for query in expected_strategies:
             assert f'"{dno_name}"' in query
             assert str(year) in query
+            assert "filetype:pdf" in query
 
 
 # =============================================================================

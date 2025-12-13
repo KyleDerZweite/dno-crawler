@@ -132,6 +132,11 @@ class SearchJobListItem(BaseModel):
     status: str
     created_at: datetime
     completed_at: Optional[datetime] = None
+    # Batch info for grouped display
+    batch_id: Optional[str] = None
+    batch_total: Optional[int] = None
+    batch_completed: Optional[int] = None  # How many in batch are done
+    dno_names: Optional[list[str]] = None  # DNOs in this batch
 
 
 class SearchResponse(BaseModel):
@@ -592,10 +597,80 @@ async def cancel_search(
 
 
 @router.get(
+    "/jobs",
+    summary="List All Search Jobs",
+    description="Get all search jobs for Jobs page. Admins see all, users see their own."
+)
+async def list_search_jobs(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user),
+    status: Optional[str] = Query(default=None, description="Filter by status"),
+    limit: int = Query(default=50, ge=1, le=200),
+):
+    """
+    List all search jobs for the Jobs page.
+    
+    - Admins see all jobs
+    - Regular users see only their own jobs
+    - Jobs sorted by created_at (newest first) with queue position
+    """
+    # Build query
+    query = select(SearchJobModel)
+    
+    # Admin sees all, regular users see only their own
+    if current_user.role != "ADMIN":
+        query = query.where(SearchJobModel.user_id == current_user.id)
+    
+    if status:
+        query = query.where(SearchJobModel.status == status)
+    
+    query = query.order_by(SearchJobModel.created_at.desc()).limit(limit)
+    
+    result = await db.execute(query)
+    jobs = result.scalars().all()
+    
+    # Count total pending/running for queue positions
+    queue_result = await db.execute(
+        select(SearchJobModel)
+        .where(SearchJobModel.status.in_(["pending", "running"]))
+        .order_by(SearchJobModel.created_at.asc())
+    )
+    queue_jobs = list(queue_result.scalars().all())
+    queue_positions = {str(j.id): idx + 1 for idx, j in enumerate(queue_jobs)}
+    
+    job_list = []
+    for job in jobs:
+        queue_pos = queue_positions.get(str(job.id))
+        
+        job_list.append({
+            "job_id": str(job.id),
+            "input_text": job.input_text,
+            "status": job.status,
+            "dno_name": job.dno_name,
+            "year": job.year,
+            "data_type": job.data_type,
+            "current_step": job.current_step,
+            "queue_position": queue_pos,
+            "batch_id": str(job.batch_id) if job.batch_id else None,
+            "batch_index": job.batch_index,
+            "batch_total": job.batch_total,
+            "created_at": job.created_at.isoformat() if job.created_at else None,
+            "started_at": job.started_at.isoformat() if job.started_at else None,
+            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+            "error": job.error_message,
+        })
+    
+    return {
+        "jobs": job_list,
+        "total": len(job_list),
+        "queue_length": len(queue_jobs),
+    }
+
+@router.get(
     "/history",
     response_model=list[SearchJobListItem],
     summary="Get Search History",
-    description="Get list of past searches for the current user."
+    description="Get list of past searches for the current user, grouped by batch."
 )
 async def get_search_history(
     db: AsyncSession = Depends(get_db),
@@ -605,26 +680,94 @@ async def get_search_history(
     """
     Get past searches for the current user's history sidebar.
     
-    Returns the most recent searches, ordered by creation date.
+    Batches are grouped into a single entry showing progress (e.g., "3/8 completed").
+    Non-batch jobs are returned individually.
     """
     result = await db.execute(
         select(SearchJobModel)
         .where(SearchJobModel.user_id == current_user.id)
         .order_by(SearchJobModel.created_at.desc())
-        .limit(limit)
+        .limit(limit * 4)  # Fetch more to account for grouping
     )
     jobs = result.scalars().all()
     
-    return [
-        SearchJobListItem(
-            job_id=str(job.id),
-            input_text=job.input_text,
-            status=job.status,
-            created_at=job.created_at,
-            completed_at=job.completed_at,
-        )
-        for job in jobs
-    ]
+    # Group by batch_id
+    batches: dict[str, list] = {}
+    individual_jobs = []
+    
+    for job in jobs:
+        if job.batch_id:
+            batch_key = str(job.batch_id)
+            if batch_key not in batches:
+                batches[batch_key] = []
+            batches[batch_key].append(job)
+        else:
+            individual_jobs.append(job)
+    
+    # Build response
+    items = []
+    seen_batches = set()
+    
+    for job in jobs:
+        if job.batch_id:
+            batch_key = str(job.batch_id)
+            if batch_key in seen_batches:
+                continue
+            seen_batches.add(batch_key)
+            
+            batch_jobs = batches[batch_key]
+            batch_completed = sum(1 for j in batch_jobs if j.status in ("completed", "failed"))
+            batch_total = batch_jobs[0].batch_total or len(batch_jobs)
+            
+            # Get unique DNO names
+            dno_names = list(set(j.dno_name for j in batch_jobs if j.dno_name))
+            
+            # Determine overall batch status
+            running = any(j.status == "running" for j in batch_jobs)
+            all_done = all(j.status in ("completed", "failed") for j in batch_jobs)
+            
+            if all_done:
+                batch_status = "completed"
+            elif running:
+                batch_status = "running"
+            else:
+                batch_status = "pending"
+            
+            # Use first job's created_at for ordering
+            first_job = min(batch_jobs, key=lambda j: j.created_at)
+            
+            # Create display text
+            if dno_names:
+                display_text = ", ".join(dno_names[:2])
+                if len(dno_names) > 2:
+                    display_text += f" +{len(dno_names) - 2} more"
+            else:
+                display_text = f"Batch ({batch_total} jobs)"
+            
+            items.append(SearchJobListItem(
+                job_id=batch_key,  # Use batch_id as job_id for navigation
+                input_text=display_text,
+                status=batch_status,
+                created_at=first_job.created_at,
+                completed_at=None,
+                batch_id=batch_key,
+                batch_total=batch_total,
+                batch_completed=batch_completed,
+                dno_names=dno_names,
+            ))
+        else:
+            # Individual job (non-batch)
+            items.append(SearchJobListItem(
+                job_id=str(job.id),
+                input_text=job.input_text,
+                status=job.status,
+                created_at=job.created_at,
+                completed_at=job.completed_at,
+            ))
+    
+    # Sort by created_at and limit
+    items.sort(key=lambda x: x.created_at, reverse=True)
+    return items[:limit]
 
 
 @router.get(
