@@ -50,10 +50,6 @@ class Settings(BaseSettings):
     rate_limit_public: int = 10  # requests per minute for unauthenticated
     rate_limit_authenticated: int = 100  # requests per minute for authenticated
 
-    # External Services
-    searxng_url: str = "http://localhost:8888"
-    searxng_timeout: int = 30
-
     # Ollama (LLM)
     ollama_url: str = "http://localhost:11434"
     ollama_model: str = "llama3.2"
