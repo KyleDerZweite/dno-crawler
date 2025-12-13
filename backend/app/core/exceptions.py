@@ -85,7 +85,7 @@ def authorization_exception(message: str = "Insufficient permissions") -> HTTPEx
     )
 
 
-def validation_exception(message: str, field: str = None) -> HTTPException:
+def validation_exception(message: str, field: Optional[str] = None) -> HTTPException:
     """Create validation error response"""
     details = {"field": field} if field else {}
     return create_http_exception(

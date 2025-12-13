@@ -363,9 +363,7 @@ def seed_address_cache(session: Session) -> None:
             latitude=50.9375,   # Köln area
             longitude=6.8654,
             dno_name="RheinNetz",
-            confidence=0.95,
             source="vnb_digital",
-            hit_count=5
         ),
         # "Musterstraße, 45128 Essen" → WestNetz
         DNOAddressCacheModel(
@@ -374,9 +372,7 @@ def seed_address_cache(session: Session) -> None:
             latitude=51.4556,   # Essen area
             longitude=7.0116,
             dno_name="WestNetz",
-            confidence=0.90,
             source="vnb_digital",
-            hit_count=3
         ),
     ]
     

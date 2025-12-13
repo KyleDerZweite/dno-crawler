@@ -91,9 +91,7 @@ class DNOAddressCacheModel(Base, TimestampMixin):
     dno_name: Mapped[str] = mapped_column(String(255), nullable=False)
     
     # Metadata
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)  # 0.0-1.0
     source: Mapped[str | None] = mapped_column(String(50))  # "vnb_digital", "manual", etc.
-    hit_count: Mapped[int] = mapped_column(Integer, default=1)  # Times this cache was used
 
 
 class DNOCrawlConfigModel(Base, TimestampMixin):

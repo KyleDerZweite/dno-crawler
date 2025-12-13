@@ -94,8 +94,6 @@ def test_check_db_status_cache_hit():
         ).scalar_one_or_none()
         
         if cache_entry:
-            print(f"  - Hit Count: {cache_entry.hit_count}")
-            print(f"  - Confidence: {cache_entry.confidence}")
             print(f"  - Source: {cache_entry.source}")
             
             # Verify coordinates are stored
@@ -194,7 +192,7 @@ def test_save_address_mapping():
         new_street = "teststr"
         new_dno = "TestNetz"
         
-        resolver.save_address_mapping(new_zip, new_street, new_dno, confidence=0.85)
+        resolver.save_address_mapping(new_zip, new_street, new_dno)
         
         # Verify it was saved
         result = resolver.check_address_mapping(new_zip, new_street)

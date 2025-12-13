@@ -62,17 +62,12 @@ def check_cache_by_coords(session, latitude: float, longitude: float, tolerance:
         lon_diff = abs(entry.longitude - longitude)
         
         if lat_diff <= tolerance and lon_diff <= tolerance:
-            # Increment hit count
-            entry.hit_count += 1
-            session.commit()
-            
             return {
                 "dno_name": entry.dno_name,
                 "latitude": entry.latitude,
                 "longitude": entry.longitude,
                 "zip_code": entry.zip_code,
                 "source": "cache",
-                "hit_count": entry.hit_count,
             }
     
     return None
@@ -119,7 +114,6 @@ def test_get_dno_from_cache():
         print("[PASS] Found DNO in cache (no API call needed)")
         print(f"  - DNO Name: {dno}")
         print(f"  - ZIP Code: {result['zip_code']}")
-        print(f"  - Hit Count: {result['hit_count']}")
         print(f"  - Source: {result['source']}")
         
         return True

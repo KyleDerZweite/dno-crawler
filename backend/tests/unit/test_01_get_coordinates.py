@@ -64,16 +64,11 @@ def check_cache(session, zip_code: str, norm_street: str) -> dict | None:
     ).scalar_one_or_none()
     
     if cache_entry:
-        # Increment hit count
-        cache_entry.hit_count += 1
-        session.commit()
-        
         return {
             "latitude": cache_entry.latitude,
             "longitude": cache_entry.longitude,
             "dno_name": cache_entry.dno_name,
             "source": "cache",
-            "hit_count": cache_entry.hit_count,
         }
     
     return None
@@ -120,7 +115,6 @@ def test_get_coordinates_from_cache():
         print(f"  - Latitude: {lat}")
         print(f"  - Longitude: {lon}")
         print(f"  - DNO: {dno}")
-        print(f"  - Hit Count: {result['hit_count']}")
         print(f"  - Source: {result['source']}")
         
         # Validate coordinates are in reasonable range for Germany

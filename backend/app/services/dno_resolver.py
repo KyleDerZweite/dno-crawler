@@ -69,9 +69,6 @@ class DNOResolver:
             cache_entry = result.scalar_one_or_none()
             
             if cache_entry:
-                # Update hit count
-                cache_entry.hit_count += 1
-                self.db.commit()
                 return cache_entry.dno_name
                 
         except Exception as e:
@@ -84,7 +81,6 @@ class DNOResolver:
         zip_code: str, 
         norm_street: str, 
         dno_name: str,
-        confidence: float = 0.9
     ) -> None:
         """Save address → DNO mapping to database."""
         if not self.db:
@@ -106,17 +102,13 @@ class DNOResolver:
             if existing:
                 # Update existing entry
                 existing.dno_name = dno_name
-                existing.confidence = confidence
-                existing.hit_count += 1
             else:
                 # Create new entry
                 cache_entry = DNOAddressCacheModel(
                     zip_code=zip_code,
                     street_name=norm_street,
                     dno_name=dno_name,
-                    confidence=confidence,
                     source="ddgs",
-                    hit_count=1,
                 )
                 self.db.add(cache_entry)
             
