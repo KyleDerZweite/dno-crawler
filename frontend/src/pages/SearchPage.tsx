@@ -7,6 +7,10 @@ import {
     Navigation,
     AlertCircle,
     ArrowRight,
+    ChevronDown,
+    ChevronUp,
+    Check,
+    Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -18,6 +22,10 @@ import {
     type PublicSearchRequest,
     type PublicSearchResponse,
 } from "@/lib/api";
+
+// Available years for filter (2026-2022)
+const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
+const DEFAULT_YEARS = [2025, 2024];
 
 /**
  * SearchPage: Simplified search using decoupled public search API
@@ -42,10 +50,26 @@ export default function SearchPage() {
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
 
+    // Filter state
+    const [filtersExpanded, setFiltersExpanded] = useState(false);
+    const [selectedYears, setSelectedYears] = useState<number[]>(DEFAULT_YEARS);
+
     // State
     const [isSearching, setIsSearching] = useState(false);
     const [result, setResult] = useState<PublicSearchResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
+
+    // Toggle year selection
+    const toggleYear = (year: number) => {
+        setSelectedYears((prev) => {
+            if (prev.includes(year)) {
+                // Don't allow deselecting if it's the last one
+                if (prev.length === 1) return prev;
+                return prev.filter((y) => y !== year);
+            }
+            return [...prev, year].sort((a, b) => b - a);
+        });
+    };
 
     // Validation
     const isAddressValid =
@@ -92,6 +116,11 @@ export default function SearchPage() {
                     latitude: parseFloat(latitude.replace(",", ".")),
                     longitude: parseFloat(longitude.replace(",", ".")),
                 };
+            }
+
+            // Add year filter (pass all selected years)
+            if (selectedYears.length > 0) {
+                request.years = selectedYears;
             }
 
             const response = await api.publicSearch.search(request);
@@ -185,8 +214,6 @@ export default function SearchPage() {
                         </div>
                     )}
 
-
-
                     {/* Coordinates Input */}
                     {searchMode === "coordinates" && (
                         <div className="grid grid-cols-2 gap-4">
@@ -206,6 +233,67 @@ export default function SearchPage() {
                             />
                         </div>
                     )}
+
+                    {/* Collapsible Year Filter - BELOW inputs */}
+                    <div className="border rounded-lg overflow-hidden">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersExpanded(!filtersExpanded)}
+                            className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <Filter className="w-4 h-4" />
+                                <span>Year Filter</span>
+                                <div className="flex gap-1 ml-2">
+                                    {selectedYears.map((year) => (
+                                        <Badge key={year} variant="secondary" className="text-xs">
+                                            {year}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                            {filtersExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            )}
+                        </button>
+
+                        {/* Expanded Filter Content - Show all years as toggle buttons */}
+                        {filtersExpanded && (
+                            <div className="p-4 border-t bg-background">
+                                <label className="text-sm font-medium text-muted-foreground mb-3 block">
+                                    Select Years (at least one required)
+                                </label>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_YEARS.map((year) => {
+                                        const isSelected = selectedYears.includes(year);
+                                        return (
+                                            <button
+                                                key={year}
+                                                type="button"
+                                                onClick={() => toggleYear(year)}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${isSelected
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background border-input hover:bg-muted"
+                                                    }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected
+                                                    ? "bg-primary-foreground/20 border-primary-foreground/50"
+                                                    : "border-current opacity-50"
+                                                    }`}>
+                                                    {isSelected && (
+                                                        <Check className="w-3 h-3" />
+                                                    )}
+                                                </div>
+                                                {year}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
+                    </div>
 
                     {/* Search Button */}
                     <Button

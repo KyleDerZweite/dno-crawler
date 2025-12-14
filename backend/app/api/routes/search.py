@@ -73,7 +73,8 @@ class PublicSearchRequest(BaseModel):
     address: Optional[AddressSearchInput] = None
     coordinates: Optional[CoordinatesSearchInput] = None
     dno: Optional[DNOSearchInput] = None
-    year: Optional[int] = Field(None, ge=2000, le=2100)
+    year: Optional[int] = Field(None, ge=2000, le=2100)  # Single year (backward compat)
+    years: Optional[list[int]] = Field(None, description="Multiple years filter")
 
 
 class DNOMetadata(BaseModel):
@@ -181,17 +182,20 @@ async def public_search(
             detail="Exactly one of 'address', 'coordinates', or 'dno' must be provided.",
         )
     
+    # Merge year/years into a single list
+    filter_years = request.years if request.years else ([request.year] if request.year else None)
+    
     # Route to appropriate handler
     if request.address:
         return await _search_by_address(
-            db, rate_limiter, request.address, request.year, log
+            db, rate_limiter, request.address, filter_years, log
         )
     elif request.coordinates:
         return await _search_by_coordinates(
-            db, rate_limiter, request.coordinates, request.year, log
+            db, rate_limiter, request.coordinates, filter_years, log
         )
     else:
-        return await _search_by_dno(db, request.dno, request.year, log)
+        return await _search_by_dno(db, request.dno, filter_years, log)
 
 
 # =============================================================================
@@ -203,7 +207,7 @@ async def _search_by_address(
     db: AsyncSession,
     rate_limiter: Optional[RateLimiter],
     address_input: AddressSearchInput,
-    year: Optional[int],
+    years: Optional[list[int]],
     log,
 ) -> PublicSearchResponse:
     """
@@ -229,7 +233,7 @@ async def _search_by_address(
     if location:
         log.debug("Location found in cache", location_id=location.id)
         dno = await db.get(DNOModel, location.dno_id)
-        return await _build_response(db, dno, location, year)
+        return await _build_response(db, dno, location, years)
     
     # Step 3: Not in cache - call VNB Digital API
     log.info("Cache miss, calling VNB Digital API")
@@ -269,7 +273,7 @@ async def _search_by_address(
             db, existing_location.dno_id, normalized, lat, lon
         )
         
-        return await _build_response(db, dno, existing_location, year)
+        return await _build_response(db, dno, existing_location, years)
     
     # Step 5: Get DNO from VNB Digital
     vnbs = await vnb_client.lookup_by_coordinates_async(location_result.coordinates)
@@ -305,14 +309,14 @@ async def _search_by_address(
         dno_name=dno.name,
     )
     
-    return await _build_response(db, dno, location, year)
+    return await _build_response(db, dno, location, years)
 
 
 async def _search_by_coordinates(
     db: AsyncSession,
     rate_limiter: Optional[RateLimiter],
     coords_input: CoordinatesSearchInput,
-    year: Optional[int],
+    years: Optional[list[int]],
     log,
 ) -> PublicSearchResponse:
     """Search by coordinates - similar to address but skips geocoding."""
@@ -325,7 +329,7 @@ async def _search_by_coordinates(
     
     if location:
         dno = await db.get(DNOModel, location.dno_id)
-        return await _build_response(db, dno, location, year)
+        return await _build_response(db, dno, location, years)
     
     # Call VNB Digital
     log.info("Calling VNB Digital for coordinates")
@@ -365,13 +369,13 @@ async def _search_by_coordinates(
         db, dno.id, simple_address, coords_input.latitude, coords_input.longitude
     )
     
-    return await _build_response(db, dno, location, year)
+    return await _build_response(db, dno, location, years)
 
 
 async def _search_by_dno(
     db: AsyncSession,
     dno_input: DNOSearchInput,
-    year: Optional[int],
+    years: Optional[list[int]],
     log,
 ) -> PublicSearchResponse:
     """Search by DNO name or ID directly."""
@@ -398,14 +402,14 @@ async def _search_by_dno(
             message=f"DNO not found. Try searching by address instead.",
         )
     
-    return await _build_response(db, dno, None, year)
+    return await _build_response(db, dno, None, years)
 
 
 async def _build_response(
     db: AsyncSession,
     dno: DNOModel,
     location: Optional[LocationModel],
-    year: Optional[int],
+    years: Optional[list[int]],
 ) -> PublicSearchResponse:
     """Build response with data evaluation."""
     
@@ -435,9 +439,9 @@ async def _build_response(
     netzentgelte_query = select(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno.id)
     hlzf_query = select(HLZFModel).where(HLZFModel.dno_id == dno.id)
     
-    if year:
-        netzentgelte_query = netzentgelte_query.where(NetzentgelteModel.year == year)
-        hlzf_query = hlzf_query.where(HLZFModel.year == year)
+    if years:
+        netzentgelte_query = netzentgelte_query.where(NetzentgelteModel.year.in_(years))
+        hlzf_query = hlzf_query.where(HLZFModel.year.in_(years))
     
     netzentgelte_result = await db.execute(netzentgelte_query)
     hlzf_result = await db.execute(hlzf_query)

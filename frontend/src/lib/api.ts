@@ -113,7 +113,8 @@ export interface PublicSearchRequest {
     dno_id?: string;
     dno_name?: string;
   };
-  year?: number;
+  year?: number;           // Single year (backward compatible)
+  years?: number[];        // Multiple years filter
 }
 
 export interface PublicSearchDNO {
