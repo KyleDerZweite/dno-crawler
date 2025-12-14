@@ -1,39 +1,22 @@
-import {
-  Toast,
-  ToastClose,
-  ToastDescription,
-  ToastProvider,
-  ToastTitle,
-  ToastViewport,
-} from "@/components/ui/toast";
+import { Toast } from "@/components/ui/toast";
 import { useToast } from "@/hooks/use-toast";
 
 export function Toaster() {
-  const { toasts } = useToast();
+  const { toasts, dismiss } = useToast();
 
   return (
-    <ToastProvider>
-      {toasts.map(function ({ id, title, description, action, variant, ...toastProps }) {
-        const toastObj = {
-          id,
-          title,
-          description,
-          ...toastProps,
-        };
-        return (
-          <Toast key={id} toast={toastObj} variant={variant}>
-            <div className="grid gap-1">
-              {title && <ToastTitle>{title}</ToastTitle>}
-              {description && (
-                <ToastDescription>{description}</ToastDescription>
-              )}
-            </div>
-            {action}
-            <ToastClose />
-          </Toast>
-        );
-      })}
-      <ToastViewport />
-    </ToastProvider>
+    <div className="fixed bottom-0 right-0 z-[100] flex flex-col gap-2 p-4 max-w-[420px] w-full pointer-events-none">
+      {toasts.map(({ id, title, description, variant }) => (
+        <Toast
+          key={id}
+          id={id}
+          title={title}
+          description={description}
+          variant={variant}
+          onClose={() => dismiss(id)}
+          className="pointer-events-auto animate-in slide-in-from-bottom-5"
+        />
+      ))}
+    </div>
   );
 }
