@@ -1,4 +1,4 @@
-import { useParams, Link } from "react-router-dom";
+import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -45,6 +45,7 @@ const DEFAULT_CRAWL_YEARS = [2025, 2024];
 
 export function DNODetailPage() {
     const { id } = useParams<{ id: string }>();
+    const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { toast } = useToast();
 
@@ -83,6 +84,9 @@ export function DNODetailPage() {
         website: '',
         description: '',
     });
+
+    // Delete DNO dialog state
+    const [deleteDNOOpen, setDeleteDNOOpen] = useState(false);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -202,6 +206,21 @@ export function DNODetailPage() {
             voltageLevels: Array.from(voltageLevels).sort(),
         };
     }, [dnoData]);
+
+    // Calculate data completeness
+    // Expected: 5 voltage levels × 2 data types × 5 years (2022-2026) = 50 rows total
+    const dataCompleteness = useMemo(() => {
+        const netzentgelteCount = dnoData?.netzentgelte?.length || 0;
+        const hlzfCount = dnoData?.hlzf?.length || 0;
+        const totalRecords = netzentgelteCount + hlzfCount;
+        const expectedRecords = 50; // 5 voltage levels × 5 years × 2 data types
+        const percentage = expectedRecords > 0 ? Math.min((totalRecords / expectedRecords) * 100, 100) : 0;
+        return {
+            total: totalRecords,
+            expected: expectedRecords,
+            percentage: percentage,
+        };
+    }, [dnoData?.netzentgelte?.length, dnoData?.hlzf?.length]);
 
     // Apply filters to data
     const filteredNetzentgelte = useMemo(() => {
@@ -366,6 +385,23 @@ export function DNODetailPage() {
         },
     });
 
+    // Delete DNO mutation
+    const deleteDNOMutation = useMutation({
+        mutationFn: () => api.dnos.deleteDNO(id!),
+        onSuccess: () => {
+            toast({ title: "DNO deleted", description: "DNO and all associated data have been permanently deleted" });
+            setDeleteDNOOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["dnos"] });
+            navigate("/dnos");
+        },
+        onError: (error: unknown) => {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to delete DNO", description: message });
+        },
+    });
+
     // Toggle voltage level filter
     const toggleVoltageLevelFilter = (level: string) => {
         setVoltageLevelFilter(prev =>
@@ -494,6 +530,16 @@ export function DNODetailPage() {
                                 <ExternalLink className="mr-2 h-4 w-4" />
                                 Website
                             </a>
+                        </Button>
+                    )}
+                    {isAdmin() && (
+                        <Button
+                            variant="outline"
+                            className="border-destructive text-destructive hover:bg-destructive/10"
+                            onClick={() => setDeleteDNOOpen(true)}
+                        >
+                            <Trash2 className="mr-2 h-4 w-4" />
+                            Delete
                         </Button>
                     )}
                     {isAdmin() && (
@@ -694,6 +740,44 @@ export function DNODetailPage() {
                             </DialogContent>
                         </Dialog>
                     )}
+
+                    {/* Delete DNO Dialog - Admin Only */}
+                    {isAdmin() && (
+                        <Dialog open={deleteDNOOpen} onOpenChange={setDeleteDNOOpen}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle className="text-destructive">Delete DNO</DialogTitle>
+                                    <DialogDescription>
+                                        Are you sure you want to permanently delete <strong>{dno.name}</strong>?
+                                        This will also delete all associated Netzentgelte, HLZF data, and crawl jobs.
+                                        This action cannot be undone.
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setDeleteDNOOpen(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        variant="destructive"
+                                        onClick={() => deleteDNOMutation.mutate()}
+                                        disabled={deleteDNOMutation.isPending}
+                                    >
+                                        {deleteDNOMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Deleting...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Trash2 className="mr-2 h-4 w-4" />
+                                                Delete Permanently
+                                            </>
+                                        )}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
                 </div>
             </div>
 
@@ -723,12 +807,37 @@ export function DNODetailPage() {
                 </Card>
                 <Card className="p-4">
                     <div className="flex items-center gap-3">
-                        <div className="p-2 rounded-lg bg-green-500/10 text-green-500">
-                            <Calendar className="h-5 w-5" />
+                        <div className="relative">
+                            <svg className="h-12 w-12 -rotate-90" viewBox="0 0 36 36">
+                                <circle
+                                    cx="18"
+                                    cy="18"
+                                    r="15.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="3"
+                                    className="text-muted/30"
+                                />
+                                <circle
+                                    cx="18"
+                                    cy="18"
+                                    r="15.5"
+                                    fill="none"
+                                    stroke="currentColor"
+                                    strokeWidth="3"
+                                    strokeDasharray={`${dataCompleteness.percentage} 100`}
+                                    strokeLinecap="round"
+                                    className={cn(
+                                        dataCompleteness.percentage >= 80 ? "text-green-500" :
+                                            dataCompleteness.percentage >= 50 ? "text-yellow-500" :
+                                                "text-red-500"
+                                    )}
+                                />
+                            </svg>
                         </div>
                         <div>
-                            <p className="text-sm text-muted-foreground">Crawl Jobs</p>
-                            <p className="text-2xl font-bold">{jobs.length}</p>
+                            <p className="text-sm text-muted-foreground">Data Completeness</p>
+                            <p className="text-2xl font-bold">{dataCompleteness.percentage.toFixed(0)}%</p>
                         </div>
                     </div>
                 </Card>
@@ -976,34 +1085,47 @@ export function DNODetailPage() {
                 )}
             </Card>
 
-            {/* Downloaded Files */}
-            {files.length > 0 && (
-                <Card className="p-6">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <FileDown className="h-5 w-5 text-orange-500" />
-                        Downloaded Files
-                    </h2>
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                        {files.map((file, idx) => (
-                            <a
-                                key={idx}
-                                href={`http://localhost:8000${file.path}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="flex items-center gap-3 p-3 rounded-lg border hover:bg-muted/50 transition-colors"
+            {/* Source Files */}
+            <Card className="p-6">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <FileDown className="h-5 w-5 text-orange-500" />
+                    Source Files
+                </h2>
+                {files.length > 0 ? (
+                    <div className="space-y-2">
+                        {files.map((file, index) => (
+                            <div
+                                key={index}
+                                className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
                             >
-                                <FileDown className="h-8 w-8 text-red-500" />
-                                <div className="overflow-hidden">
-                                    <p className="font-medium text-sm truncate">{file.name}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                        {(file.size / 1024).toFixed(0)} KB
-                                    </p>
+                                <div className="flex items-center gap-3">
+                                    <div className="p-2 rounded bg-orange-500/10 text-orange-500">
+                                        <FileDown className="h-4 w-4" />
+                                    </div>
+                                    <div>
+                                        <p className="font-medium text-sm">{file.name}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {(file.size / 1024).toFixed(0)} KB
+                                        </p>
+                                    </div>
                                 </div>
-                            </a>
+                                <Button
+                                    variant="outline"
+                                    size="sm"
+                                    asChild
+                                >
+                                    <a href={`${import.meta.env.VITE_API_URL}${file.path}`} download={file.name}>
+                                        <FileDown className="mr-2 h-3 w-3" />
+                                        Download
+                                    </a>
+                                </Button>
+                            </div>
                         ))}
                     </div>
-                </Card>
-            )}
+                ) : (
+                    <p className="text-muted-foreground text-center py-8">No source files available</p>
+                )}
+            </Card>
 
             {/* Recent Crawl Jobs */}
             <Card className="p-6">

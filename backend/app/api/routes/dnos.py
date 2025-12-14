@@ -250,6 +250,49 @@ async def update_dno(
     )
 
 
+@router.delete("/{dno_id}")
+async def delete_dno(
+    dno_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> APIResponse:
+    """Delete DNO and all associated data (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    dno = await db.get(DNOModel, dno_id)
+    if not dno:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DNO not found")
+    
+    dno_name = dno.name
+    
+    # Delete associated data (cascade should handle this, but being explicit)
+    from sqlalchemy import delete
+    from app.db.models import NetzentgelteModel, HLZFModel, CrawlJobModel, LocationModel
+    
+    # Delete locations
+    await db.execute(delete(LocationModel).where(LocationModel.dno_id == dno_id))
+    # Delete netzentgelte
+    await db.execute(delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id))
+    # Delete HLZF
+    await db.execute(delete(HLZFModel).where(HLZFModel.dno_id == dno_id))
+    # Delete crawl jobs
+    await db.execute(delete(CrawlJobModel).where(CrawlJobModel.dno_id == dno_id))
+    
+    # Delete the DNO itself
+    await db.delete(dno)
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message=f"DNO '{dno_name}' and all associated data deleted successfully",
+        data={"id": str(dno_id)},
+    )
+
+
 @router.post("/{dno_id}/crawl")
 async def trigger_crawl(
     dno_id: int,
@@ -263,7 +306,7 @@ async def trigger_crawl(
     Creates a new crawl job that will be picked up by the worker.
     Any authenticated user (member or admin) can trigger this.
     """
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     from arq import create_pool
     from arq.connections import RedisSettings
     from app.core.config import settings
@@ -285,8 +328,15 @@ async def trigger_crawl(
     dno_status = getattr(dno, 'status', 'uncrawled')
     if dno_status == "crawling":
         locked_at = getattr(dno, 'crawl_locked_at', None)
-        if locked_at and locked_at < datetime.utcnow() - timedelta(hours=1):
-            logger.warning("Force-releasing stuck crawl", dno_id=dno_id)
+        # Use timezone-aware comparison
+        now = datetime.now(timezone.utc)
+        threshold = now - timedelta(hours=1)
+        # Make locked_at timezone-aware if it's naive
+        if locked_at:
+            if locked_at.tzinfo is None:
+                locked_at = locked_at.replace(tzinfo=timezone.utc)
+            if locked_at < threshold:
+                logger.warning("Force-releasing stuck crawl", dno_id=dno_id)
         else:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
@@ -690,7 +740,7 @@ async def list_dno_files(
             files.append({
                 "name": f.name,
                 "size": f.stat().st_size,
-                "path": f"/api/v1/files/downloads/{f.name}",
+                "path": f"/files/downloads/{f.name}",
             })
     
     # Check new path (data/downloads/<slug>/)
@@ -700,7 +750,7 @@ async def list_dno_files(
             files.append({
                 "name": f.name,
                 "size": f.stat().st_size,
-                "path": f"/api/v1/files/downloads/{dno.slug}/{f.name}",
+                "path": f"/files/downloads/{dno.slug}/{f.name}",
             })
     
     return APIResponse(

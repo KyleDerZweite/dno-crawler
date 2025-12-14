@@ -57,6 +57,7 @@ export function DNOsPage() {
   const { data: dnosResponse, isLoading } = useQuery({
     queryKey: ["dnos"],
     queryFn: () => api.dnos.list(true),
+    refetchOnMount: "always",  // Always refetch when navigating back to this page
   });
 
   const dnos = dnosResponse?.data;
@@ -367,24 +368,23 @@ function DNOCard({ dno }: { dno: DNO }) {
         )}
 
         {/* Mini Stats */}
-        <div className="grid grid-cols-2 gap-3 mt-auto">
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+        <div className="grid grid-cols-3 gap-2 mt-auto">
+          <div className="flex items-center justify-center gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
             <Zap className="h-4 w-4 text-blue-500" />
-            <div>
-              <p className="text-base font-bold text-blue-600 dark:text-blue-400">
-                {dno.netzentgelte_count ?? 0}
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-tight">Netzentgelte</p>
-            </div>
+            <span className="text-base font-bold text-blue-600 dark:text-blue-400">
+              {dno.netzentgelte_count ?? 0}
+            </span>
           </div>
-          <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+          <div className="flex items-center justify-center gap-2 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
             <Clock className="h-4 w-4 text-purple-500" />
-            <div>
-              <p className="text-base font-bold text-purple-600 dark:text-purple-400">
-                {dno.hlzf_count ?? 0}
-              </p>
-              <p className="text-[10px] text-muted-foreground leading-tight">HLZF</p>
-            </div>
+            <span className="text-base font-bold text-purple-600 dark:text-purple-400">
+              {dno.hlzf_count ?? 0}
+            </span>
+          </div>
+          <div className="flex items-center justify-center gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
+            <span className="text-base font-bold text-green-600 dark:text-green-400">
+              {Math.min(Math.round(((dno.netzentgelte_count ?? 0) + (dno.hlzf_count ?? 0)) / 50 * 100), 100)}%
+            </span>
           </div>
         </div>
       </Link>

@@ -1,19 +1,29 @@
 """
-File serving routes.
+File serving routes with rate limiting.
 """
 
 import os
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
+
+from app.core.rate_limiter import get_rate_limiter, get_client_ip
 
 router = APIRouter()
 
 
 @router.get("/downloads/{filepath:path}")
-async def serve_download(filepath: str) -> FileResponse:
-    """Serve a downloaded file."""
+async def serve_download(filepath: str, request: Request) -> FileResponse:
+    """Serve a downloaded file (public, rate-limited)."""
+    # Apply rate limiting (30 downloads per minute per IP)
+    try:
+        rate_limiter = get_rate_limiter()
+        client_ip = get_client_ip(request)
+        await rate_limiter.check_ip_limit(client_ip)
+    except RuntimeError:
+        pass  # Rate limiter not initialized (dev mode), allow request
+    
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     file_path = Path(storage_path) / "downloads" / filepath
     

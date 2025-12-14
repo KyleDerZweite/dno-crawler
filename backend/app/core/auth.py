@@ -42,7 +42,8 @@ class User:
 
     @property
     def is_admin(self) -> bool:
-        return self.has_role("ADMIN")
+        # Case-insensitive check for admin role
+        return any(role.upper() == "ADMIN" for role in self.roles)
 
 
 async def fetch_jwks() -> dict:
@@ -78,9 +79,16 @@ def get_signing_key(token: str, jwks: dict) -> str:
 
 def extract_roles(claims: dict) -> list[str]:
     """Extract role keys from Zitadel token claims."""
+    import structlog
+    logger = structlog.get_logger()
+    
     roles_obj = claims.get("urn:zitadel:iam:org:project:roles", {})
+    logger.info("Role extraction", roles_obj=roles_obj, claim_keys=list(claims.keys()))
+    
     if isinstance(roles_obj, dict):
-        return list(roles_obj.keys())
+        roles = list(roles_obj.keys())
+        logger.info("Extracted roles", roles=roles)
+        return roles
     return []
 
 
@@ -95,6 +103,9 @@ async def get_current_user(
         async def protected(user: User = Depends(get_current_user)):
             return {"user": user.email}
     """
+    import structlog
+    logger = structlog.get_logger()
+    
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -118,11 +129,32 @@ async def get_current_user(
             options={"verify_aud": False},  # Zitadel uses project-based audience
         )
 
+        # Extract roles from token claims
+        roles = extract_roles(claims)
+        
+        # If no roles in token, fetch from userinfo endpoint
+        if not roles:
+            logger.info("No roles in token, fetching from userinfo endpoint")
+            userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
+            async with httpx.AsyncClient() as client:
+                response = await client.get(
+                    userinfo_url,
+                    headers={"Authorization": f"Bearer {token}"}
+                )
+                if response.status_code == 200:
+                    userinfo = response.json()
+                    logger.info("Userinfo response", userinfo_keys=list(userinfo.keys()))
+                    roles = extract_roles(userinfo)
+                else:
+                    logger.warning("Userinfo request failed", status=response.status_code)
+        
+        logger.info("User authenticated", email=claims.get("email"), roles=roles, is_admin=any(r.upper() == "ADMIN" for r in roles))
+
         return User(
             id=claims.get("sub", ""),
             email=claims.get("email", ""),
             name=claims.get("name", claims.get("preferred_username", "")),
-            roles=extract_roles(claims),
+            roles=roles,
         )
 
     except jwt.ExpiredSignatureError:

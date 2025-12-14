@@ -289,6 +289,11 @@ export const api = {
       return data;
     },
 
+    async deleteDNO(dno_id: string): Promise<ApiResponse<{ id: string }>> {
+      const { data } = await apiClient.delete(`/dnos/${dno_id}`);
+      return data;
+    },
+
     async getData(
       dno_id: string,
       params?: { year?: number; data_type?: string }
