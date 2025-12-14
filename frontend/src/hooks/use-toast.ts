@@ -1,15 +1,19 @@
 import * as React from "react";
 
-import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+import type { ToastActionElement } from "@/components/ui/toast";
 
 const TOAST_LIMIT = 1;
-const TOAST_REMOVE_DELAY = 1000000;
+const TOAST_REMOVE_DELAY = 5000;
 
-type ToasterToast = ToastProps & {
+type ToasterToast = {
   id: string;
   title?: React.ReactNode;
   description?: React.ReactNode;
   action?: ToastActionElement;
+  variant?: "default" | "destructive";
+  type?: string;
+  onClose?: () => void;
+  onRemove?: () => void;
 };
 
 let count = 0;
@@ -21,21 +25,21 @@ function genId() {
 
 type Action =
   | {
-      type: "ADD_TOAST";
-      toast: ToasterToast;
-    }
+    type: "ADD_TOAST";
+    toast: ToasterToast;
+  }
   | {
-      type: "UPDATE_TOAST";
-      toast: Partial<ToasterToast>;
-    }
+    type: "UPDATE_TOAST";
+    toast: Partial<ToasterToast>;
+  }
   | {
-      type: "DISMISS_TOAST";
-      toastId?: ToasterToast["id"];
-    }
+    type: "DISMISS_TOAST";
+    toastId?: ToasterToast["id"];
+  }
   | {
-      type: "REMOVE_TOAST";
-      toastId?: ToasterToast["id"];
-    };
+    type: "REMOVE_TOAST";
+    toastId?: ToasterToast["id"];
+  };
 
 interface State {
   toasts: ToasterToast[];
@@ -86,17 +90,7 @@ export const reducer = (state: State, action: Action): State => {
         });
       }
 
-      return {
-        ...state,
-        toasts: state.toasts.map((t) =>
-          t.id === toastId || toastId === undefined
-            ? {
-                ...t,
-                open: false,
-              }
-            : t
-        ),
-      };
+      return state;
     }
     case "REMOVE_TOAST":
       if (action.toastId === undefined) {
@@ -128,7 +122,7 @@ type Toast = Omit<ToasterToast, "id">;
 function toast({ ...props }: Toast) {
   const id = genId();
 
-  const update = (props: ToasterToast) =>
+  const update = (props: Partial<ToasterToast>) =>
     dispatch({
       type: "UPDATE_TOAST",
       toast: { ...props, id },
@@ -140,10 +134,8 @@ function toast({ ...props }: Toast) {
     toast: {
       ...props,
       id,
-      open: true,
-      onOpenChange: (open) => {
-        if (!open) dismiss();
-      },
+      onClose: dismiss,
+      onRemove: () => dispatch({ type: "REMOVE_TOAST", toastId: id }),
     },
   });
 
