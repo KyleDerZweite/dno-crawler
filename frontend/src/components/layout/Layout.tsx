@@ -11,7 +11,6 @@ import {
   Settings,
   Shield,
   X,
-  Zap,
 } from "lucide-react"
 import { useState, useEffect } from "react"
 import { Link, Outlet, useLocation } from "react-router-dom"
@@ -80,7 +79,22 @@ export function Layout() {
         <div className="flex h-24 items-center px-8 border-b border-white/5 bg-gradient-to-b from-white/5 to-transparent">
           <Link to="/dashboard" className="flex items-center gap-3 group">
             <div className="p-2 rounded-xl bg-primary/10 group-hover:bg-primary/20 transition-colors">
-              <Zap className="h-6 w-6 text-primary" />
+              <svg className="h-10 w-10 text-emerald-400" viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                {/* Connections */}
+                <path d="M16 8v6" />
+                <path d="M16 14L10 19" />
+                <path d="M16 14L22 19" />
+                {/* Nodes */}
+                <circle cx="16" cy="14" r="2.5" fill="currentColor" stroke="none" />
+                <circle cx="10" cy="19" r="1.5" fill="currentColor" stroke="none" />
+                <circle cx="22" cy="19" r="1.5" fill="currentColor" stroke="none" />
+                {/* Download tray/arrow */}
+                <path d="M12 23h8" strokeOpacity="0.8" />
+                <path d="M16 19v3" />
+                <path d="M14 20l2 2 2-2" fill="none" />
+                {/* Energy bolt */}
+                <path d="M21 7l-1 3h2l-2 3" className="text-emerald-300" stroke="currentColor" strokeWidth="1.5" fill="none" />
+              </svg>
             </div>
             <span className="text-xl font-bold text-white tracking-tight bg-clip-text text-transparent bg-gradient-to-r from-white to-white/70">
               DNO-Crawler

@@ -19,10 +19,12 @@ import {
   Database,
   Plus,
   ExternalLink,
-  RefreshCw,
   Loader2,
   Search,
   Check,
+  RefreshCw,
+  Zap,
+  Clock,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -56,31 +58,6 @@ export function DNOsPage() {
   });
 
   const dnos = dnosResponse?.data;
-
-  const triggerCrawlMutation = useMutation({
-    mutationFn: (dnoId: string) => api.dnos.triggerCrawl(dnoId, { year: new Date().getFullYear() }),
-    onSuccess: () => {
-      toast({
-        title: "Crawl triggered",
-        description: "The crawler job has been queued",
-      });
-      queryClient.invalidateQueries({ queryKey: ["dnos"] });
-    },
-    onError: (error: unknown) => {
-      const message =
-        error instanceof AxiosError
-          ? error.response?.data?.detail ?? error.message
-          : error instanceof Error
-            ? error.message
-            : "Unknown error";
-
-      toast({
-        variant: "destructive",
-        title: "Failed to trigger crawl",
-        description: message,
-      });
-    },
-  });
 
   const createDNOMutation = useMutation({
     mutationFn: (data: AddDNOForm) =>
@@ -295,8 +272,6 @@ export function DNOsPage() {
                   <DNOCard
                     key={dno.id}
                     dno={dno}
-                    onTriggerCrawl={() => triggerCrawlMutation.mutate(dno.id)}
-                    isCrawling={triggerCrawlMutation.isPending}
                   />
                 ))}
               </div>
@@ -308,15 +283,7 @@ export function DNOsPage() {
   );
 }
 
-function DNOCard({
-  dno,
-  onTriggerCrawl,
-  isCrawling,
-}: {
-  dno: DNO;
-  onTriggerCrawl: () => void;
-  isCrawling: boolean;
-}) {
+function DNOCard({ dno }: { dno: DNO }) {
   // Stuck detection: crawling for > 1 hour
   const isStuck =
     dno.status === "crawling" &&
@@ -389,48 +356,33 @@ function DNOCard({
           </div>
         </div>
 
-        <h3 className="font-bold text-lg mb-1 truncate" title={dno.name}>{dno.name}</h3>
+        <h3 className="font-bold text-xl mb-1 truncate" title={dno.name}>{dno.name}</h3>
         {dno.region && (
-          <p className="text-sm text-muted-foreground mb-2">{dno.region}</p>
+          <p className="text-sm text-muted-foreground mb-4">{dno.region}</p>
         )}
 
-        {dno.data_points_count !== undefined && dno.data_points_count > 0 && (
-          <p className="text-xs text-muted-foreground">
-            {dno.data_points_count} data points
-          </p>
-        )}
+        {/* Mini Stats */}
+        <div className="grid grid-cols-2 gap-3 mt-auto">
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+            <Zap className="h-4 w-4 text-blue-500" />
+            <div>
+              <p className="text-base font-bold text-blue-600 dark:text-blue-400">
+                {dno.netzentgelte_count ?? 0}
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-tight">Netzentgelte</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 p-2 rounded-lg bg-purple-500/10 border border-purple-500/20">
+            <Clock className="h-4 w-4 text-purple-500" />
+            <div>
+              <p className="text-base font-bold text-purple-600 dark:text-purple-400">
+                {dno.hlzf_count ?? 0}
+              </p>
+              <p className="text-[10px] text-muted-foreground leading-tight">HLZF</p>
+            </div>
+          </div>
+        </div>
       </Link>
-
-      <div className="p-4 border-t border-border bg-secondary/30">
-        <Button
-          variant={isStuck ? "destructive" : "outline"}
-          className="w-full"
-          onClick={onTriggerCrawl}
-          disabled={isCrawling || (dno.status === "crawling" && !isStuck)}
-        >
-          {isCrawling ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Starting...
-            </>
-          ) : isStuck ? (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              Force Retry
-            </>
-          ) : dno.status === "crawling" ? (
-            <>
-              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-              Crawling...
-            </>
-          ) : (
-            <>
-              <RefreshCw className="mr-2 h-4 w-4" />
-              {dno.status === "uncrawled" ? "Start Crawl" : "Re-crawl"}
-            </>
-          )}
-        </Button>
-      </div>
     </Card>
   );
 }

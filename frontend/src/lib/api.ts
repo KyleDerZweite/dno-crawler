@@ -65,6 +65,8 @@ export interface DNO {
   region?: string;
   website?: string;
   data_points_count?: number;
+  netzentgelte_count?: number;
+  hlzf_count?: number;
   created_at?: string;
   updated_at?: string;
 }
