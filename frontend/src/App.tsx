@@ -8,8 +8,6 @@ import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { JobsPage } from "./pages/JobsPage";
 import SearchPage from "./pages/SearchPage";
-import SearchJobPage from "./pages/SearchJobPage";
-import BatchProgressPage from "./pages/BatchProgressPage";
 
 function LoginRedirect() {
   const { isAuthenticated, isLoading, login } = useAuth();
@@ -56,8 +54,6 @@ function App() {
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="search" element={<SearchPage />} />
-        <Route path="search/batch/:batchId" element={<BatchProgressPage />} />
-        <Route path="search/:jobId" element={<SearchJobPage />} />
         <Route path="dnos" element={<DNOsPage />} />
         <Route path="dnos/:id" element={<DNODetailPage />} />
         <Route path="jobs" element={<JobsPage />} />

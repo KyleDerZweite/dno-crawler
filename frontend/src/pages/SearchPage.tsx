@@ -1,599 +1,327 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
     Search,
-    Filter,
     Loader2,
-    Clock,
-    CheckCircle2,
-    XCircle,
     MapPin,
-    Building2,
     Navigation,
-    ChevronDown,
-    Plus,
-    Trash2,
-    Play,
     AlertCircle,
+    ArrowRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Toggle } from "@/components/ui/toggle";
-import { api, type SearchFilters, type SearchJobListItem } from "@/lib/api";
-
-// Current year for default filters
-const CURRENT_YEAR = new Date().getFullYear();
-const LAST_YEAR = CURRENT_YEAR - 1;
-
-// Queue item types
-interface QueueItem {
-    id: string;
-    type: "address" | "dno" | "coordinates";
-    // Address type
-    street?: string;
-    plzCity?: string;
-    // DNO type
-    dnoName?: string;
-    // Coordinates type
-    longitude?: number;
-    latitude?: number;
-    // Display label
-    label: string;
-}
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    api,
+    type PublicSearchRequest,
+    type PublicSearchResponse,
+} from "@/lib/api";
 
 /**
- * Generate a unique ID for queue items
- */
-function generateId(): string {
-    return crypto.randomUUID();
-}
-
-/**
- * SearchPage: Main search landing page with structured inputs
- * 
- * URL: /search
- * 
- * Features:
- * - Address input (Street + PLZ/City)
- * - DNO name direct input
- * - Advanced: Coordinates input
- * - Local queue for batch processing
- * - History of past searches
+ * SearchPage: Simplified search using decoupled public search API
+ *
+ * Flow:
+ * 1. User enters address/coordinates/DNO name
+ * 2. Submit → POST /api/v1/search/
+ * 3. If has_data: Show data preview + link to DNO page
+ * 4. If !has_data (skeleton): Show "Import Data" → navigate to DNO page
  */
 export default function SearchPage() {
-    const navigate = useNavigate();
 
-    // Input state for address
+    // Search mode
+    const [searchMode, setSearchMode] = useState<"address" | "coordinates">("address");
+
+    // Address inputs
     const [street, setStreet] = useState("");
-    const [plzCity, setPlzCity] = useState("");
+    const [zipCode, setZipCode] = useState("");
+    const [city, setCity] = useState("");
 
-    // Input state for DNO
-    const [dnoName, setDnoName] = useState("");
-
-    // Input state for coordinates (advanced)
-    const [longitude, setLongitude] = useState("");
+    // Coordinate inputs
     const [latitude, setLatitude] = useState("");
-    const [showAdvanced, setShowAdvanced] = useState(false);
+    const [longitude, setLongitude] = useState("");
 
-    // Queue state
-    const [queue, setQueue] = useState<QueueItem[]>([]);
-
-    // Filters
-    const [filters, setFilters] = useState<SearchFilters>({
-        years: [LAST_YEAR, CURRENT_YEAR],
-        types: ["netzentgelte", "hlzf"],
-    });
-
-    // Submission state
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // State
+    const [isSearching, setIsSearching] = useState(false);
+    const [result, setResult] = useState<PublicSearchResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch search history (auto-refresh every 5s while running jobs)
-    const { data: history, isLoading: historyLoading } = useQuery({
-        queryKey: ["search-history"],
-        queryFn: () => api.search.getHistory(20),
-        refetchInterval: 5000,  // Refresh every 5 seconds
-        refetchOnWindowFocus: true,  // Refresh when tab becomes active
-    });
+    // Validation
+    const isAddressValid =
+        street.trim().length > 0 &&
+        zipCode.trim().length >= 4 &&
+        city.trim().length > 0;
 
-    // Toggle filter
-    const toggleYear = (year: number) => {
-        setFilters(prev => ({
-            ...prev,
-            years: prev.years.includes(year)
-                ? prev.years.filter(y => y !== year)
-                : [...prev.years, year].sort(),
-        }));
-    };
-
-    const toggleType = (type: string) => {
-        setFilters(prev => {
-            const newTypes = prev.types.includes(type)
-                ? prev.types.filter(t => t !== type)
-                : [...prev.types, type];
-            return { ...prev, types: newTypes.length > 0 ? newTypes : prev.types };
-        });
-    };
-
-    // Validation helpers
-    const isAddressValid = street.trim().length > 0 && plzCity.trim().length > 0;
-    const isDnoValid = dnoName.trim().length > 0;
     const isCoordinatesValid = () => {
-        const lon = parseFloat(longitude.replace(",", "."));
         const lat = parseFloat(latitude.replace(",", "."));
-        return !isNaN(lon) && !isNaN(lat) &&
-            lon >= -180 && lon <= 180 &&
-            lat >= -90 && lat <= 90;
-    };
-
-    const canAddAddress = isAddressValid;
-    const canAddDno = isDnoValid;
-    const canAddCoordinates = isCoordinatesValid();
-
-    // Add to queue handlers
-    const addAddressToQueue = () => {
-        if (!canAddAddress) return;
-
-        const item: QueueItem = {
-            id: generateId(),
-            type: "address",
-            street: street.trim(),
-            plzCity: plzCity.trim(),
-            label: `${street.trim()}, ${plzCity.trim()}`,
-        };
-        setQueue(prev => [...prev, item]);
-        setStreet("");
-        setPlzCity("");
-    };
-
-    const addDnoToQueue = () => {
-        if (!canAddDno) return;
-
-        const item: QueueItem = {
-            id: generateId(),
-            type: "dno",
-            dnoName: dnoName.trim(),
-            label: dnoName.trim(),
-        };
-        setQueue(prev => [...prev, item]);
-        setDnoName("");
-    };
-
-    const addCoordinatesToQueue = () => {
-        if (!canAddCoordinates) return;
-
         const lon = parseFloat(longitude.replace(",", "."));
-        const lat = parseFloat(latitude.replace(",", "."));
-
-        const item: QueueItem = {
-            id: generateId(),
-            type: "coordinates",
-            longitude: lon,
-            latitude: lat,
-            label: `${lat.toFixed(4)}, ${lon.toFixed(4)}`,
-        };
-        setQueue(prev => [...prev, item]);
-        setLongitude("");
-        setLatitude("");
+        return (
+            !isNaN(lat) &&
+            !isNaN(lon) &&
+            lat >= -90 &&
+            lat <= 90 &&
+            lon >= -180 &&
+            lon <= 180
+        );
     };
 
-    const removeFromQueue = (id: string) => {
-        setQueue(prev => prev.filter(item => item.id !== id));
-    };
+    const canSearch =
+        (searchMode === "address" && isAddressValid) ||
+        (searchMode === "coordinates" && isCoordinatesValid());
 
-    // Start batch search
-    const handleStartBatch = async () => {
-        if (queue.length === 0) return;
+    // Search handler
+    const handleSearch = async () => {
+        if (!canSearch) return;
 
         setError(null);
-        setIsSubmitting(true);
+        setResult(null);
+        setIsSearching(true);
 
         try {
-            // Convert queue items to API payload format
-            const payloads = queue.map(item => {
-                if (item.type === "address") {
-                    return {
-                        type: "address" as const,
-                        address: { street: item.street!, plz_city: item.plzCity! },
-                    };
-                } else if (item.type === "dno") {
-                    return {
-                        type: "dno" as const,
-                        dno: { dno_name: item.dnoName! },
-                    };
-                } else {
-                    return {
-                        type: "coordinates" as const,
-                        coordinates: { longitude: item.longitude!, latitude: item.latitude! },
-                    };
-                }
-            });
+            let request: PublicSearchRequest = {};
 
-            const response = await api.search.createBatch(payloads, filters);
-
-            // Navigate to batch view
-            if (response.batch_id) {
-                navigate(`/search/batch/${response.batch_id}`);
+            if (searchMode === "address") {
+                request.address = {
+                    street: street.trim(),
+                    zip_code: zipCode.trim(),
+                    city: city.trim(),
+                };
+            } else {
+                request.coordinates = {
+                    latitude: parseFloat(latitude.replace(",", ".")),
+                    longitude: parseFloat(longitude.replace(",", ".")),
+                };
             }
-        } catch (err) {
-            setError("Failed to start batch search. Please try again.");
-            setIsSubmitting(false);
+
+            const response = await api.publicSearch.search(request);
+            setResult(response);
+        } catch (err: unknown) {
+            if (err && typeof err === "object" && "response" in err) {
+                const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+                if (axiosErr.response?.status === 429) {
+                    setError("Rate limit exceeded. Please wait a moment and try again.");
+                } else if (axiosErr.response?.status === 503) {
+                    setError("Service temporarily unavailable. Please try again later.");
+                } else {
+                    setError(axiosErr.response?.data?.message || "Search failed. Please try again.");
+                }
+            } else {
+                setError("Search failed. Please check your connection.");
+            }
+        } finally {
+            setIsSearching(false);
         }
     };
 
-    // Handle key press for Enter submission
-    const handleAddressKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && canAddAddress && !isSubmitting) {
-            addAddressToQueue();
+    const handleKeyDown = (e: React.KeyboardEvent) => {
+        if (e.key === "Enter" && canSearch && !isSearching) {
+            handleSearch();
         }
-    };
-
-    const handleDnoKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && canAddDno && !isSubmitting) {
-            addDnoToQueue();
-        }
-    };
-
-    const handleCoordsKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && canAddCoordinates && !isSubmitting) {
-            addCoordinatesToQueue();
-        }
-    };
-
-    // Get status icon for history item
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case "completed":
-                return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-            case "failed":
-                return <XCircle className="w-4 h-4 text-destructive" />;
-            case "running":
-                return <Loader2 className="w-4 h-4 text-primary animate-spin" />;
-            default:
-                return <Clock className="w-4 h-4 text-muted-foreground" />;
-        }
-    };
-
-    // Get icon for queue item type
-    const getQueueItemIcon = (type: QueueItem["type"]) => {
-        switch (type) {
-            case "address":
-                return <MapPin className="w-4 h-4" />;
-            case "dno":
-                return <Building2 className="w-4 h-4" />;
-            case "coordinates":
-                return <Navigation className="w-4 h-4" />;
-        }
-    };
-
-    // Format date
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-
-        if (diffMins < 1) return "Just now";
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString();
     };
 
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 max-w-3xl mx-auto">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold text-foreground">Search</h1>
+            <div className="text-center">
+                <h1 className="text-3xl font-bold text-foreground">Search DNO Data</h1>
                 <p className="text-muted-foreground mt-2">
-                    Find DNO data by address, name, or coordinates
+                    Find network operator data by address or coordinates
                 </p>
             </div>
 
-            {/* Main Input Card */}
-            <Card className="p-6">
-                <CardContent className="p-0 space-y-6">
-
-                    {/* Address Input Section */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                            <MapPin className="w-4 h-4 text-primary" />
+            {/* Search Card */}
+            <Card>
+                <CardContent className="p-6 space-y-6">
+                    {/* Mode Tabs */}
+                    <div className="flex gap-2 border-b pb-4">
+                        <Button
+                            variant={searchMode === "address" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSearchMode("address")}
+                            className="gap-2"
+                        >
+                            <MapPin className="w-4 h-4" />
                             Address
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        </Button>
+                        <Button
+                            variant={searchMode === "coordinates" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSearchMode("coordinates")}
+                            className="gap-2"
+                        >
+                            <Navigation className="w-4 h-4" />
+                            Coordinates
+                        </Button>
+                    </div>
+
+                    {/* Address Input */}
+                    {searchMode === "address" && (
+                        <div className="space-y-4">
                             <Input
-                                placeholder="Street + Housenumber"
+                                placeholder="Street + House Number (e.g. Musterstraße 123)"
                                 value={street}
                                 onChange={(e) => setStreet(e.target.value)}
-                                onKeyDown={handleAddressKeyDown}
-                                disabled={isSubmitting}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
                             />
-                            <div className="flex gap-2">
+                            <div className="grid grid-cols-2 gap-4">
                                 <Input
-                                    placeholder="PLZ + City (e.g. 50859 Köln)"
-                                    value={plzCity}
-                                    onChange={(e) => setPlzCity(e.target.value)}
-                                    onKeyDown={handleAddressKeyDown}
-                                    disabled={isSubmitting}
-                                    className="flex-1"
+                                    placeholder="Zip Code (e.g. 50667)"
+                                    value={zipCode}
+                                    onChange={(e) => setZipCode(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    disabled={isSearching}
+                                    maxLength={5}
                                 />
-                                <Button
-                                    variant="secondary"
-                                    size="icon"
-                                    onClick={addAddressToQueue}
-                                    disabled={!canAddAddress || isSubmitting}
-                                    title="Add address to queue"
-                                >
-                                    <Plus className="w-4 h-4" />
-                                </Button>
+                                <Input
+                                    placeholder="City (e.g. Köln)"
+                                    value={city}
+                                    onChange={(e) => setCity(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    disabled={isSearching}
+                                />
                             </div>
                         </div>
-                    </div>
+                    )}
 
-                    {/* Divider */}
-                    <div className="relative">
-                        <div className="absolute inset-0 flex items-center">
-                            <span className="w-full border-t" />
-                        </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-card px-2 text-muted-foreground">or</span>
-                        </div>
-                    </div>
 
-                    {/* DNO Input Section */}
-                    <div className="space-y-3">
-                        <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                            <Building2 className="w-4 h-4 text-primary" />
-                            DNO Name (if known)
-                        </div>
-                        <div className="flex gap-2">
+
+                    {/* Coordinates Input */}
+                    {searchMode === "coordinates" && (
+                        <div className="grid grid-cols-2 gap-4">
                             <Input
-                                placeholder="e.g. RheinNetz, Westnetz, E.DIS"
-                                value={dnoName}
-                                onChange={(e) => setDnoName(e.target.value)}
-                                onKeyDown={handleDnoKeyDown}
-                                disabled={isSubmitting}
-                                className="flex-1"
+                                placeholder="Latitude (e.g. 50.9413)"
+                                value={latitude}
+                                onChange={(e) => setLatitude(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
                             />
-                            <Button
-                                variant="secondary"
-                                size="icon"
-                                onClick={addDnoToQueue}
-                                disabled={!canAddDno || isSubmitting}
-                                title="Add DNO to queue"
-                            >
-                                <Plus className="w-4 h-4" />
-                            </Button>
+                            <Input
+                                placeholder="Longitude (e.g. 6.9578)"
+                                value={longitude}
+                                onChange={(e) => setLongitude(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
+                            />
                         </div>
-                    </div>
+                    )}
 
-                    {/* Advanced Search (Collapsible) */}
-                    <div className="border-t pt-4">
-                        <button
-                            type="button"
-                            onClick={() => setShowAdvanced(!showAdvanced)}
-                            className="flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground transition-colors"
-                        >
-                            <ChevronDown className={`w-4 h-4 transition-transform ${showAdvanced ? "rotate-180" : ""}`} />
-                            Advanced Search
-                        </button>
-
-                        {showAdvanced && (
-                            <div className="mt-4 space-y-3 pl-6 border-l-2 border-muted">
-                                <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-                                    <Navigation className="w-4 h-4 text-primary" />
-                                    Coordinates
-                                </div>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                                    <Input
-                                        placeholder="Longitude (e.g. 6.9578)"
-                                        value={longitude}
-                                        onChange={(e) => setLongitude(e.target.value)}
-                                        onKeyDown={handleCoordsKeyDown}
-                                        disabled={isSubmitting}
-                                    />
-                                    <div className="flex gap-2">
-                                        <Input
-                                            placeholder="Latitude (e.g. 50.9413)"
-                                            value={latitude}
-                                            onChange={(e) => setLatitude(e.target.value)}
-                                            onKeyDown={handleCoordsKeyDown}
-                                            disabled={isSubmitting}
-                                            className="flex-1"
-                                        />
-                                        <Button
-                                            variant="secondary"
-                                            size="icon"
-                                            onClick={addCoordinatesToQueue}
-                                            disabled={!canAddCoordinates || isSubmitting}
-                                            title="Add coordinates to queue"
-                                        >
-                                            <Plus className="w-4 h-4" />
-                                        </Button>
-                                    </div>
-                                </div>
-                                <p className="text-xs text-muted-foreground">
-                                    Use decimal format with dot separator (e.g., 6.9578, 50.9413)
-                                </p>
-                            </div>
+                    {/* Search Button */}
+                    <Button
+                        onClick={handleSearch}
+                        disabled={!canSearch || isSearching}
+                        className="w-full gap-2"
+                        size="lg"
+                    >
+                        {isSearching ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Search className="w-4 h-4" />
                         )}
-                    </div>
-
-                    {/* Filters */}
-                    <div className="border-t pt-4">
-                        <div className="flex flex-wrap items-center gap-4">
-                            <div className="flex items-center gap-2">
-                                <Filter className="w-4 h-4 text-muted-foreground" />
-                                <span className="text-sm text-muted-foreground">Years:</span>
-                                <div className="flex gap-1">
-                                    {[LAST_YEAR, CURRENT_YEAR].map(year => (
-                                        <Toggle
-                                            key={year}
-                                            pressed={filters.years.includes(year)}
-                                            onPressedChange={() => toggleYear(year)}
-                                            disabled={isSubmitting}
-                                            size="sm"
-                                            variant="outline"
-                                        >
-                                            {year}
-                                        </Toggle>
-                                    ))}
-                                </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                                <span className="text-sm text-muted-foreground">Data:</span>
-                                <div className="flex gap-1">
-                                    <Toggle
-                                        pressed={filters.types.includes("netzentgelte")}
-                                        onPressedChange={() => toggleType("netzentgelte")}
-                                        disabled={isSubmitting}
-                                        size="sm"
-                                        variant="outline"
-                                    >
-                                        Netzentgelte
-                                    </Toggle>
-                                    <Toggle
-                                        pressed={filters.types.includes("hlzf")}
-                                        onPressedChange={() => toggleType("hlzf")}
-                                        disabled={isSubmitting}
-                                        size="sm"
-                                        variant="outline"
-                                    >
-                                        HLZF
-                                    </Toggle>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
+                        Search
+                    </Button>
                 </CardContent>
             </Card>
 
-            {/* Queue Card */}
-            {queue.length > 0 && (
-                <Card className="p-6 border-primary/30">
-                    <CardHeader className="p-0 pb-4">
-                        <CardTitle className="text-lg flex items-center justify-between">
-                            <span className="flex items-center gap-2">
-                                <Search className="w-5 h-5" />
-                                Search Queue
-                                <Badge variant="secondary">{queue.length}</Badge>
-                            </span>
-                            <Button
-                                onClick={handleStartBatch}
-                                disabled={isSubmitting}
-                                className="gap-2"
-                            >
-                                {isSubmitting ? (
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                ) : (
-                                    <Play className="w-4 h-4" />
-                                )}
-                                Start Batch ({queue.length})
-                            </Button>
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="p-0">
-                        <div className="space-y-2">
-                            {queue.map((item) => (
-                                <div
-                                    key={item.id}
-                                    className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 group"
-                                >
-                                    <div className="p-2 rounded-md bg-primary/10 text-primary">
-                                        {getQueueItemIcon(item.type)}
-                                    </div>
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{item.label}</p>
-                                        <p className="text-xs text-muted-foreground capitalize">{item.type}</p>
-                                    </div>
-                                    <Button
-                                        variant="ghost"
-                                        size="icon"
-                                        onClick={() => removeFromQueue(item.id)}
-                                        disabled={isSubmitting}
-                                        className="opacity-0 group-hover:opacity-100 transition-opacity text-muted-foreground hover:text-destructive"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    </CardContent>
-                </Card>
-            )}
-
             {/* Error */}
             {error && (
-                <Card className="p-4 border-destructive">
-                    <div className="flex items-center gap-2 text-destructive text-sm">
-                        <AlertCircle className="w-4 h-4" />
-                        {error}
-                    </div>
-                </Card>
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
             )}
 
-            {/* Search History */}
-            <div className="max-w-2xl mx-auto mt-12">
-                <h2 className="text-sm font-medium text-muted-foreground mb-4 text-center flex items-center justify-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Recent Searches
-                </h2>
-
-                {historyLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : history && history.length > 0 ? (
-                    <div className="space-y-2">
-                        {history.map((item: SearchJobListItem) => (
-                            <Card
-                                key={item.job_id}
-                                className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => {
-                                    // Navigate to batch view if it's a batch, otherwise job view
-                                    if (item.batch_id) {
-                                        navigate(`/search/batch/${item.batch_id}`);
-                                    } else {
-                                        navigate(`/search/${item.job_id}`);
-                                    }
-                                }}
-                            >
-                                <div className="flex items-center gap-3">
-                                    {getStatusIcon(item.status)}
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{item.input_text}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {formatDate(item.created_at)}
-                                        </p>
+            {/* Result */}
+            {result && (
+                <Card>
+                    {result.found && result.dno ? (
+                        <>
+                            <CardHeader>
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <CardTitle className="text-xl">{result.dno.name}</CardTitle>
+                                        {result.dno.official_name && (
+                                            <CardDescription>{result.dno.official_name}</CardDescription>
+                                        )}
                                     </div>
-                                    {item.batch_id && item.batch_total ? (
-                                        // Show batch progress
-                                        <Badge variant="outline" className="shrink-0 text-xs">
-                                            {item.batch_completed ?? 0}/{item.batch_total}
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="outline" className="shrink-0 text-xs">
-                                            {item.status}
-                                        </Badge>
-                                    )}
+                                    <Badge variant={result.has_data ? "default" : "secondary"}>
+                                        {result.has_data ? "Data Available" : "Skeleton"}
+                                    </Badge>
                                 </div>
-                            </Card>
-                        ))}
-                    </div>
-                ) : (
-                    <Card className="p-6 text-center">
-                        <p className="text-muted-foreground">
-                            No search history yet. Add items to your queue and start your first search!
-                        </p>
-                    </Card>
-                )}
-            </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {/* Location Info */}
+                                {result.location && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <MapPin className="w-4 h-4" />
+                                        {result.location.street}, {result.location.zip_code} {result.location.city}
+                                    </div>
+                                )}
+
+                                {result.has_data ? (
+                                    /* Data Preview */
+                                    <div className="space-y-3">
+                                        {result.netzentgelte && result.netzentgelte.length > 0 && (
+                                            <div className="p-3 rounded-lg bg-muted/50">
+                                                <div className="text-sm font-medium mb-2">
+                                                    Netzentgelte ({result.netzentgelte.length} records)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    Years: {[...new Set(result.netzentgelte.map((n) => n.year))].join(", ")}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {result.hlzf && result.hlzf.length > 0 && (
+                                            <div className="p-3 rounded-lg bg-muted/50">
+                                                <div className="text-sm font-medium mb-2">
+                                                    HLZF ({result.hlzf.length} records)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    Years: {[...new Set(result.hlzf.map((h) => h.year))].join(", ")}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <Button asChild className="w-full gap-2">
+                                            <Link to={`/dnos/${result.dno.slug}`}>
+                                                View Full Data
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    /* Skeleton - Import CTA */
+                                    <div className="space-y-4">
+                                        <Alert>
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertTitle>No data yet</AlertTitle>
+                                            <AlertDescription>
+                                                {result.message || "This DNO has been registered but no data has been crawled yet."}
+                                            </AlertDescription>
+                                        </Alert>
+                                        <Button asChild className="w-full gap-2">
+                                            <Link to={`/dnos/${result.dno.slug}`}>
+                                                Import Data
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </>
+                    ) : (
+                        /* Not Found */
+                        <CardContent className="p-6 text-center">
+                            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-lg font-medium">No DNO Found</p>
+                            <p className="text-muted-foreground mt-2">
+                                {result.message || "No distribution network operator found for this location."}
+                            </p>
+                        </CardContent>
+                    )}
+                </Card>
+            )}
         </div>
     );
 }

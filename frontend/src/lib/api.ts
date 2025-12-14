@@ -58,14 +58,15 @@ export interface DNO {
   slug: string;
   name: string;
   official_name?: string;
+  vnb_id?: string;
+  status?: "uncrawled" | "crawling" | "crawled" | "failed";
+  crawl_locked_at?: string;
   description?: string;
   region?: string;
   website?: string;
-  bundesland?: string;
-  homepage_url?: string;
-  netzentgelt_url?: string;
-  is_active?: boolean;
   data_points_count?: number;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface Netzentgelte {
@@ -92,6 +93,71 @@ export interface HLZF {
   sommer?: string | null;
   herbst?: string | null;
   verification_status?: string;
+}
+
+// =============================================================================
+// Public Search Types (Decoupled Search API)
+// =============================================================================
+
+export interface PublicSearchRequest {
+  address?: {
+    street: string;
+    zip_code: string;
+    city: string;
+  };
+  coordinates?: {
+    latitude: number;
+    longitude: number;
+  };
+  dno?: {
+    dno_id?: string;
+    dno_name?: string;
+  };
+  year?: number;
+}
+
+export interface PublicSearchDNO {
+  id: number;
+  slug: string;
+  name: string;
+  official_name?: string;
+  vnb_id?: string;
+  status: string;
+}
+
+export interface PublicSearchLocation {
+  street: string;
+  number?: string;
+  zip_code: string;
+  city: string;
+  latitude: number;
+  longitude: number;
+}
+
+export interface PublicSearchNetzentgelte {
+  year: number;
+  voltage_level: string;
+  leistung?: number;
+  arbeit?: number;
+}
+
+export interface PublicSearchHLZF {
+  year: number;
+  voltage_level: string;
+  winter?: string;
+  fruehling?: string;
+  sommer?: string;
+  herbst?: string;
+}
+
+export interface PublicSearchResponse {
+  found: boolean;
+  has_data: boolean;
+  dno?: PublicSearchDNO;
+  location?: PublicSearchLocation;
+  netzentgelte?: PublicSearchNetzentgelte[];
+  hlzf?: PublicSearchHLZF[];
+  message?: string;
 }
 
 export interface ApiResponse<T> {
@@ -148,114 +214,7 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
-// Search Job types for natural language search with Timeline UI
-export interface SearchFilters {
-  years: number[];
-  types: string[];
-}
-
-export interface SearchStep {
-  step: number;
-  label: string;
-  status: "pending" | "running" | "done" | "failed";
-  detail: string;
-  started_at?: string;
-  completed_at?: string;
-}
-
-export interface SearchJobStatus {
-  job_id: string;
-  status: "pending" | "running" | "completed" | "failed" | "cancelled";
-  input_text: string;
-  filters?: SearchFilters;
-  current_step?: string;
-  steps_history: SearchStep[];
-  result?: {
-    dno_name: string;
-    netzentgelte: Record<number, unknown[]>;
-    hlzf: Record<number, unknown[]>;
-  };
-  error?: string;
-  created_at: string;
-  // Batch fields
-  batch_id?: string;
-  batch_index?: number;
-  batch_total?: number;
-  dno_name?: string;
-  dno_coordinates?: { lat: number; lon: number };
-  year?: number;
-  data_type?: string;
-}
-
-export interface BatchJobItem {
-  job_id: string;
-  batch_index: number;
-  batch_total: number;
-  input_text: string;
-  dno_name: string;
-  year: number;
-  data_type: string;
-  status: "pending" | "running" | "completed" | "failed";
-  current_step?: string;
-  steps_history: SearchStep[];
-  error?: string;
-}
-
-export interface BatchStatus {
-  batch_id: string;
-  status: "pending" | "running" | "completed" | "completed_with_errors";
-  total_jobs: number;
-  completed: number;
-  failed: number;
-  running: number;
-  pending: number;
-  progress_percent: number;
-  current_job_index?: number;
-  jobs: BatchJobItem[];
-}
-
-export interface BatchCreateResponse {
-  batch_id: string;
-  job_ids: string[];
-  count: number;
-  resolved_dnos: { dno_name: string; source: string; coordinates?: { lat: number; lon: number } }[];
-  status: string;
-}
-
-export interface SearchJobListItem {
-  job_id: string;
-  input_text: string;
-  status: string;
-  created_at: string;
-  completed_at?: string;
-  // Batch info for grouped display
-  batch_id?: string;
-  batch_total?: number;
-  batch_completed?: number;
-  dno_names?: string[];
-}
-
-// Batch search payload types
-export interface AddressPayload {
-  street: string;
-  plz_city: string;
-}
-
-export interface DNOPayload {
-  dno_name: string;
-}
-
-export interface CoordinatesPayload {
-  longitude: number;
-  latitude: number;
-}
-
-export interface QueuePayload {
-  type: "address" | "dno" | "coordinates";
-  address?: AddressPayload;
-  dno?: DNOPayload;
-  coordinates?: CoordinatesPayload;
-}
+// NOTE: Old batch/timeline types removed - now using PublicSearch types above
 
 // API functions
 export const api = {
@@ -267,113 +226,15 @@ export const api = {
     },
   },
 
-  // Natural language search with Timeline UI
-  search: {
-    async create(
-      prompt: string,
-      filters?: SearchFilters
-    ): Promise<{ job_id: string; status: string; message: string }> {
-      const { data } = await apiClient.post("/search", {
-        prompt,
-        filters: filters || { years: [2024, 2025], types: ["netzentgelte", "hlzf"] },
-      });
-      return data;
-    },
-
-    async getStatus(jobId: string): Promise<SearchJobStatus> {
-      const { data } = await apiClient.get(`/search/${jobId}/status`);
-      return data;
-    },
-
-    async getJob(jobId: string): Promise<SearchJobStatus> {
-      const { data } = await apiClient.get(`/search/${jobId}`);
-      return data;
-    },
-
-    async getHistory(limit?: number): Promise<SearchJobListItem[]> {
-      const { data } = await apiClient.get("/search/history", {
-        params: { limit: limit || 20 },
-      });
-      return data;
-    },
-
-    async cancel(jobId: string): Promise<{ status: string; message: string }> {
-      const { data } = await apiClient.post(`/search/${jobId}/cancel`);
-      return data;
-    },
-
-    async listJobs(params?: { status?: string; limit?: number }): Promise<{
-      jobs: {
-        job_id: string;
-        input_text: string;
-        status: string;
-        dno_name?: string;
-        year?: number;
-        data_type?: string;
-        current_step?: string;
-        queue_position?: number;
-        batch_id?: string;
-        batch_index?: number;
-        batch_total?: number;
-        created_at?: string;
-        started_at?: string;
-        completed_at?: string;
-        error?: string;
-      }[];
-      total: number;
-      queue_length: number;
-    }> {
-      const { data } = await apiClient.get("/search/jobs", { params });
-      return data;
-    },
-
-    async createBatch(
-      payloads: QueuePayload[],
-      filters?: SearchFilters
-    ): Promise<BatchCreateResponse> {
-      const { data } = await apiClient.post("/search/batch", {
-        payloads,
-        filters: filters || { years: [2024, 2025], types: ["netzentgelte", "hlzf"] },
-      });
-      return data;
-    },
-
-    async getBatchStatus(batchId: string): Promise<BatchStatus> {
-      const { data } = await apiClient.get(`/search/batch/${batchId}`);
-      return data;
-    },
-  },
-
-  public: {
-    async searchData(params: {
-      dno?: string;
-      year?: number;
-      data_type?: "netzentgelte" | "hlzf" | "all";
-      page?: number;
-      per_page?: number;
-    }): Promise<ApiResponse<(Netzentgelte | HLZF)[]>> {
-      const { data } = await apiClient.get("/search", { params });
-      return data;
-    },
-
-    async listDNOs(params?: {
-      region?: string;
-      page?: number;
-      per_page?: number;
-    }): Promise<ApiResponse<DNO[]>> {
-      const { data } = await apiClient.get("/dnos", { params });
-      return data;
-    },
-
-    async getDNO(slug: string): Promise<ApiResponse<DNO>> {
-      const { data } = await apiClient.get(`/dnos/${slug}`);
-      return data;
-    },
-
-    async getYears(dno_slug?: string): Promise<ApiResponse<number[]>> {
-      const { data } = await apiClient.get("/years", {
-        params: { dno_slug },
-      });
+  // Public Search API (Decoupled - skeleton creation)
+  publicSearch: {
+    /**
+     * Search for DNO by address, coordinates, or name.
+     * Returns existing data or creates skeleton DNO.
+     * Auth token sent for better rate limiting.
+     */
+    async search(request: PublicSearchRequest): Promise<PublicSearchResponse> {
+      const { data } = await apiClient.post("/search/", request);
       return data;
     },
   },
