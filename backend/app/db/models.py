@@ -3,6 +3,7 @@ SQLAlchemy ORM models for DNO Crawler.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     Time,
@@ -55,6 +57,12 @@ class DNOModel(Base, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     official_name: Mapped[str | None] = mapped_column(String(255))
+    
+    # VNB Digital integration
+    vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="uncrawled", index=True)  # uncrawled | crawling | crawled | failed
+    crawl_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # For stuck job recovery
+    
     description: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     website: Mapped[str | None] = mapped_column(String(500))
@@ -64,15 +72,52 @@ class DNOModel(Base, TimestampMixin):
     hlzf: Mapped[list["HLZFModel"]] = relationship(back_populates="dno")
     crawl_configs: Mapped[list["DNOCrawlConfigModel"]] = relationship(back_populates="dno")
     strategies: Mapped[list["ExtractionStrategyModel"]] = relationship(back_populates="dno")
+    locations: Mapped[list["LocationModel"]] = relationship(back_populates="dno")
+
+
+class LocationModel(Base, TimestampMixin):
+    """Geographic location linked to a DNO.
+    
+    Enables efficient lookups:
+    - Address → (address_hash) → DNO
+    - (lat, lon) → DNO (with spatial tolerance)
+    
+    Uses Numeric(9,6) for coordinates = ~11cm precision with exact matching.
+    """
+    __tablename__ = "locations"
+    __table_args__ = (
+        Index("idx_locations_geocoord", "latitude", "longitude"),
+        Index("idx_locations_address_hash", "address_hash"),
+        Index("idx_locations_zip", "zip_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"), index=True)
+    
+    # Hash for uniqueness (mashed string: "anderronne|160|12345")
+    address_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    
+    # Clean components for storage/API calls
+    street_clean: Mapped[str] = mapped_column(String(255), nullable=False)  # "An der Ronne"
+    number_clean: Mapped[str | None] = mapped_column(String(20))            # "160"
+    zip_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    city: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    # Coordinates: Numeric(9,6) for exact matching (~11cm precision)
+    latitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
+    longitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
+    
+    # Metadata
+    source: Mapped[str] = mapped_column(String(50), default="vnb_digital")
+    
+    # Relationships
+    dno: Mapped["DNOModel"] = relationship(back_populates="locations")
 
 
 class DNOAddressCacheModel(Base, TimestampMixin):
-    """Cache for address → coordinates + DNO mappings.
+    """Legacy cache for address → coordinates + DNO mappings.
     
-    Used to avoid redundant external API calls. A single cache entry
-    stores both the geocoding result (lat/lon) and the DNO resolution.
-    
-    Key: (zip_code, street_name) → {latitude, longitude, dno_name}
+    DEPRECATED: Use LocationModel instead. Kept for backwards compatibility.
     """
     __tablename__ = "dno_address_cache"
     __table_args__ = (

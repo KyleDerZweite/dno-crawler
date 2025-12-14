@@ -1,813 +1,482 @@
 """
-Search API routes for natural language search with Timeline UI.
+Public Search API with Lazy Registration.
 
-Provides endpoints for:
-- Natural language search with filters (POST /search)
-- Job status polling for Timeline UI (GET /search/{job_id}/status)
-- Search history (GET /search/history)
+Decoupled from heavy crawl jobs. Returns existing data or registers
+skeleton DNO/Location records via VNB Digital API.
+
+Rate limited: 60 req/min per IP, 50 req/min global VNB quota.
 """
 
-from datetime import datetime
 from typing import Optional
-from uuid import UUID
 
 import structlog
-from arq import create_pool
-from arq.connections import RedisSettings
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, get_optional_user
-from app.core.config import settings
-from app.core.models import User
-from app.db import get_db
-from app.db.models import SearchJobModel
+from app.core.rate_limiter import get_client_ip, get_rate_limiter, RateLimiter
+from app.db import get_db, DNOModel, HLZFModel, NetzentgelteModel, LocationModel
+from app.services.skeleton_service import (
+    normalize_address,
+    skeleton_service,
+    NormalizedAddress,
+)
+from app.services.vnb_digital import AsyncVNBDigitalClient
 
 logger = structlog.get_logger()
 router = APIRouter()
 
 
-# ============================================================================
+# =============================================================================
 # Request/Response Models
-# ============================================================================
+# =============================================================================
 
 
-class SearchFilters(BaseModel):
-    """Filters for search queries."""
-    years: list[int] = Field(
-        default=[2024, 2025], 
-        description="Years to search for. Empty = AI extracts from query."
+class AddressSearchInput(BaseModel):
+    """Address search input with strict validation."""
+    street: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Street with house number",
     )
-    types: list[str] = Field(
-        default=["netzentgelte", "hlzf"],
-        description="Data types to search for."
+    zip_code: str = Field(
+        ...,
+        min_length=4,
+        max_length=5,
+        pattern=r"^\d{4,5}$",
+        description="German postal code (4-5 digits)",
+    )
+    city: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="City name",
     )
 
 
-# ============================================================================
-# Structured Input Models (for batch search)
-# ============================================================================
+class CoordinatesSearchInput(BaseModel):
+    """Coordinates search input."""
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
 
 
-class AddressInput(BaseModel):
-    """Address input with street and PLZ+City."""
-    street: str = Field(..., min_length=1, description="Street + housenumber")
-    plz_city: str = Field(..., min_length=3, description="PLZ + City (e.g., '50859 Köln')")
+class DNOSearchInput(BaseModel):
+    """Direct DNO search input with validation."""
+    dno_id: Optional[str] = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
+    dno_name: Optional[str] = Field(None, max_length=200)
 
 
-class DNOInput(BaseModel):
-    """Direct DNO name input."""
-    dno_name: str = Field(..., min_length=2, description="DNO name")
+class PublicSearchRequest(BaseModel):
+    """Public search request - one of three input types."""
+    address: Optional[AddressSearchInput] = None
+    coordinates: Optional[CoordinatesSearchInput] = None
+    dno: Optional[DNOSearchInput] = None
+    year: Optional[int] = Field(None, ge=2000, le=2100)
 
 
-class CoordinatesInput(BaseModel):
-    """Geographic coordinates input."""
-    longitude: float = Field(..., ge=-180, le=180, description="Longitude")
-    latitude: float = Field(..., ge=-90, le=90, description="Latitude")
-
-
-class SearchPayloadItem(BaseModel):
-    """A single search payload - one of three types."""
-    type: str = Field(..., pattern="^(address|dno|coordinates)$")
-    address: Optional[AddressInput] = None
-    dno: Optional[DNOInput] = None
-    coordinates: Optional[CoordinatesInput] = None
-    
-    def get_display_label(self) -> str:
-        """Generate a display label for this search item."""
-        if self.type == "address" and self.address:
-            return f"{self.address.street}, {self.address.plz_city}"
-        elif self.type == "dno" and self.dno:
-            return self.dno.dno_name
-        elif self.type == "coordinates" and self.coordinates:
-            return f"({self.coordinates.latitude:.4f}, {self.coordinates.longitude:.4f})"
-        return "Unknown"
-
-
-class BatchSearchRequest(BaseModel):
-    """Batch of search payloads to queue."""
-    payloads: list[SearchPayloadItem] = Field(..., min_length=1)
-    filters: SearchFilters = Field(default_factory=SearchFilters)
-
-
-class SearchRequest(BaseModel):
-    """Request to start a natural language search."""
-    prompt: str = Field(
-        ..., 
-        min_length=3,
-        max_length=500,
-        description="Natural language search query",
-        example="Musterstr 5, Köln"
-    )
-    filters: SearchFilters = Field(default_factory=SearchFilters)
-
-
-class SearchJobStatus(BaseModel):
-    """Response for search job status (used for polling)."""
-    job_id: str
-    status: str  # pending | running | completed | failed
-    input_text: str = ""
-    filters: Optional[dict] = None
-    current_step: Optional[str] = None
-    steps_history: list[dict] = []
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    created_at: datetime
-    # Batch fields
-    batch_id: Optional[str] = None
-    batch_index: Optional[int] = None
-    batch_total: Optional[int] = None
-    dno_name: Optional[str] = None
-    dno_coordinates: Optional[dict] = None
-    year: Optional[int] = None
-    data_type: Optional[str] = None
-
-
-class SearchJobListItem(BaseModel):
-    """Item in search history list."""
-    job_id: str
-    input_text: str
+class DNOMetadata(BaseModel):
+    """Lightweight DNO info."""
+    id: int
+    slug: str
+    name: str
+    official_name: Optional[str] = None
+    vnb_id: Optional[str] = None
     status: str
-    created_at: datetime
-    completed_at: Optional[datetime] = None
-    # Batch info for grouped display
-    batch_id: Optional[str] = None
-    batch_total: Optional[int] = None
-    batch_completed: Optional[int] = None  # How many in batch are done
-    dno_names: Optional[list[str]] = None  # DNOs in this batch
 
 
-class SearchResponse(BaseModel):
-    """Response after starting a search job."""
-    job_id: str
-    status: str = "pending"
-    message: str
+class LocationInfo(BaseModel):
+    """Location info."""
+    street: str
+    number: Optional[str] = None
+    zip_code: str
+    city: str
+    latitude: float
+    longitude: float
 
 
-# ============================================================================
+class NetzentgelteData(BaseModel):
+    """Netzentgelte data."""
+    year: int
+    voltage_level: str
+    leistung: Optional[float] = None
+    arbeit: Optional[float] = None
+
+
+class HLZFData(BaseModel):
+    """HLZF data."""
+    year: int
+    voltage_level: str
+    winter: Optional[str] = None
+    fruehling: Optional[str] = None
+    sommer: Optional[str] = None
+    herbst: Optional[str] = None
+
+
+class PublicSearchResponse(BaseModel):
+    """Response for public search."""
+    found: bool
+    has_data: bool
+    dno: Optional[DNOMetadata] = None
+    location: Optional[LocationInfo] = None
+    netzentgelte: Optional[list[NetzentgelteData]] = None
+    hlzf: Optional[list[HLZFData]] = None
+    message: Optional[str] = None
+
+
+# =============================================================================
 # Endpoints
-# ============================================================================
+# =============================================================================
 
 
 @router.post(
-    "",
-    response_model=SearchResponse,
-    summary="Start Natural Language Search",
-    description="Start a search job from natural language input. Returns job_id for polling."
+    "/",
+    response_model=PublicSearchResponse,
+    summary="Public Search with Lazy Registration",
+    responses={
+        200: {"description": "DNO found with data"},
+        202: {"description": "DNO registered (skeleton), no data yet"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "External API quota exhausted"},
+    },
 )
-async def create_search(
-    request: SearchRequest,
+async def public_search(
+    request: PublicSearchRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
 ):
     """
-    Start a natural language search job.
+    Public Search API with Lazy Registration.
     
-    Flow:
-    1. Create SearchJob record in DB
-    2. Queue job to ARQ worker (respects max_jobs=1)
-    3. Return job_id for frontend polling
+    Accepts address, coordinates, or DNO name.
+    Returns existing data or registers skeleton for future crawling.
     
-    The frontend should poll GET /search/{job_id}/status every ~1.5 seconds.
+    **Rate Limits:**
+    - 60 requests/minute per IP
+    - 50 VNB API calls/minute globally
     """
-    log = logger.bind(
-        prompt=request.prompt[:50],
-        user=current_user.email if current_user else "anonymous"
-    )
-    log.info("Creating search job")
+    log = logger.bind(endpoint="public_search")
     
+    # Get rate limiter and client IP
     try:
-        # 1. Create job record in DB
-        job = SearchJobModel(
-            user_id=current_user.id if current_user else None,
-            input_text=request.prompt,
-            filters={
-                "years": request.filters.years,
-                "types": request.filters.types,
-            },
-            status="pending",
-            steps_history=[],
-        )
-        db.add(job)
-        await db.commit()
-        await db.refresh(job)
-        
-        job_id = str(job.id)
-        log.info("Search job created", job_id=job_id)
-        
-        # 2. Queue to ARQ worker (CRITICAL: use ARQ, not BackgroundTasks)
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
-        )
-        
-        await redis_pool.enqueue_job(
-            "job_process_search_request",
-            job_id=job_id,
-            prompt=request.prompt,
-            filters=request.filters.model_dump(),
-        )
-        
-        await redis_pool.close()
-        
-        log.info("Search job queued to ARQ", job_id=job_id)
-        
-        return SearchResponse(
-            job_id=job_id,
-            status="pending",
-            message=f"Search started for: {request.prompt[:50]}..."
-        )
-        
-    except Exception as e:
-        log.error("Failed to create search job", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to start search: {str(e)}")
-
-
-@router.post(
-    "/batch",
-    summary="Start Batch Search",
-    description="Start multiple search jobs from structured payloads. Pre-resolves DNOs and creates sub-jobs for each year/type combination."
-)
-async def create_batch_search(
-    request: BatchSearchRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
-):
-    """
-    Start batch search with two phases:
+        rate_limiter = get_rate_limiter()
+        client_ip = get_client_ip(http_request)
+        await rate_limiter.check_ip_limit(client_ip)
+    except RuntimeError:
+        # Rate limiter not initialized (dev mode without Redis)
+        log.warning("Rate limiter not available")
+        rate_limiter = None
+        client_ip = "unknown"
     
-    Phase 1: DNO Resolution (synchronous)
-    - Address → VNB Digital API → DNO name + coordinates
-    - Coordinates → VNB Digital API → DNO name
-    - DNO name → pass through
-    
-    Phase 2: Create Sub-Jobs
-    - For each resolved DNO, create jobs for each year × type combination
-    - E.g., 2 DNOs × 2 years × 2 types = 8 jobs
-    
-    Returns batch_id for tracking all jobs together.
-    """
-    from uuid import uuid4
-    from app.services.vnb_digital import VNBDigitalClient
-    
-    log = logger.bind(
-        batch_size=len(request.payloads),
-        user=current_user.email if current_user else "anonymous"
-    )
-    log.info("Creating batch search")
-    
-    # Generate batch ID for grouping
-    batch_id = uuid4()
-    
-    # Phase 1: Resolve all DNOs first
-    vnb_client = VNBDigitalClient(request_delay=1.0)
-    resolved_dnos = []  # List of {"dno_name": ..., "coordinates": {...}, "source_label": ...}
-    
-    for payload in request.payloads:
-        source_label = payload.get_display_label()
-        dno_info = {"dno_name": None, "coordinates": None, "source_label": source_label}
-        
-        try:
-            if payload.type == "address" and payload.address:
-                # Address → VNB Digital API → DNO + coordinates
-                full_address = f"{payload.address.street}, {payload.address.plz_city}"
-                
-                # First get coordinates
-                location = vnb_client.search_address(full_address)
-                if location:
-                    dno_info["coordinates"] = {"lat": location.latitude, "lon": location.longitude}
-                    # Then get DNO from coordinates
-                    vnbs = vnb_client.lookup_by_coordinates(location.latitude, location.longitude)
-                    if vnbs:
-                        # Find electricity (Strom) DNO
-                        for vnb in vnbs:
-                            if vnb.sparte == "Strom":
-                                dno_info["dno_name"] = vnb.name
-                                break
-                        if not dno_info["dno_name"] and vnbs:
-                            dno_info["dno_name"] = vnbs[0].name
-                
-            elif payload.type == "coordinates" and payload.coordinates:
-                # Coordinates → VNB Digital API → DNO
-                lat = payload.coordinates.latitude
-                lon = payload.coordinates.longitude
-                dno_info["coordinates"] = {"lat": lat, "lon": lon}
-                
-                vnbs = vnb_client.lookup_by_coordinates(lat, lon)
-                if vnbs:
-                    for vnb in vnbs:
-                        if vnb.sparte == "Strom":
-                            dno_info["dno_name"] = vnb.name
-                            break
-                    if not dno_info["dno_name"] and vnbs:
-                        dno_info["dno_name"] = vnbs[0].name
-                
-            elif payload.type == "dno" and payload.dno:
-                # Direct DNO name - pass through
-                dno_info["dno_name"] = payload.dno.dno_name
-            
-            log.debug("DNO resolved", source=source_label, dno=dno_info["dno_name"])
-            
-        except Exception as e:
-            log.warning("DNO resolution failed", source=source_label, error=str(e))
-        
-        if dno_info["dno_name"]:
-            resolved_dnos.append(dno_info)
-    
-    if not resolved_dnos:
+    # Validate exactly one input type provided
+    inputs_provided = sum([
+        request.address is not None,
+        request.coordinates is not None,
+        request.dno is not None,
+    ])
+    if inputs_provided != 1:
         raise HTTPException(
-            status_code=400, 
-            detail="Could not resolve any DNO names from the provided inputs"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Exactly one of 'address', 'coordinates', or 'dno' must be provided.",
         )
     
-    # Phase 2: Create sub-jobs for each DNO × year × type
-    job_ids = []
-    years = request.filters.years
-    types = request.filters.types
-    
-    # Calculate total jobs
-    total_jobs = len(resolved_dnos) * len(years) * len(types)
-    job_index = 0
-    
-    try:
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
+    # Route to appropriate handler
+    if request.address:
+        return await _search_by_address(
+            db, rate_limiter, request.address, request.year, log
         )
-        
-        for dno_info in resolved_dnos:
-            dno_name = dno_info["dno_name"]
-            coordinates = dno_info["coordinates"]
-            source_label = dno_info["source_label"]
-            
-            for year in years:
-                for data_type in types:
-                    job_index += 1
-                    
-                    # Generate display label
-                    type_label = "Netzentgelte" if data_type == "netzentgelte" else "HLZF"
-                    input_text = f"{year} {type_label} - {dno_name}"
-                    
-                    # Create job record
-                    job = SearchJobModel(
-                        user_id=current_user.id if current_user else None,
-                        batch_id=batch_id,
-                        batch_index=job_index,
-                        batch_total=total_jobs,
-                        dno_name=dno_name,
-                        dno_coordinates=coordinates,
-                        year=year,
-                        data_type=data_type,
-                        input_text=input_text,
-                        filters={
-                            "years": [year],
-                            "types": [data_type],
-                            "source_label": source_label,
-                        },
-                        status="pending",
-                        steps_history=[],
-                    )
-                    db.add(job)
-                    await db.commit()
-                    await db.refresh(job)
-                    
-                    job_id = str(job.id)
-                    job_ids.append(job_id)
-                    
-                    # Queue to ARQ worker
-                    await redis_pool.enqueue_job(
-                        "job_process_search_request",
-                        job_id=job_id,
-                        payload={
-                            "type": "dno",
-                            "dno": {"dno_name": dno_name},
-                        },
-                        filters={
-                            "years": [year],
-                            "types": [data_type],
-                        },
-                    )
-                    
-                    log.debug("Sub-job created", job_id=job_id, job_index=job_index)
-        
-        await redis_pool.close()
-        
-        log.info("Batch search queued", batch_id=str(batch_id), total_jobs=total_jobs)
-        
-        return {
-            "batch_id": str(batch_id),
-            "job_ids": job_ids,
-            "count": len(job_ids),
-            "resolved_dnos": [
-                {"dno_name": d["dno_name"], "source": d["source_label"], "coordinates": d["coordinates"]}
-                for d in resolved_dnos
-            ],
-            "status": "queued",
-        }
-        
-    except Exception as e:
-        log.error("Failed to create batch search", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to start batch search: {str(e)}")
-
-@router.get(
-    "/{job_id}/status",
-    response_model=SearchJobStatus,
-    summary="Get Search Job Status",
-    description="Poll for search job status. Call every ~1.5 seconds for Timeline UI."
-)
-async def get_search_status(
-    job_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get the current status of a search job for the Timeline UI.
-    
-    Returns:
-    - steps_history: Array of completed/running steps for the timeline
-    - current_step: What the agent is currently doing
-    - result: Final data if status == "completed"
-    - error: Error message if status == "failed"
-    """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
-    
-    result = await db.execute(
-        select(SearchJobModel).where(SearchJobModel.id == job_uuid)
-    )
-    job = result.scalar_one_or_none()
-    
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
-    
-    return SearchJobStatus(
-        job_id=str(job.id),
-        status=job.status,
-        input_text=job.input_text,
-        filters=job.filters,
-        current_step=job.current_step,
-        steps_history=job.steps_history or [],
-        result=job.result if job.status == "completed" else None,
-        error=job.error_message if job.status == "failed" else None,
-        created_at=job.created_at,
-        # Batch fields
-        batch_id=str(job.batch_id) if job.batch_id else None,
-        batch_index=job.batch_index,
-        batch_total=job.batch_total,
-        dno_name=job.dno_name,
-        dno_coordinates=job.dno_coordinates,
-        year=job.year,
-        data_type=job.data_type,
-    )
-
-
-@router.get(
-    "/batch/{batch_id}",
-    summary="Get Batch Search Status",
-    description="Get status of all jobs in a batch. Use for BatchProgressPage UI."
-)
-async def get_batch_status(
-    batch_id: str,
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Get the status of all jobs in a batch.
-    
-    Returns:
-    - jobs: List of all jobs with their status and progress
-    - resolved_dnos: DNO names that were resolved
-    - progress: Overall completion percentage
-    - current_job: Index of currently running job
-    """
-    try:
-        batch_uuid = UUID(batch_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid batch ID format")
-    
-    result = await db.execute(
-        select(SearchJobModel)
-        .where(SearchJobModel.batch_id == batch_uuid)
-        .order_by(SearchJobModel.batch_index)
-    )
-    jobs = result.scalars().all()
-    
-    if not jobs:
-        raise HTTPException(status_code=404, detail="Batch not found")
-    
-    # Calculate progress
-    completed = sum(1 for j in jobs if j.status == "completed")
-    failed = sum(1 for j in jobs if j.status == "failed")
-    running = sum(1 for j in jobs if j.status == "running")
-    pending = sum(1 for j in jobs if j.status == "pending")
-    
-    current_job_index = None
-    for j in jobs:
-        if j.status == "running":
-            current_job_index = j.batch_index
-            break
-    
-    # Build job list with essential info
-    job_list = []
-    for j in jobs:
-        job_list.append({
-            "job_id": str(j.id),
-            "batch_index": j.batch_index,
-            "batch_total": j.batch_total,
-            "input_text": j.input_text,
-            "dno_name": j.dno_name,
-            "year": j.year,
-            "data_type": j.data_type,
-            "status": j.status,
-            "current_step": j.current_step,
-            "steps_history": j.steps_history or [],
-            "error": j.error_message,
-        })
-    
-    # Determine overall batch status
-    if running > 0:
-        batch_status = "running"
-    elif pending > 0 and completed == 0 and failed == 0:
-        batch_status = "pending"
-    elif pending == 0 and running == 0:
-        batch_status = "completed" if failed == 0 else "completed_with_errors"
+    elif request.coordinates:
+        return await _search_by_coordinates(
+            db, rate_limiter, request.coordinates, request.year, log
+        )
     else:
-        batch_status = "running"
-    
-    return {
-        "batch_id": batch_id,
-        "status": batch_status,
-        "total_jobs": len(jobs),
-        "completed": completed,
-        "failed": failed,
-        "running": running,
-        "pending": pending,
-        "progress_percent": int((completed + failed) / len(jobs) * 100) if jobs else 0,
-        "current_job_index": current_job_index,
-        "jobs": job_list,
-    }
+        return await _search_by_dno(db, request.dno, request.year, log)
 
 
-@router.post(
-    "/{job_id}/cancel",
-    summary="Cancel Search Job",
-    description="Cancel a running or pending search job."
-)
-async def cancel_search(
-    job_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
+# =============================================================================
+# Search Handlers
+# =============================================================================
+
+
+async def _search_by_address(
+    db: AsyncSession,
+    rate_limiter: Optional[RateLimiter],
+    address_input: AddressSearchInput,
+    year: Optional[int],
+    log,
+) -> PublicSearchResponse:
     """
-    Cancel a pending or running search job.
-    
-    Sets the job status to 'cancelled'. The worker will check this
-    and stop processing if it hasn't completed yet.
+    Waterfall logic for address search:
+    1. Normalize address → hash
+    2. Check DB for existing hash → Location
+    3. If found → get DNO → evaluate data
+    4. If not found → call VNB API → create skeleton → evaluate data
     """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
+    log = log.bind(zip=address_input.zip_code, city=address_input.city)
     
-    result = await db.execute(
-        select(SearchJobModel).where(
-            SearchJobModel.id == job_uuid,
-            SearchJobModel.user_id == current_user.id
-        )
+    # Step 1: Normalize address
+    normalized = normalize_address(
+        address_input.street,
+        address_input.zip_code,
+        address_input.city,
     )
-    job = result.scalar_one_or_none()
+    log.debug("Address normalized", hash=normalized.address_hash[:16])
     
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
+    # Step 2: Check DB for existing location by hash
+    location = await skeleton_service.find_location_by_hash(db, normalized.address_hash)
     
-    if job.status in ("completed", "failed", "cancelled"):
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot cancel job with status: {job.status}"
+    if location:
+        log.debug("Location found in cache", location_id=location.id)
+        dno = await db.get(DNOModel, location.dno_id)
+        return await _build_response(db, dno, location, year)
+    
+    # Step 3: Not in cache - call VNB Digital API
+    log.info("Cache miss, calling VNB Digital API")
+    
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    
+    # Get coordinates
+    full_address = f"{address_input.street}, {address_input.zip_code} {address_input.city}"
+    location_result = await vnb_client.search_address_async(full_address)
+    
+    if not location_result:
+        log.warning("Address not found in VNB Digital")
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="Address not found. Please check the address and try again.",
         )
     
-    job.status = "cancelled"
-    job.error_message = "Cancelled by user"
-    job.completed_at = datetime.utcnow()
-    await db.commit()
+    # Parse coordinates
+    lat, lon = map(float, location_result.coordinates.split(","))
     
-    logger.info("Search job cancelled", job_id=job_id, user=current_user.email)
+    # Step 4: Check if we have a location for these coordinates
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
     
-    return {"status": "cancelled", "message": "Search job cancelled"}
+    existing_location = await skeleton_service.find_location_by_geocoord(db, lat, lon)
+    
+    if existing_location:
+        log.debug("Location found by coordinates", location_id=existing_location.id)
+        dno = await db.get(DNOModel, existing_location.dno_id)
+        
+        # Create location alias for this address hash
+        await skeleton_service.get_or_create_location(
+            db, existing_location.dno_id, normalized, lat, lon
+        )
+        
+        return await _build_response(db, dno, existing_location, year)
+    
+    # Step 5: Get DNO from VNB Digital
+    vnbs = await vnb_client.lookup_by_coordinates_async(location_result.coordinates)
+    
+    if not vnbs:
+        log.warning("No DNO found for coordinates")
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="No distribution network operator found for this location.",
+        )
+    
+    # Prefer electricity DNO
+    vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
+    
+    # Step 6: Create or get DNO skeleton
+    dno, dno_created = await skeleton_service.get_or_create_dno(
+        db,
+        name=vnb.name,
+        vnb_id=vnb.vnb_id,
+        official_name=vnb.official_name,
+    )
+    
+    # Step 7: Create location
+    location, loc_created = await skeleton_service.get_or_create_location(
+        db, dno.id, normalized, lat, lon
+    )
+    
+    log.info(
+        "Created skeleton",
+        dno_created=dno_created,
+        loc_created=loc_created,
+        dno_name=dno.name,
+    )
+    
+    return await _build_response(db, dno, location, year)
 
 
-@router.get(
-    "/jobs",
-    summary="List All Search Jobs",
-    description="Get all search jobs for Jobs page. Admins see all, users see their own."
-)
-async def list_search_jobs(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    status: Optional[str] = Query(default=None, description="Filter by status"),
-    limit: int = Query(default=50, ge=1, le=200),
-):
-    """
-    List all search jobs for the Jobs page.
+async def _search_by_coordinates(
+    db: AsyncSession,
+    rate_limiter: Optional[RateLimiter],
+    coords_input: CoordinatesSearchInput,
+    year: Optional[int],
+    log,
+) -> PublicSearchResponse:
+    """Search by coordinates - similar to address but skips geocoding."""
+    log = log.bind(lat=coords_input.latitude, lon=coords_input.longitude)
     
-    - Admins see all jobs
-    - Regular users see only their own jobs
-    - Jobs sorted by created_at (newest first) with queue position
-    """
+    # Check DB first
+    location = await skeleton_service.find_location_by_geocoord(
+        db, coords_input.latitude, coords_input.longitude
+    )
+    
+    if location:
+        dno = await db.get(DNOModel, location.dno_id)
+        return await _build_response(db, dno, location, year)
+    
+    # Call VNB Digital
+    log.info("Calling VNB Digital for coordinates")
+    
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    coords_str = f"{coords_input.latitude},{coords_input.longitude}"
+    vnbs = await vnb_client.lookup_by_coordinates_async(coords_str)
+    
+    if not vnbs:
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="No distribution network operator found for these coordinates.",
+        )
+    
+    vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
+    
+    dno, _ = await skeleton_service.get_or_create_dno(db, name=vnb.name, vnb_id=vnb.vnb_id)
+    
+    # Create simple location without full address
+    from app.services.skeleton_service import NormalizedAddress
+    import hashlib
+    
+    coords_hash = hashlib.sha256(coords_str.encode()).hexdigest()
+    simple_address = NormalizedAddress(
+        street_clean=f"Coordinates ({coords_input.latitude:.4f}, {coords_input.longitude:.4f})",
+        number_clean=None,
+        zip_code="00000",
+        city="Unknown",
+        address_hash=coords_hash,
+    )
+    
+    location, _ = await skeleton_service.get_or_create_location(
+        db, dno.id, simple_address, coords_input.latitude, coords_input.longitude
+    )
+    
+    return await _build_response(db, dno, location, year)
+
+
+async def _search_by_dno(
+    db: AsyncSession,
+    dno_input: DNOSearchInput,
+    year: Optional[int],
+    log,
+) -> PublicSearchResponse:
+    """Search by DNO name or ID directly."""
+    log = log.bind(dno_name=dno_input.dno_name, dno_id=dno_input.dno_id)
+    
     # Build query
-    query = select(SearchJobModel)
-    
-    # Admin sees all, regular users see only their own
-    if current_user.role != "ADMIN":
-        query = query.where(SearchJobModel.user_id == current_user.id)
-    
-    if status:
-        query = query.where(SearchJobModel.status == status)
-    
-    query = query.order_by(SearchJobModel.created_at.desc()).limit(limit)
+    if dno_input.dno_id:
+        query = select(DNOModel).where(DNOModel.vnb_id == dno_input.dno_id)
+    elif dno_input.dno_name:
+        query = select(DNOModel).where(
+            (DNOModel.name.ilike(f"%{dno_input.dno_name}%")) |
+            (DNOModel.slug == dno_input.dno_name.lower())
+        )
+    else:
+        raise HTTPException(400, "Either dno_id or dno_name must be provided")
     
     result = await db.execute(query)
-    jobs = result.scalars().all()
+    dno = result.scalar_one_or_none()
     
-    # Count total pending/running for queue positions
-    queue_result = await db.execute(
-        select(SearchJobModel)
-        .where(SearchJobModel.status.in_(["pending", "running"]))
-        .order_by(SearchJobModel.created_at.asc())
-    )
-    queue_jobs = list(queue_result.scalars().all())
-    queue_positions = {str(j.id): idx + 1 for idx, j in enumerate(queue_jobs)}
-    
-    job_list = []
-    for job in jobs:
-        queue_pos = queue_positions.get(str(job.id))
-        
-        job_list.append({
-            "job_id": str(job.id),
-            "input_text": job.input_text,
-            "status": job.status,
-            "dno_name": job.dno_name,
-            "year": job.year,
-            "data_type": job.data_type,
-            "current_step": job.current_step,
-            "queue_position": queue_pos,
-            "batch_id": str(job.batch_id) if job.batch_id else None,
-            "batch_index": job.batch_index,
-            "batch_total": job.batch_total,
-            "created_at": job.created_at.isoformat() if job.created_at else None,
-            "started_at": job.started_at.isoformat() if job.started_at else None,
-            "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-            "error": job.error_message,
-        })
-    
-    return {
-        "jobs": job_list,
-        "total": len(job_list),
-        "queue_length": len(queue_jobs),
-    }
-
-@router.get(
-    "/history",
-    response_model=list[SearchJobListItem],
-    summary="Get Search History",
-    description="Get list of past searches for the current user, grouped by batch."
-)
-async def get_search_history(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    limit: int = Query(default=20, ge=1, le=100),
-):
-    """
-    Get past searches for the current user's history sidebar.
-    
-    Batches are grouped into a single entry showing progress (e.g., "3/8 completed").
-    Non-batch jobs are returned individually.
-    """
-    result = await db.execute(
-        select(SearchJobModel)
-        .where(SearchJobModel.user_id == current_user.id)
-        .order_by(SearchJobModel.created_at.desc())
-        .limit(limit * 4)  # Fetch more to account for grouping
-    )
-    jobs = result.scalars().all()
-    
-    # Group by batch_id
-    batches: dict[str, list] = {}
-    individual_jobs = []
-    
-    for job in jobs:
-        if job.batch_id:
-            batch_key = str(job.batch_id)
-            if batch_key not in batches:
-                batches[batch_key] = []
-            batches[batch_key].append(job)
-        else:
-            individual_jobs.append(job)
-    
-    # Build response
-    items = []
-    seen_batches = set()
-    
-    for job in jobs:
-        if job.batch_id:
-            batch_key = str(job.batch_id)
-            if batch_key in seen_batches:
-                continue
-            seen_batches.add(batch_key)
-            
-            batch_jobs = batches[batch_key]
-            batch_completed = sum(1 for j in batch_jobs if j.status in ("completed", "failed"))
-            batch_total = batch_jobs[0].batch_total or len(batch_jobs)
-            
-            # Get unique DNO names
-            dno_names = list(set(j.dno_name for j in batch_jobs if j.dno_name))
-            
-            # Determine overall batch status
-            running = any(j.status == "running" for j in batch_jobs)
-            all_done = all(j.status in ("completed", "failed") for j in batch_jobs)
-            
-            if all_done:
-                batch_status = "completed"
-            elif running:
-                batch_status = "running"
-            else:
-                batch_status = "pending"
-            
-            # Use first job's created_at for ordering
-            first_job = min(batch_jobs, key=lambda j: j.created_at)
-            
-            # Create display text
-            if dno_names:
-                display_text = ", ".join(dno_names[:2])
-                if len(dno_names) > 2:
-                    display_text += f" +{len(dno_names) - 2} more"
-            else:
-                display_text = f"Batch ({batch_total} jobs)"
-            
-            items.append(SearchJobListItem(
-                job_id=batch_key,  # Use batch_id as job_id for navigation
-                input_text=display_text,
-                status=batch_status,
-                created_at=first_job.created_at,
-                completed_at=None,
-                batch_id=batch_key,
-                batch_total=batch_total,
-                batch_completed=batch_completed,
-                dno_names=dno_names,
-            ))
-        else:
-            # Individual job (non-batch)
-            items.append(SearchJobListItem(
-                job_id=str(job.id),
-                input_text=job.input_text,
-                status=job.status,
-                created_at=job.created_at,
-                completed_at=job.completed_at,
-            ))
-    
-    # Sort by created_at and limit
-    items.sort(key=lambda x: x.created_at, reverse=True)
-    return items[:limit]
-
-
-@router.get(
-    "/{job_id}",
-    response_model=SearchJobStatus,
-    summary="Get Search Job Details",
-    description="Get full details of a past search job (for loading from history)."
-)
-async def get_search_job(
-    job_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Get full details of a search job (for loading from history).
-    
-    Unlike /status, this requires authentication and returns the full result.
-    """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
-    
-    result = await db.execute(
-        select(SearchJobModel).where(
-            SearchJobModel.id == job_uuid,
-            SearchJobModel.user_id == current_user.id
+    if not dno:
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message=f"DNO not found. Try searching by address instead.",
         )
+    
+    return await _build_response(db, dno, None, year)
+
+
+async def _build_response(
+    db: AsyncSession,
+    dno: DNOModel,
+    location: Optional[LocationModel],
+    year: Optional[int],
+) -> PublicSearchResponse:
+    """Build response with data evaluation."""
+    
+    # Build DNO metadata
+    dno_meta = DNOMetadata(
+        id=dno.id,
+        slug=dno.slug,
+        name=dno.name,
+        official_name=dno.official_name,
+        vnb_id=dno.vnb_id,
+        status=dno.status,
     )
-    job = result.scalar_one_or_none()
     
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
+    # Build location info
+    loc_info = None
+    if location:
+        loc_info = LocationInfo(
+            street=location.street_clean,
+            number=location.number_clean,
+            zip_code=location.zip_code,
+            city=location.city,
+            latitude=float(location.latitude),
+            longitude=float(location.longitude),
+        )
     
-    return SearchJobStatus(
-        job_id=str(job.id),
-        status=job.status,
-        current_step=job.current_step,
-        steps_history=job.steps_history or [],
-        result=job.result,
-        error=job.error_message,
-        created_at=job.created_at,
+    # Check for data
+    netzentgelte_query = select(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno.id)
+    hlzf_query = select(HLZFModel).where(HLZFModel.dno_id == dno.id)
+    
+    if year:
+        netzentgelte_query = netzentgelte_query.where(NetzentgelteModel.year == year)
+        hlzf_query = hlzf_query.where(HLZFModel.year == year)
+    
+    netzentgelte_result = await db.execute(netzentgelte_query)
+    hlzf_result = await db.execute(hlzf_query)
+    
+    netzentgelte = [
+        NetzentgelteData(
+            year=n.year,
+            voltage_level=n.voltage_level,
+            leistung=n.leistung,
+            arbeit=n.arbeit,
+        )
+        for n in netzentgelte_result.scalars().all()
+    ]
+    
+    hlzf = [
+        HLZFData(
+            year=h.year,
+            voltage_level=h.voltage_level,
+            winter=h.winter,
+            fruehling=h.fruehling,
+            sommer=h.sommer,
+            herbst=h.herbst,
+        )
+        for h in hlzf_result.scalars().all()
+    ]
+    
+    has_data = len(netzentgelte) > 0 or len(hlzf) > 0
+    
+    # Build message for skeleton DNOs
+    message = None
+    if not has_data:
+        message = f"DNO '{dno.name}' registered. No detailed data available yet. Request crawl via dashboard."
+    
+    return PublicSearchResponse(
+        found=True,
+        has_data=has_data,
+        dno=dno_meta,
+        location=loc_info,
+        netzentgelte=netzentgelte if netzentgelte else None,
+        hlzf=hlzf if hlzf else None,
+        message=message,
     )

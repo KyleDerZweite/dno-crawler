@@ -33,6 +33,7 @@ class VNBResult:
     types: list[str]  # e.g., ["STROM", "GAS"]
     voltage_types: list[str]  # e.g., ["Niederspannung", "Mittelspannung"]
     logo_url: Optional[str] = None
+    official_name: Optional[str] = None  # Full legal name (e.g., "Westnetz GmbH")
     
     @property
     def is_electricity(self) -> bool:
