@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
+import { useAuth } from "@/lib/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type DNO } from "@/lib/api";
 import { Button } from "@/components/ui/button";
@@ -51,6 +52,7 @@ export function DNOsPage() {
   const [formData, setFormData] = useState<AddDNOForm>(initialFormState);
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { isAdmin } = useAuth();
 
   const { data: dnosResponse, isLoading } = useQuery({
     queryKey: ["dnos"],
@@ -128,96 +130,99 @@ export function DNOsPage() {
             Manage data sources and trigger crawls
           </p>
         </div>
-        <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
-          <DialogTrigger asChild>
-            <Button>
-              <Plus className="mr-2 h-4 w-4" />
-              Add DNO
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="sm:max-w-[500px]">
-            <form onSubmit={handleSubmit}>
-              <DialogHeader>
-                <DialogTitle>Add New DNO</DialogTitle>
-                <DialogDescription>
-                  Add a new Distribution Network Operator to the system.
-                </DialogDescription>
-              </DialogHeader>
-              <div className="grid gap-4 py-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="name">
-                    Name <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    id="name"
-                    placeholder="e.g., Stadtwerke München"
-                    value={formData.name}
-                    onChange={(e) => handleFormChange("name", e.target.value)}
-                    required
-                  />
+        {/* TODO: Future enhancement - validate DNO against VNB Digital API to prevent duplicates */}
+        {isAdmin() && (
+          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+            <DialogTrigger asChild>
+              <Button>
+                <Plus className="mr-2 h-4 w-4" />
+                Add DNO
+              </Button>
+            </DialogTrigger>
+            <DialogContent className="sm:max-w-[500px]">
+              <form onSubmit={handleSubmit}>
+                <DialogHeader>
+                  <DialogTitle>Add New DNO</DialogTitle>
+                  <DialogDescription>
+                    Add a new Distribution Network Operator to the system.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="grid gap-4 py-4">
+                  <div className="grid gap-2">
+                    <Label htmlFor="name">
+                      Name <span className="text-destructive">*</span>
+                    </Label>
+                    <Input
+                      id="name"
+                      placeholder="e.g., Stadtwerke München"
+                      value={formData.name}
+                      onChange={(e) => handleFormChange("name", e.target.value)}
+                      required
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="slug">
+                      Slug <span className="text-muted-foreground text-xs">(optional)</span>
+                    </Label>
+                    <Input
+                      id="slug"
+                      placeholder="Auto-generated from name if empty"
+                      value={formData.slug}
+                      onChange={(e) => handleFormChange("slug", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="region">Region</Label>
+                    <Input
+                      id="region"
+                      placeholder="e.g., Bayern, Nordrhein-Westfalen"
+                      value={formData.region}
+                      onChange={(e) => handleFormChange("region", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="website">Website</Label>
+                    <Input
+                      id="website"
+                      type="url"
+                      placeholder="https://example.com"
+                      value={formData.website}
+                      onChange={(e) => handleFormChange("website", e.target.value)}
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="description">Description</Label>
+                    <Input
+                      id="description"
+                      placeholder="Brief description..."
+                      value={formData.description}
+                      onChange={(e) => handleFormChange("description", e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="slug">
-                    Slug <span className="text-muted-foreground text-xs">(optional)</span>
-                  </Label>
-                  <Input
-                    id="slug"
-                    placeholder="Auto-generated from name if empty"
-                    value={formData.slug}
-                    onChange={(e) => handleFormChange("slug", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="region">Region</Label>
-                  <Input
-                    id="region"
-                    placeholder="e.g., Bayern, Nordrhein-Westfalen"
-                    value={formData.region}
-                    onChange={(e) => handleFormChange("region", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="website">Website</Label>
-                  <Input
-                    id="website"
-                    type="url"
-                    placeholder="https://example.com"
-                    value={formData.website}
-                    onChange={(e) => handleFormChange("website", e.target.value)}
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="description">Description</Label>
-                  <Input
-                    id="description"
-                    placeholder="Brief description..."
-                    value={formData.description}
-                    onChange={(e) => handleFormChange("description", e.target.value)}
-                  />
-                </div>
-              </div>
-              <DialogFooter>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setIsAddDialogOpen(false)}
-                >
-                  Cancel
-                </Button>
-                <Button type="submit" disabled={createDNOMutation.isPending}>
-                  {createDNOMutation.isPending ? (
-                    <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                      Creating...
-                    </>
-                  ) : (
-                    "Create DNO"
-                  )}
-                </Button>
-              </DialogFooter>
-            </form>
-          </DialogContent>
-        </Dialog>
+                <DialogFooter>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setIsAddDialogOpen(false)}
+                  >
+                    Cancel
+                  </Button>
+                  <Button type="submit" disabled={createDNOMutation.isPending}>
+                    {createDNOMutation.isPending ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Creating...
+                      </>
+                    ) : (
+                      "Create DNO"
+                    )}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </DialogContent>
+          </Dialog>
+        )}
       </div>
 
       {/* Search */}

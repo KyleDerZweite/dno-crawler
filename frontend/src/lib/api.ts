@@ -275,6 +275,20 @@ export const api = {
       return data;
     },
 
+    async updateDNO(
+      dno_id: string,
+      payload: {
+        name?: string;
+        official_name?: string;
+        description?: string;
+        region?: string;
+        website?: string;
+      }
+    ): Promise<ApiResponse<{ id: string }>> {
+      const { data } = await apiClient.patch(`/dnos/${dno_id}`, payload);
+      return data;
+    },
+
     async getData(
       dno_id: string,
       params?: { year?: number; data_type?: string }

@@ -75,6 +75,15 @@ export function DNODetailPage() {
     const [crawlDataType, setCrawlDataType] = useState<'all' | 'netzentgelte' | 'hlzf'>('all');
     const [showAdvancedCrawl, setShowAdvancedCrawl] = useState(false);
 
+    // Edit DNO metadata dialog state
+    const [editDNOOpen, setEditDNOOpen] = useState(false);
+    const [editDNOData, setEditDNOData] = useState({
+        name: '',
+        region: '',
+        website: '',
+        description: '',
+    });
+
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -340,6 +349,23 @@ export function DNODetailPage() {
         },
     });
 
+    // Update DNO metadata mutation
+    const updateDNOMutation = useMutation({
+        mutationFn: (data: { name?: string; region?: string; website?: string; description?: string }) =>
+            api.dnos.updateDNO(id!, data),
+        onSuccess: () => {
+            toast({ title: "DNO updated", description: "Metadata saved successfully" });
+            setEditDNOOpen(false);
+            queryClient.invalidateQueries({ queryKey: ["dno", id] });
+        },
+        onError: (error: unknown) => {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to update DNO", description: message });
+        },
+    });
+
     // Toggle voltage level filter
     const toggleVoltageLevelFilter = (level: string) => {
         setVoltageLevelFilter(prev =>
@@ -470,6 +496,23 @@ export function DNODetailPage() {
                             </a>
                         </Button>
                     )}
+                    {isAdmin() && (
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setEditDNOData({
+                                    name: dno.name || '',
+                                    region: dno.region || '',
+                                    website: dno.website || '',
+                                    description: dno.description || '',
+                                });
+                                setEditDNOOpen(true);
+                            }}
+                        >
+                            <Pencil className="mr-2 h-4 w-4" />
+                            Edit
+                        </Button>
+                    )}
                     <Dialog open={crawlDialogOpen} onOpenChange={setCrawlDialogOpen}>
                         <DialogTrigger asChild>
                             <Button>
@@ -581,6 +624,76 @@ export function DNODetailPage() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    {/* Edit DNO Dialog - Admin Only */}
+                    {isAdmin() && (
+                        <Dialog open={editDNOOpen} onOpenChange={setEditDNOOpen}>
+                            <DialogContent className="sm:max-w-md">
+                                <DialogHeader>
+                                    <DialogTitle>Edit DNO</DialogTitle>
+                                    <DialogDescription>
+                                        Update metadata for {dno.name}
+                                    </DialogDescription>
+                                </DialogHeader>
+                                <div className="grid gap-4 py-4">
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Name</label>
+                                        <input
+                                            type="text"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={editDNOData.name}
+                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, name: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Region</label>
+                                        <input
+                                            type="text"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={editDNOData.region}
+                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, region: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Website</label>
+                                        <input
+                                            type="url"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={editDNOData.website}
+                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, website: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Description</label>
+                                        <input
+                                            type="text"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={editDNOData.description}
+                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, description: e.target.value }))}
+                                        />
+                                    </div>
+                                </div>
+                                <DialogFooter>
+                                    <Button variant="outline" onClick={() => setEditDNOOpen(false)}>
+                                        Cancel
+                                    </Button>
+                                    <Button
+                                        onClick={() => updateDNOMutation.mutate(editDNOData)}
+                                        disabled={updateDNOMutation.isPending}
+                                    >
+                                        {updateDNOMutation.isPending ? (
+                                            <>
+                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                                Saving...
+                                            </>
+                                        ) : (
+                                            "Save Changes"
+                                        )}
+                                    </Button>
+                                </DialogFooter>
+                            </DialogContent>
+                        </Dialog>
+                    )}
                 </div>
             </div>
 

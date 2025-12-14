@@ -201,6 +201,55 @@ async def get_dno_details(
     )
 
 
+class UpdateDNORequest(BaseModel):
+    """Request model for updating DNO metadata."""
+    name: str | None = None
+    official_name: str | None = None
+    description: str | None = None
+    region: str | None = None
+    website: str | None = None
+
+
+@router.patch("/{dno_id}")
+async def update_dno(
+    dno_id: int,
+    request: UpdateDNORequest,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> APIResponse:
+    """Update DNO metadata (admin only)."""
+    if not current_user.is_admin:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin access required",
+        )
+    
+    dno = await db.get(DNOModel, dno_id)
+    if not dno:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DNO not found")
+    
+    # Update only provided fields
+    if request.name is not None:
+        dno.name = request.name
+    if request.official_name is not None:
+        dno.official_name = request.official_name
+    if request.description is not None:
+        dno.description = request.description
+    if request.region is not None:
+        dno.region = request.region
+    if request.website is not None:
+        dno.website = request.website
+    
+    await db.commit()
+    await db.refresh(dno)
+    
+    return APIResponse(
+        success=True,
+        message=f"DNO '{dno.name}' updated successfully",
+        data={"id": str(dno.id)},
+    )
+
+
 @router.post("/{dno_id}/crawl")
 async def trigger_crawl(
     dno_id: int,
