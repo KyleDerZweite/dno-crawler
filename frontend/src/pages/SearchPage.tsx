@@ -1,269 +1,415 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { Link } from "react-router-dom";
 import {
     Search,
-    Filter,
     Loader2,
-    Clock,
-    CheckCircle2,
-    XCircle,
+    MapPin,
+    Navigation,
     AlertCircle,
+    ArrowRight,
+    ChevronDown,
+    ChevronUp,
+    Check,
+    Filter,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Toggle } from "@/components/ui/toggle";
-import { api, type SearchFilters, type SearchJobListItem } from "@/lib/api";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    api,
+    type PublicSearchRequest,
+    type PublicSearchResponse,
+} from "@/lib/api";
 
-// Current year for default filters
-const CURRENT_YEAR = new Date().getFullYear();
-const LAST_YEAR = CURRENT_YEAR - 1;
+// Available years for filter (2026-2022)
+const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
+const DEFAULT_YEARS = [2025, 2024];
 
 /**
- * SearchPage: Main search landing page
- * 
- * URL: /search
- * 
- * Shows:
- * - Active search input with filters
- * - History of past searches below
- * 
- * On submit → redirects to /search/:jobId
+ * SearchPage: Simplified search using decoupled public search API
+ *
+ * Flow:
+ * 1. User enters address/coordinates/DNO name
+ * 2. Submit → POST /api/v1/search/
+ * 3. If has_data: Show data preview + link to DNO page
+ * 4. If !has_data (skeleton): Show "Import Data" → navigate to DNO page
  */
 export default function SearchPage() {
-    const navigate = useNavigate();
 
-    // Input state
-    const [prompt, setPrompt] = useState("");
-    const [filters, setFilters] = useState<SearchFilters>({
-        years: [LAST_YEAR, CURRENT_YEAR],
-        types: ["netzentgelte", "hlzf"],
-    });
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    // Search mode
+    const [searchMode, setSearchMode] = useState<"address" | "coordinates">("address");
+
+    // Address inputs
+    const [street, setStreet] = useState("");
+    const [zipCode, setZipCode] = useState("");
+    const [city, setCity] = useState("");
+
+    // Coordinate inputs
+    const [latitude, setLatitude] = useState("");
+    const [longitude, setLongitude] = useState("");
+
+    // Filter state
+    const [filtersExpanded, setFiltersExpanded] = useState(false);
+    const [selectedYears, setSelectedYears] = useState<number[]>(DEFAULT_YEARS);
+
+    // State
+    const [isSearching, setIsSearching] = useState(false);
+    const [result, setResult] = useState<PublicSearchResponse | null>(null);
     const [error, setError] = useState<string | null>(null);
 
-    // Fetch search history
-    const { data: history, isLoading: historyLoading } = useQuery({
-        queryKey: ["search-history"],
-        queryFn: () => api.search.getHistory(20),
-    });
-
-    // Toggle filter
+    // Toggle year selection
     const toggleYear = (year: number) => {
-        setFilters(prev => ({
-            ...prev,
-            years: prev.years.includes(year)
-                ? prev.years.filter(y => y !== year)
-                : [...prev.years, year].sort(),
-        }));
-    };
-
-    const toggleType = (type: string) => {
-        setFilters(prev => {
-            const newTypes = prev.types.includes(type)
-                ? prev.types.filter(t => t !== type)
-                : [...prev.types, type];
-            return { ...prev, types: newTypes.length > 0 ? newTypes : prev.types };
+        setSelectedYears((prev) => {
+            if (prev.includes(year)) {
+                // Don't allow deselecting if it's the last one
+                if (prev.length === 1) return prev;
+                return prev.filter((y) => y !== year);
+            }
+            return [...prev, year].sort((a, b) => b - a);
         });
     };
 
-    // Start search and redirect
+    // Validation
+    const isAddressValid =
+        street.trim().length > 0 &&
+        zipCode.trim().length >= 4 &&
+        city.trim().length > 0;
+
+    const isCoordinatesValid = () => {
+        const lat = parseFloat(latitude.replace(",", "."));
+        const lon = parseFloat(longitude.replace(",", "."));
+        return (
+            !isNaN(lat) &&
+            !isNaN(lon) &&
+            lat >= -90 &&
+            lat <= 90 &&
+            lon >= -180 &&
+            lon <= 180
+        );
+    };
+
+    const canSearch =
+        (searchMode === "address" && isAddressValid) ||
+        (searchMode === "coordinates" && isCoordinatesValid());
+
+    // Search handler
     const handleSearch = async () => {
-        if (!prompt.trim()) return;
+        if (!canSearch) return;
 
         setError(null);
-        setIsSubmitting(true);
+        setResult(null);
+        setIsSearching(true);
 
         try {
-            const response = await api.search.create(prompt, filters);
-            // Redirect to job page
-            navigate(`/search/${response.job_id}`);
-        } catch (err) {
-            setError("Failed to start search. Please try again.");
-            setIsSubmitting(false);
+            let request: PublicSearchRequest = {};
+
+            if (searchMode === "address") {
+                request.address = {
+                    street: street.trim(),
+                    zip_code: zipCode.trim(),
+                    city: city.trim(),
+                };
+            } else {
+                request.coordinates = {
+                    latitude: parseFloat(latitude.replace(",", ".")),
+                    longitude: parseFloat(longitude.replace(",", ".")),
+                };
+            }
+
+            // Add year filter (pass all selected years)
+            if (selectedYears.length > 0) {
+                request.years = selectedYears;
+            }
+
+            const response = await api.publicSearch.search(request);
+            setResult(response);
+        } catch (err: unknown) {
+            if (err && typeof err === "object" && "response" in err) {
+                const axiosErr = err as { response?: { status?: number; data?: { message?: string } } };
+                if (axiosErr.response?.status === 429) {
+                    setError("Rate limit exceeded. Please wait a moment and try again.");
+                } else if (axiosErr.response?.status === 503) {
+                    setError("Service temporarily unavailable. Please try again later.");
+                } else {
+                    setError(axiosErr.response?.data?.message || "Search failed. Please try again.");
+                }
+            } else {
+                setError("Search failed. Please check your connection.");
+            }
+        } finally {
+            setIsSearching(false);
         }
     };
 
-    // Handle key press
     const handleKeyDown = (e: React.KeyboardEvent) => {
-        if (e.key === "Enter" && !isSubmitting) {
+        if (e.key === "Enter" && canSearch && !isSearching) {
             handleSearch();
         }
     };
 
-    // Get status icon for history item
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case "completed":
-                return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-            case "failed":
-                return <XCircle className="w-4 h-4 text-destructive" />;
-            case "running":
-                return <Loader2 className="w-4 h-4 text-primary animate-spin" />;
-            default:
-                return <Clock className="w-4 h-4 text-muted-foreground" />;
-        }
-    };
-
-    // Format date
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        const now = new Date();
-        const diffMs = now.getTime() - date.getTime();
-        const diffMins = Math.floor(diffMs / 60000);
-        const diffHours = Math.floor(diffMs / 3600000);
-        const diffDays = Math.floor(diffMs / 86400000);
-
-        if (diffMins < 1) return "Just now";
-        if (diffMins < 60) return `${diffMins}m ago`;
-        if (diffHours < 24) return `${diffHours}h ago`;
-        if (diffDays < 7) return `${diffDays}d ago`;
-        return date.toLocaleDateString();
-    };
-
     return (
-        <div className="space-y-8">
+        <div className="space-y-8 max-w-3xl mx-auto">
             {/* Header */}
-            <div>
-                <h1 className="text-3xl font-bold text-foreground">Search</h1>
+            <div className="text-center">
+                <h1 className="text-3xl font-bold text-foreground">Search DNO Data</h1>
                 <p className="text-muted-foreground mt-2">
-                    Find DNO data using natural language
+                    Find network operator data by address or coordinates
                 </p>
             </div>
 
-            {/* Search Input Card */}
-            <Card className="p-6">
-                <CardContent className="p-0">
-                    {/* Search Input */}
-                    <div className="relative">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                        <Input
-                            placeholder="Enter an address or DNO name, e.g. 'Musterstraße 5, 50667 Köln'"
-                            value={prompt}
-                            onChange={(e) => setPrompt(e.target.value)}
-                            onKeyDown={handleKeyDown}
-                            disabled={isSubmitting}
-                            className="pl-10 pr-24 h-12 text-lg"
-                        />
+            {/* Search Card */}
+            <Card>
+                <CardContent className="p-6 space-y-6">
+                    {/* Mode Tabs */}
+                    <div className="flex gap-2 border-b pb-4">
                         <Button
-                            onClick={handleSearch}
-                            disabled={!prompt.trim() || isSubmitting}
-                            className="absolute right-2 top-1/2 -translate-y-1/2"
+                            variant={searchMode === "address" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSearchMode("address")}
+                            className="gap-2"
                         >
-                            {isSubmitting ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                            ) : (
-                                "Search"
-                            )}
+                            <MapPin className="w-4 h-4" />
+                            Address
+                        </Button>
+                        <Button
+                            variant={searchMode === "coordinates" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSearchMode("coordinates")}
+                            className="gap-2"
+                        >
+                            <Navigation className="w-4 h-4" />
+                            Coordinates
                         </Button>
                     </div>
 
-                    {/* Filters */}
-                    <div className="mt-4 flex flex-wrap items-center gap-4">
-                        <div className="flex items-center gap-2">
-                            <Filter className="w-4 h-4 text-muted-foreground" />
-                            <span className="text-sm text-muted-foreground">Years:</span>
-                            <div className="flex gap-1">
-                                {[LAST_YEAR, CURRENT_YEAR].map(year => (
-                                    <Toggle
-                                        key={year}
-                                        pressed={filters.years.includes(year)}
-                                        onPressedChange={() => toggleYear(year)}
-                                        disabled={isSubmitting}
-                                        size="sm"
-                                        variant="outline"
-                                    >
-                                        {year}
-                                    </Toggle>
-                                ))}
+                    {/* Address Input */}
+                    {searchMode === "address" && (
+                        <div className="space-y-4">
+                            <Input
+                                placeholder="Street + House Number (e.g. Musterstraße 123)"
+                                value={street}
+                                onChange={(e) => setStreet(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
+                            />
+                            <div className="grid grid-cols-2 gap-4">
+                                <Input
+                                    placeholder="Zip Code (e.g. 50667)"
+                                    value={zipCode}
+                                    onChange={(e) => setZipCode(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    disabled={isSearching}
+                                    maxLength={5}
+                                />
+                                <Input
+                                    placeholder="City (e.g. Köln)"
+                                    value={city}
+                                    onChange={(e) => setCity(e.target.value)}
+                                    onKeyDown={handleKeyDown}
+                                    disabled={isSearching}
+                                />
                             </div>
                         </div>
+                    )}
 
-                        <div className="flex items-center gap-2">
-                            <span className="text-sm text-muted-foreground">Data:</span>
-                            <div className="flex gap-1">
-                                <Toggle
-                                    pressed={filters.types.includes("netzentgelte")}
-                                    onPressedChange={() => toggleType("netzentgelte")}
-                                    disabled={isSubmitting}
-                                    size="sm"
-                                    variant="outline"
-                                >
-                                    Netzentgelte
-                                </Toggle>
-                                <Toggle
-                                    pressed={filters.types.includes("hlzf")}
-                                    onPressedChange={() => toggleType("hlzf")}
-                                    disabled={isSubmitting}
-                                    size="sm"
-                                    variant="outline"
-                                >
-                                    HLZF
-                                </Toggle>
-                            </div>
+                    {/* Coordinates Input */}
+                    {searchMode === "coordinates" && (
+                        <div className="grid grid-cols-2 gap-4">
+                            <Input
+                                placeholder="Latitude (e.g. 50.9413)"
+                                value={latitude}
+                                onChange={(e) => setLatitude(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
+                            />
+                            <Input
+                                placeholder="Longitude (e.g. 6.9578)"
+                                value={longitude}
+                                onChange={(e) => setLongitude(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
+                            />
                         </div>
+                    )}
 
-                        {filters.years.length === 0 && (
-                            <span className="text-xs text-muted-foreground italic">
-                                ℹ️ Specify year in your query
-                            </span>
+                    {/* Collapsible Year Filter - BELOW inputs */}
+                    <div className="border rounded-lg overflow-hidden">
+                        <button
+                            type="button"
+                            onClick={() => setFiltersExpanded(!filtersExpanded)}
+                            className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
+                        >
+                            <div className="flex items-center gap-2 text-sm font-medium">
+                                <Filter className="w-4 h-4" />
+                                <span>Year Filter</span>
+                                <div className="flex gap-1 ml-2">
+                                    {selectedYears.map((year) => (
+                                        <Badge key={year} variant="secondary" className="text-xs">
+                                            {year}
+                                        </Badge>
+                                    ))}
+                                </div>
+                            </div>
+                            {filtersExpanded ? (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                            ) : (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                            )}
+                        </button>
+
+                        {/* Expanded Filter Content - Show all years as toggle buttons */}
+                        {filtersExpanded && (
+                            <div className="p-4 border-t bg-background">
+                                <label className="text-sm font-medium text-muted-foreground mb-3 block">
+                                    Select Years (at least one required)
+                                </label>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_YEARS.map((year) => {
+                                        const isSelected = selectedYears.includes(year);
+                                        return (
+                                            <button
+                                                key={year}
+                                                type="button"
+                                                onClick={() => toggleYear(year)}
+                                                className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${isSelected
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background border-input hover:bg-muted"
+                                                    }`}
+                                            >
+                                                <div className={`w-4 h-4 rounded border flex items-center justify-center ${isSelected
+                                                    ? "bg-primary-foreground/20 border-primary-foreground/50"
+                                                    : "border-current opacity-50"
+                                                    }`}>
+                                                    {isSelected && (
+                                                        <Check className="w-3 h-3" />
+                                                    )}
+                                                </div>
+                                                {year}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
                         )}
                     </div>
 
-                    {/* Error */}
-                    {error && (
-                        <div className="mt-4 flex items-center gap-2 text-destructive text-sm">
-                            <AlertCircle className="w-4 h-4" />
-                            {error}
-                        </div>
-                    )}
+                    {/* Search Button */}
+                    <Button
+                        onClick={handleSearch}
+                        disabled={!canSearch || isSearching}
+                        className="w-full gap-2"
+                        size="lg"
+                    >
+                        {isSearching ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                        ) : (
+                            <Search className="w-4 h-4" />
+                        )}
+                        Search
+                    </Button>
                 </CardContent>
             </Card>
 
-            {/* Search History - Narrower and centered */}
-            <div className="max-w-2xl mx-auto mt-12">
-                <h2 className="text-sm font-medium text-muted-foreground mb-4 text-center flex items-center justify-center gap-2">
-                    <Clock className="w-4 h-4" />
-                    Recent Searches
-                </h2>
+            {/* Error */}
+            {error && (
+                <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Error</AlertTitle>
+                    <AlertDescription>{error}</AlertDescription>
+                </Alert>
+            )}
 
-                {historyLoading ? (
-                    <div className="flex items-center justify-center py-8">
-                        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : history && history.length > 0 ? (
-                    <div className="space-y-2">
-                        {history.map((item: SearchJobListItem) => (
-                            <Card
-                                key={item.job_id}
-                                className="p-3 cursor-pointer hover:bg-muted/50 transition-colors"
-                                onClick={() => navigate(`/search/${item.job_id}`)}
-                            >
-                                <div className="flex items-center gap-3">
-                                    {getStatusIcon(item.status)}
-                                    <div className="flex-1 min-w-0">
-                                        <p className="text-sm font-medium truncate">{item.input_text}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {formatDate(item.created_at)}
-                                        </p>
+            {/* Result */}
+            {result && (
+                <Card>
+                    {result.found && result.dno ? (
+                        <>
+                            <CardHeader>
+                                <div className="flex items-start justify-between">
+                                    <div>
+                                        <CardTitle className="text-xl">{result.dno.name}</CardTitle>
+                                        {result.dno.official_name && (
+                                            <CardDescription>{result.dno.official_name}</CardDescription>
+                                        )}
                                     </div>
-                                    <Badge variant="outline" className="shrink-0 text-xs">
-                                        {item.status}
+                                    <Badge variant={result.has_data ? "default" : "secondary"}>
+                                        {result.has_data ? "Data Available" : "Skeleton"}
                                     </Badge>
                                 </div>
-                            </Card>
-                        ))}
-                    </div>
-                ) : (
-                    <Card className="p-6 text-center">
-                        <p className="text-muted-foreground">
-                            No search history yet. Start your first search above!
-                        </p>
-                    </Card>
-                )}
-            </div>
+                            </CardHeader>
+                            <CardContent className="space-y-4">
+                                {/* Location Info */}
+                                {result.location && (
+                                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                                        <MapPin className="w-4 h-4" />
+                                        {result.location.street}, {result.location.zip_code} {result.location.city}
+                                    </div>
+                                )}
+
+                                {result.has_data ? (
+                                    /* Data Preview */
+                                    <div className="space-y-3">
+                                        {result.netzentgelte && result.netzentgelte.length > 0 && (
+                                            <div className="p-3 rounded-lg bg-muted/50">
+                                                <div className="text-sm font-medium mb-2">
+                                                    Netzentgelte ({result.netzentgelte.length} records)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    Years: {[...new Set(result.netzentgelte.map((n) => n.year))].join(", ")}
+                                                </div>
+                                            </div>
+                                        )}
+                                        {result.hlzf && result.hlzf.length > 0 && (
+                                            <div className="p-3 rounded-lg bg-muted/50">
+                                                <div className="text-sm font-medium mb-2">
+                                                    HLZF ({result.hlzf.length} records)
+                                                </div>
+                                                <div className="text-xs text-muted-foreground">
+                                                    Years: {[...new Set(result.hlzf.map((h) => h.year))].join(", ")}
+                                                </div>
+                                            </div>
+                                        )}
+                                        <Button asChild className="w-full gap-2">
+                                            <Link to={`/dnos/${result.dno.slug}`}>
+                                                View Full Data
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                ) : (
+                                    /* Skeleton - Import CTA */
+                                    <div className="space-y-4">
+                                        <Alert>
+                                            <AlertCircle className="h-4 w-4" />
+                                            <AlertTitle>No data yet</AlertTitle>
+                                            <AlertDescription>
+                                                {result.message || "This DNO has been registered but no data has been crawled yet."}
+                                            </AlertDescription>
+                                        </Alert>
+                                        <Button asChild className="w-full gap-2">
+                                            <Link to={`/dnos/${result.dno.slug}`}>
+                                                Import Data
+                                                <ArrowRight className="w-4 h-4" />
+                                            </Link>
+                                        </Button>
+                                    </div>
+                                )}
+                            </CardContent>
+                        </>
+                    ) : (
+                        /* Not Found */
+                        <CardContent className="p-6 text-center">
+                            <AlertCircle className="w-12 h-12 mx-auto text-muted-foreground mb-4" />
+                            <p className="text-lg font-medium">No DNO Found</p>
+                            <p className="text-muted-foreground mt-2">
+                                {result.message || "No distribution network operator found for this location."}
+                            </p>
+                        </CardContent>
+                    )}
+                </Card>
+            )}
         </div>
     );
 }

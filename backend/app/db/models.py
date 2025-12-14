@@ -3,6 +3,7 @@ SQLAlchemy ORM models for DNO Crawler.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import Any
 from uuid import uuid4
 
@@ -14,6 +15,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
     Text,
     Time,
@@ -55,6 +57,12 @@ class DNOModel(Base, TimestampMixin):
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     official_name: Mapped[str | None] = mapped_column(String(255))
+    
+    # VNB Digital integration
+    vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    status: Mapped[str] = mapped_column(String(20), default="uncrawled", index=True)  # uncrawled | crawling | crawled | failed
+    crawl_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # For stuck job recovery
+    
     description: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     website: Mapped[str | None] = mapped_column(String(500))
@@ -64,13 +72,52 @@ class DNOModel(Base, TimestampMixin):
     hlzf: Mapped[list["HLZFModel"]] = relationship(back_populates="dno")
     crawl_configs: Mapped[list["DNOCrawlConfigModel"]] = relationship(back_populates="dno")
     strategies: Mapped[list["ExtractionStrategyModel"]] = relationship(back_populates="dno")
+    locations: Mapped[list["LocationModel"]] = relationship(back_populates="dno")
+
+
+class LocationModel(Base, TimestampMixin):
+    """Geographic location linked to a DNO.
+    
+    Enables efficient lookups:
+    - Address → (address_hash) → DNO
+    - (lat, lon) → DNO (with spatial tolerance)
+    
+    Uses Numeric(9,6) for coordinates = ~11cm precision with exact matching.
+    """
+    __tablename__ = "locations"
+    __table_args__ = (
+        Index("idx_locations_geocoord", "latitude", "longitude"),
+        Index("idx_locations_address_hash", "address_hash"),
+        Index("idx_locations_zip", "zip_code"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"), index=True)
+    
+    # Hash for uniqueness (mashed string: "anderronne|160|12345")
+    address_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
+    
+    # Clean components for storage/API calls
+    street_clean: Mapped[str] = mapped_column(String(255), nullable=False)  # "An der Ronne"
+    number_clean: Mapped[str | None] = mapped_column(String(20))            # "160"
+    zip_code: Mapped[str] = mapped_column(String(10), nullable=False)
+    city: Mapped[str] = mapped_column(String(100), nullable=False)
+    
+    # Coordinates: Numeric(9,6) for exact matching (~11cm precision)
+    latitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
+    longitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
+    
+    # Metadata
+    source: Mapped[str] = mapped_column(String(50), default="vnb_digital")
+    
+    # Relationships
+    dno: Mapped["DNOModel"] = relationship(back_populates="locations")
 
 
 class DNOAddressCacheModel(Base, TimestampMixin):
-    """Cache for address → DNO mappings.
+    """Legacy cache for address → coordinates + DNO mappings.
     
-    Used by SearchAgent to avoid redundant external searches.
-    Key: (zip_code, street_name) → dno_name
+    DEPRECATED: Use LocationModel instead. Kept for backwards compatibility.
     """
     __tablename__ = "dno_address_cache"
     __table_args__ = (
@@ -80,10 +127,16 @@ class DNOAddressCacheModel(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     zip_code: Mapped[str] = mapped_column(String(10), nullable=False, index=True)
     street_name: Mapped[str] = mapped_column(String(255), nullable=False)  # Normalized
+    
+    # Geocoding result
+    latitude: Mapped[float | None] = mapped_column(Float)
+    longitude: Mapped[float | None] = mapped_column(Float)
+    
+    # DNO resolution result
     dno_name: Mapped[str] = mapped_column(String(255), nullable=False)
-    confidence: Mapped[float] = mapped_column(Float, default=1.0)  # 0.0-1.0
-    source: Mapped[str | None] = mapped_column(String(50))  # "ddgs", "manual", etc.
-    hit_count: Mapped[int] = mapped_column(Integer, default=1)  # Times this cache was used
+    
+    # Metadata
+    source: Mapped[str | None] = mapped_column(String(50))  # "vnb_digital", "manual", etc.
 
 
 class DNOCrawlConfigModel(Base, TimestampMixin):
@@ -350,18 +403,32 @@ class SearchJobModel(Base, TimestampMixin):
     
     Drives the "Task Timeline" UI pattern in the frontend.
     Steps are stored as JSON for simple polling without joins.
+    
+    Batch jobs share a batch_id and have batch_index/batch_total for progress tracking.
     """
     __tablename__ = "search_jobs"
     __table_args__ = (
         Index("idx_search_jobs_user_created", "user_id", "created_at"),
+        Index("idx_search_jobs_batch", "batch_id"),
     )
 
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[str | None] = mapped_column(String(255), index=True)  # Zitadel user ID
     
+    # Batch grouping - jobs from same batch share batch_id
+    batch_id: Mapped[UUID | None] = mapped_column(UUID(as_uuid=True), index=True)
+    batch_index: Mapped[int | None] = mapped_column(Integer)  # 1-based index: "Job 2 of 8"
+    batch_total: Mapped[int | None] = mapped_column(Integer)  # Total jobs in batch
+    
+    # Pre-resolved data (from DNO resolution phase)
+    dno_name: Mapped[str | None] = mapped_column(String(255))  # Resolved DNO name
+    dno_coordinates: Mapped[dict | None] = mapped_column(JSON)  # {"lat": ..., "lon": ...}
+    year: Mapped[int | None] = mapped_column(Integer)  # Target year (2024, 2025)
+    data_type: Mapped[str | None] = mapped_column(String(20))  # "netzentgelte" or "hlzf"
+    
     # Input
-    input_text: Mapped[str] = mapped_column(Text, nullable=False)  # Natural language query
-    filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {"years": [2024, 2025], "types": ["netzentgelte", "hlzf"]}
+    input_text: Mapped[str] = mapped_column(Text, nullable=False)  # Display label
+    filters: Mapped[dict] = mapped_column(JSON, default=dict)  # {\"years\": [2024, 2025], \"types\": [\"netzentgelte\", \"hlzf\"]}
     
     # Status
     status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | running | completed | failed

@@ -39,6 +39,14 @@ async def admin_dashboard(
     # Count DNOs
     dno_count = await db.scalar(select(func.count(DNOModel.id)))
     
+    # Count DNOs by status
+    uncrawled_count = await db.scalar(
+        select(func.count(DNOModel.id)).where(DNOModel.status == "uncrawled")
+    )
+    crawled_count = await db.scalar(
+        select(func.count(DNOModel.id)).where(DNOModel.status == "crawled")
+    )
+    
     # Count pending jobs
     pending_jobs = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
@@ -52,11 +60,134 @@ async def admin_dashboard(
         data={
             "dnos": {
                 "total": dno_count or 0,
+                "uncrawled": uncrawled_count or 0,
+                "crawled": crawled_count or 0,
             },
             "jobs": {
                 "pending": pending_jobs or 0,
                 "running": running_jobs or 0,
             },
+        },
+    )
+
+
+@router.post("/dnos/{dno_id}/crawl")
+async def trigger_dno_crawl(
+    dno_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+    years: list[int] = Query(default=[2024, 2025]),
+    types: list[str] = Query(default=["netzentgelte", "hlzf"]),
+) -> APIResponse:
+    """
+    Trigger crawl job for a skeleton DNO.
+    
+    Only works for DNOs in 'uncrawled' or 'failed' status.
+    Includes stuck job detection (jobs locked > 1 hour are force-released).
+    """
+    from datetime import datetime, timedelta
+    
+    dno = await db.get(DNOModel, dno_id)
+    if not dno:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "DNO not found")
+    
+    # Check status and handle stuck jobs
+    if dno.status == "crawling":
+        if dno.crawl_locked_at and dno.crawl_locked_at < datetime.utcnow() - timedelta(hours=1):
+            logger.warning("Force-releasing stuck crawl job", dno_id=dno_id, locked_at=dno.crawl_locked_at)
+        else:
+            raise HTTPException(status.HTTP_409_CONFLICT, f"Crawl already in progress for {dno.name}")
+    
+    if dno.status == "crawled":
+        logger.info("Re-crawling already crawled DNO", dno_id=dno_id)
+    
+    # Set lock
+    dno.status = "crawling"
+    dno.crawl_locked_at = datetime.utcnow()
+    await db.commit()
+    
+    # Create crawl jobs for each year/type combination
+    job_ids = []
+    for year in years:
+        for data_type in types:
+            job = CrawlJobModel(
+                dno_id=dno_id,
+                year=year,
+                data_type=data_type,
+                current_step=f"Triggered by {admin.email}",
+            )
+            db.add(job)
+            await db.commit()
+            await db.refresh(job)
+            job_ids.append(job.id)
+            
+            # Queue to ARQ worker
+            try:
+                redis_pool = await create_pool(
+                    RedisSettings.from_dsn(str(settings.redis_url))
+                )
+                await redis_pool.enqueue_job(
+                    "crawl_dno_job",
+                    job.id,
+                    _job_id=f"crawl_{job.id}",
+                )
+                await redis_pool.aclose()
+            except Exception as e:
+                logger.error("Failed to enqueue crawl job", job_id=job.id, error=str(e))
+    
+    logger.info("DNO crawl triggered", dno_id=dno_id, dno_name=dno.name, job_count=len(job_ids))
+    
+    return APIResponse(
+        success=True,
+        message=f"Crawl triggered for {dno.name}",
+        data={
+            "dno_id": dno_id,
+            "dno_name": dno.name,
+            "status": "crawling",
+            "job_ids": [str(jid) for jid in job_ids],
+            "years": years,
+            "types": types,
+        },
+    )
+
+
+@router.get("/dnos/uncrawled")
+async def list_uncrawled_dnos(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+    page: int = Query(1, ge=1),
+    per_page: int = Query(50, ge=1, le=100),
+) -> APIResponse:
+    """List all uncrawled DNO skeletons for the admin dashboard."""
+    query = select(DNOModel).where(DNOModel.status == "uncrawled")
+    count_query = select(func.count(DNOModel.id)).where(DNOModel.status == "uncrawled")
+    
+    total = await db.scalar(count_query) or 0
+    
+    query = query.order_by(DNOModel.created_at.desc())
+    query = query.offset((page - 1) * per_page).limit(per_page)
+    
+    result = await db.execute(query)
+    dnos = result.scalars().all()
+    
+    return APIResponse(
+        success=True,
+        data=[
+            {
+                "id": dno.id,
+                "name": dno.name,
+                "slug": dno.slug,
+                "vnb_id": dno.vnb_id,
+                "status": dno.status,
+                "created_at": dno.created_at.isoformat() if dno.created_at else None,
+            }
+            for dno in dnos
+        ],
+        meta={
+            "total": total,
+            "page": page,
+            "per_page": per_page,
+            "total_pages": (total + per_page - 1) // per_page,
         },
     )
 

@@ -37,7 +37,6 @@ An intelligent web crawler for extracting German Distribution Network Operator (
 - **PostgreSQL 16** - Primary database
 - **Redis 7** - Caching and job queue
 - **Podman / Podman Compose** - Container orchestration
-- **SearXNG** - Meta search engine for discovery
 - **Ollama** - Local LLM inference
 
 ## Quick Start
@@ -83,7 +82,6 @@ podman-compose down
 
 1. **Start infrastructure services only**
    ```bash
-   podman-compose up -d db redis ollama searxng
    ```
 
 2. **Backend setup**
@@ -111,7 +109,6 @@ podman-compose down
    - Frontend: http://localhost:5173
    - API: http://localhost:8000
    - API Docs: http://localhost:8000/docs
-   - SearXNG: http://localhost:8080
 
 ## Project Structure
 
@@ -144,7 +141,6 @@ dno-crawler/
 ├── data/                  # Persistent file storage (mounted volume)
 │   ├── downloads/         # Downloaded PDFs and documents
 │   └── strategies/        # LLM extraction strategies
-├── searxng/               # SearXNG configuration
 ├── docker-compose.yml     # Podman/Docker compose file
 └── README.md
 ```
@@ -186,7 +182,6 @@ Environment variables (set in `.env`):
 | `DATABASE_URL` | PostgreSQL connection string | Required |
 | `REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
 | `OLLAMA_URL` | Ollama API URL | `http://localhost:11434` |
-| `SEARXNG_URL` | SearXNG API URL | `http://localhost:8080` |
 | `JWT_SECRET` | JWT signing secret (min 32 chars) | Required |
 | `CORS_ORIGINS` | Allowed CORS origins (JSON array) | `["http://localhost:5173"]` |
 | `STORAGE_PATH` | Base path for file storage | `./data` |

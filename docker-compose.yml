@@ -12,7 +12,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-dno_crawler}
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./data/postgres:/var/lib/postgresql/data:Z
       - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro,Z
     ports:
       - "${POSTGRES_PORT:-5432}:5432"
@@ -31,7 +31,7 @@ services:
     restart: unless-stopped
     command: redis-server --appendonly yes
     volumes:
-      - redis_data:/data
+      - ./data/redis:/data:Z
     ports:
       - "${REDIS_PORT:-6379}:6379"
     healthcheck:
@@ -43,30 +43,16 @@ services:
       - dno-crawler
 
   # Ollama LLM Server
-  ollama:
-    image: ollama/ollama:latest
-    container_name: dno-crawler-ollama
-    restart: unless-stopped
-    volumes:
-      - ollama_data:/root/.ollama
-    ports:
-      - "11435:11434"
-    networks:
-      - dno-crawler
-
-  # SearXNG Web Search
-  searxng:
-    image: searxng/searxng:latest
-    container_name: dno-crawler-searxng
-    restart: unless-stopped
-    volumes:
-      - ./searxng:/etc/searxng:rw,Z
-    ports:
-      - "8080:8080"
-    environment:
-      - SEARXNG_BASE_URL=http://localhost:8080/
-    networks:
-      - dno-crawler
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: dno-crawler-ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     - ollama_data:/root/.ollama
+  #   ports:
+  #     - "11435:11434"
+  #   networks:
+  #     - dno-crawler
 
   # FastAPI Backend
   backend:
@@ -81,7 +67,6 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_URL=http://ollama:11434
-      - SEARXNG_URL=http://searxng:8080
       - ZITADEL_DOMAIN=${ZITADEL_DOMAIN}
       - STORAGE_PATH=/data
       - DEBUG=true
@@ -110,14 +95,13 @@ services:
       dockerfile: Dockerfile
     container_name: dno-crawler-worker
     restart: unless-stopped
-    command: arq app.worker.WorkerSettings
+    command: arq app.jobs.WorkerSettings
     env_file:
       - .env
     environment:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
       - REDIS_URL=redis://redis:6379/0
       - OLLAMA_URL=http://ollama:11434
-      - SEARXNG_URL=http://searxng:8080
       - STORAGE_PATH=/data
       - DEBUG=true
     depends_on:
@@ -142,7 +126,7 @@ services:
       - "${FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app:Z
-      - frontend_node_modules:/app/node_modules
+      - ./data/frontend/node_modules/:/app/node_modules:Z
     environment:
       # Ensure FE builds against the backend API base path including the /api/v1 prefix
       - VITE_API_URL=http://localhost:8000/api/v1
@@ -151,13 +135,6 @@ services:
       - backend
     networks:
       - dno-crawler
-
-volumes:
-  postgres_data:
-  redis_data:
-  ollama_data:
-  frontend_node_modules:
-
 
 networks:
   dno-crawler:

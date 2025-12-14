@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api, type Job, type JobDetails, type DNO } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
@@ -60,6 +61,7 @@ const statusConfig: Record<JobStatus, { label: string; color: string; icon: Reac
 
 export function JobsPage() {
   const { isAdmin } = useAuth();
+  const navigate = useNavigate();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
@@ -68,27 +70,18 @@ export function JobsPage() {
 
   const isAdminUser = isAdmin();
 
-  // Fetch jobs list
+  // Fetch search jobs list (not crawl jobs)
   const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
-    queryKey: ["admin", "jobs", statusFilter],
-    queryFn: () => api.admin.listJobs({
+    queryKey: ["search-jobs", statusFilter],
+    queryFn: () => api.search.listJobs({
       status: statusFilter === "all" ? undefined : statusFilter,
-      per_page: 50
+      limit: 50
     }),
-    enabled: isAdminUser,
-    refetchInterval: 10000, // Refresh every 10 seconds for live updates
+    refetchInterval: 5000, // Refresh every 5 seconds for live updates
   });
 
-  // Fetch selected job details
-  const { data: jobDetailsResponse, isLoading: detailsLoading } = useQuery({
-    queryKey: ["admin", "job", selectedJobId],
-    queryFn: () => api.admin.getJob(selectedJobId!),
-    enabled: isAdminUser && !!selectedJobId,
-    refetchInterval: selectedJobId ? 5000 : false, // Refresh every 5s when viewing details
-  });
-
-  const jobs = jobsResponse?.data || [];
-  const jobDetails = jobDetailsResponse?.data;
+  const jobs = jobsResponse?.jobs || [];
+  const queueLength = jobsResponse?.queue_length || 0;
 
   // Rerun mutation
   const rerunMutation = useMutation({
@@ -138,20 +131,14 @@ export function JobsPage() {
     );
   }
 
-  // Detail view
-  if (selectedJobId && jobDetails) {
-    return (
-      <JobDetailView
-        job={jobDetails}
-        loading={detailsLoading}
-        onBack={() => setSelectedJobId(null)}
-        onRerun={() => rerunMutation.mutate(selectedJobId)}
-        onCancel={() => cancelMutation.mutate(selectedJobId)}
-        isRerunning={rerunMutation.isPending}
-        isCancelling={cancelMutation.isPending}
-      />
-    );
-  }
+  // Detail view - navigate to batch or job page
+  const handleJobClick = (job: typeof jobs[0]) => {
+    if (job.batch_id) {
+      navigate(`/search/batch/${job.batch_id}`);
+    } else {
+      navigate(`/search/${job.job_id}`);
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -210,10 +197,10 @@ export function JobsPage() {
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
-            <JobCard
-              key={job.id}
+            <SearchJobCard
+              key={job.job_id}
               job={job}
-              onClick={() => setSelectedJobId(job.id)}
+              onClick={() => handleJobClick(job)}
             />
           ))}
         </div>
@@ -222,6 +209,75 @@ export function JobsPage() {
   );
 }
 
+// Type for search jobs from the new API
+type SearchJobItem = {
+  job_id: string;
+  input_text: string;
+  status: string;
+  dno_name?: string;
+  year?: number;
+  data_type?: string;
+  current_step?: string;
+  queue_position?: number;
+  batch_id?: string;
+  batch_index?: number;
+  batch_total?: number;
+  created_at?: string;
+  error?: string;
+};
+
+function SearchJobCard({ job, onClick }: { job: SearchJobItem; onClick: () => void }) {
+  const status = job.status as keyof typeof statusConfig;
+  const config = statusConfig[status] || statusConfig["pending"];
+  const StatusIcon = config.icon;
+
+  return (
+    <Card
+      className="p-4 cursor-pointer hover:shadow-md transition-shadow"
+      onClick={onClick}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-4">
+          <div className={cn("p-2 rounded-lg", config.color)}>
+            <StatusIcon className={cn("h-5 w-5", job.status === "running" && "animate-spin")} />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="font-semibold">{job.dno_name || job.input_text}</span>
+              {job.year && <Badge variant="outline">{job.year}</Badge>}
+              {job.data_type && <Badge variant="secondary">{job.data_type}</Badge>}
+            </div>
+            <div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+              {job.queue_position && (
+                <Badge variant="outline" className="text-xs">
+                  Queue #{job.queue_position}
+                </Badge>
+              )}
+              {job.batch_index && job.batch_total && (
+                <Badge variant="outline" className="text-xs">
+                  Job {job.batch_index}/{job.batch_total}
+                </Badge>
+              )}
+              <span>{job.current_step || "Waiting to start"}</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4">
+          {job.created_at && (
+            <div className="text-right text-sm text-muted-foreground">
+              <div>{new Date(job.created_at).toLocaleDateString()}</div>
+              <div>{new Date(job.created_at).toLocaleTimeString()}</div>
+            </div>
+          )}
+          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+// Keep the old JobCard for legacy use (from CrawlJobModel)
 function JobCard({ job, onClick }: { job: Job; onClick: () => void }) {
   const config = statusConfig[job.status];
   const StatusIcon = config.icon;

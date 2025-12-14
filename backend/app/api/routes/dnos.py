@@ -135,6 +135,8 @@ async def list_dnos_detailed(
             "slug": dno.slug,
             "name": dno.name,
             "official_name": dno.official_name,
+            "vnb_id": dno.vnb_id,
+            "status": getattr(dno, 'status', 'uncrawled'),  # New field
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
@@ -188,6 +190,8 @@ async def get_dno_details(
             "slug": dno.slug,
             "name": dno.name,
             "official_name": dno.official_name,
+            "vnb_id": dno.vnb_id,
+            "status": getattr(dno, 'status', 'uncrawled'),
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
@@ -208,10 +212,14 @@ async def trigger_crawl(
     Trigger a crawl job for a specific DNO.
     
     Creates a new crawl job that will be picked up by the worker.
+    Any authenticated user (member or admin) can trigger this.
     """
+    from datetime import datetime, timedelta
     from arq import create_pool
     from arq.connections import RedisSettings
     from app.core.config import settings
+    import structlog
+    logger = structlog.get_logger()
     
     # Verify DNO exists
     query = select(DNOModel).where(DNOModel.id == dno_id)
@@ -224,7 +232,19 @@ async def trigger_crawl(
             detail="DNO not found",
         )
     
-    # Check for existing pending/running job
+    # Check DNO status for stuck jobs (locked > 1 hour)
+    dno_status = getattr(dno, 'status', 'uncrawled')
+    if dno_status == "crawling":
+        locked_at = getattr(dno, 'crawl_locked_at', None)
+        if locked_at and locked_at < datetime.utcnow() - timedelta(hours=1):
+            logger.warning("Force-releasing stuck crawl", dno_id=dno_id)
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A crawl is already in progress for {dno.name}",
+            )
+    
+    # Check for existing pending/running job for this year
     existing_query = select(CrawlJobModel).where(
         CrawlJobModel.dno_id == dno_id,
         CrawlJobModel.year == request.year,
@@ -237,8 +257,11 @@ async def trigger_crawl(
             detail="A crawl job for this DNO and year is already in progress",
         )
     
+    # Update DNO status
+    dno.status = "crawling"
+    dno.crawl_locked_at = datetime.utcnow()
+    
     # Create crawl job in database
-    # Note: user_id is None since Zitadel user IDs are strings, not local DB integers
     job = CrawlJobModel(
         user_id=None,
         dno_id=dno_id,
@@ -263,9 +286,6 @@ async def trigger_crawl(
         )
         await redis_pool.close()
     except Exception as e:
-        # Log error but don't fail - job is in DB and can be retried
-        import structlog
-        logger = structlog.get_logger()
         logger.error("Failed to enqueue job to worker", job_id=job.id, error=str(e))
     
     return APIResponse(
@@ -275,6 +295,7 @@ async def trigger_crawl(
             "job_id": str(job.id),
             "dno_id": str(dno_id),
             "dno_name": dno.name,
+            "dno_status": "crawling",
             "year": request.year,
             "data_type": request.data_type.value,
             "status": job.status,

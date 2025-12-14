@@ -26,7 +26,6 @@ import {
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
-import { cn } from "@/lib/utils";
 
 interface AddDNOForm {
   name: string;
@@ -318,6 +317,52 @@ function DNOCard({
   onTriggerCrawl: () => void;
   isCrawling: boolean;
 }) {
+  // Stuck detection: crawling for > 1 hour
+  const isStuck =
+    dno.status === "crawling" &&
+    dno.crawl_locked_at &&
+    new Date().getTime() - new Date(dno.crawl_locked_at).getTime() > 3600 * 1000;
+
+  const getStatusBadge = () => {
+    if (isStuck) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+          <RefreshCw className="h-3 w-3" />
+          Stuck
+        </span>
+      );
+    }
+
+    switch (dno.status) {
+      case "crawled":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400">
+            <Check className="h-3 w-3" />
+            Crawled
+          </span>
+        );
+      case "crawling":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+            <Loader2 className="h-3 w-3 animate-spin" />
+            Crawling
+          </span>
+        );
+      case "failed":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
+            Failed
+          </span>
+        );
+      default:
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
+            Uncrawled
+          </span>
+        );
+    }
+  };
+
   return (
     <Card className="group relative overflow-hidden transition-all duration-200 hover:shadow-glow flex flex-col h-full">
       <Link to={`/dnos/${dno.id}`} className="p-6 flex-1 cursor-pointer hover:bg-muted/50 transition-colors">
@@ -325,45 +370,55 @@ function DNOCard({
           <div className="p-2 rounded-lg bg-primary/10 text-primary">
             <Database className="h-5 w-5" />
           </div>
-          {dno.website && (
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-foreground"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                window.open(dno.website, '_blank');
-              }}
-            >
-              <ExternalLink className="h-4 w-4" />
-            </Button>
-          )}
+          <div className="flex items-center gap-2">
+            {getStatusBadge()}
+            {dno.website && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  window.open(dno.website, '_blank');
+                }}
+              >
+                <ExternalLink className="h-4 w-4" />
+              </Button>
+            )}
+          </div>
         </div>
 
         <h3 className="font-bold text-lg mb-1 truncate" title={dno.name}>{dno.name}</h3>
         {dno.region && (
-          <p className="text-sm text-muted-foreground mb-4">{dno.region}</p>
+          <p className="text-sm text-muted-foreground mb-2">{dno.region}</p>
         )}
 
-        <div className="space-y-2 mt-4">
-          <div className="flex items-center justify-between text-sm">
-            <span className="text-muted-foreground">Status</span>
-            <span className={cn("flex items-center gap-1.5 font-medium", true ? "text-success" : "text-muted-foreground")}>
-              <Check className="h-3.5 w-3.5" /> Active
-            </span>
-          </div>
-        </div>
+        {dno.data_points_count !== undefined && dno.data_points_count > 0 && (
+          <p className="text-xs text-muted-foreground">
+            {dno.data_points_count} data points
+          </p>
+        )}
       </Link>
 
       <div className="p-4 border-t border-border bg-secondary/30">
         <Button
-          variant="outline"
+          variant={isStuck ? "destructive" : "outline"}
           className="w-full"
           onClick={onTriggerCrawl}
-          disabled={isCrawling}
+          disabled={isCrawling || (dno.status === "crawling" && !isStuck)}
         >
           {isCrawling ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Starting...
+            </>
+          ) : isStuck ? (
+            <>
+              <RefreshCw className="mr-2 h-4 w-4" />
+              Force Retry
+            </>
+          ) : dno.status === "crawling" ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Crawling...
@@ -371,7 +426,7 @@ function DNOCard({
           ) : (
             <>
               <RefreshCw className="mr-2 h-4 w-4" />
-              Trigger Crawl
+              {dno.status === "uncrawled" ? "Start Crawl" : "Re-crawl"}
             </>
           )}
         </Button>

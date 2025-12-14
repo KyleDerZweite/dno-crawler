@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import admin, auth, crawl, dnos, files, health, public, search
+from app.api.routes import admin, auth, dnos, files, health, search
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -34,6 +34,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting DNO Crawler API", version=settings.app_version)
     await init_db()
     logger.info("Database initialized")
+    
+    # Initialize rate limiter if Redis available
+    try:
+        from redis.asyncio import Redis
+        from app.core.rate_limiter import init_rate_limiter
+        from app.services.crawl_recovery import recover_stuck_crawl_jobs
+        from app.db import get_db_session
+        
+        redis = Redis.from_url(str(settings.redis_url))
+        init_rate_limiter(redis)
+        logger.info("Rate limiter initialized")
+        
+        # Recover stuck crawl jobs
+        async with get_db_session() as db:
+            recovered = await recover_stuck_crawl_jobs(db)
+            if recovered > 0:
+                logger.info("Recovered stuck crawl jobs", count=recovered)
+    except Exception as e:
+        logger.warning("Could not initialize rate limiter or recovery", error=str(e))
     
     yield
     
@@ -67,10 +86,8 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["Health"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(files.router, prefix="/api/v1/files", tags=["Files"])
-    app.include_router(crawl.router, prefix="/api/v1/crawl", tags=["Crawl"])  # SearchAgent batch
-    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # NL Search UI
-    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Must be before public
-    app.include_router(public.router, prefix="/api/v1", tags=["Public"])
+    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # Public search (skeleton creation)
+    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Authenticated DNO management
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
     # Exception Handlers

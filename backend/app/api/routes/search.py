@@ -1,337 +1,486 @@
 """
-Search API routes for natural language search with Timeline UI.
+Public Search API with Lazy Registration.
 
-Provides endpoints for:
-- Natural language search with filters (POST /search)
-- Job status polling for Timeline UI (GET /search/{job_id}/status)
-- Search history (GET /search/history)
+Decoupled from heavy crawl jobs. Returns existing data or registers
+skeleton DNO/Location records via VNB Digital API.
+
+Rate limited: 60 req/min per IP, 50 req/min global VNB quota.
 """
 
-from datetime import datetime
 from typing import Optional
-from uuid import UUID
 
 import structlog
-from arq import create_pool
-from arq.connections import RedisSettings
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, get_optional_user
-from app.core.config import settings
-from app.core.models import User
-from app.db import get_db
-from app.db.models import SearchJobModel
+from app.core.rate_limiter import get_client_ip, get_rate_limiter, RateLimiter
+from app.db import get_db, DNOModel, HLZFModel, NetzentgelteModel, LocationModel
+from app.services.skeleton_service import (
+    normalize_address,
+    skeleton_service,
+    NormalizedAddress,
+)
+from app.services.vnb_digital import AsyncVNBDigitalClient
 
 logger = structlog.get_logger()
 router = APIRouter()
 
 
-# ============================================================================
+# =============================================================================
 # Request/Response Models
-# ============================================================================
+# =============================================================================
 
 
-class SearchFilters(BaseModel):
-    """Filters for search queries."""
-    years: list[int] = Field(
-        default=[2024, 2025], 
-        description="Years to search for. Empty = AI extracts from query."
+class AddressSearchInput(BaseModel):
+    """Address search input with strict validation."""
+    street: str = Field(
+        ...,
+        min_length=1,
+        max_length=200,
+        description="Street with house number",
     )
-    types: list[str] = Field(
-        default=["netzentgelte", "hlzf"],
-        description="Data types to search for."
+    zip_code: str = Field(
+        ...,
+        min_length=4,
+        max_length=5,
+        pattern=r"^\d{4,5}$",
+        description="German postal code (4-5 digits)",
+    )
+    city: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="City name",
     )
 
 
-class SearchRequest(BaseModel):
-    """Request to start a natural language search."""
-    prompt: str = Field(
-        ..., 
-        min_length=3,
-        max_length=500,
-        description="Natural language search query",
-        example="Musterstr 5, Köln"
-    )
-    filters: SearchFilters = Field(default_factory=SearchFilters)
+class CoordinatesSearchInput(BaseModel):
+    """Coordinates search input."""
+    latitude: float = Field(..., ge=-90, le=90)
+    longitude: float = Field(..., ge=-180, le=180)
 
 
-class SearchJobStatus(BaseModel):
-    """Response for search job status (used for polling)."""
-    job_id: str
-    status: str  # pending | running | completed | failed
-    input_text: str = ""
-    filters: Optional[dict] = None
-    current_step: Optional[str] = None
-    steps_history: list[dict] = []
-    result: Optional[dict] = None
-    error: Optional[str] = None
-    created_at: datetime
+class DNOSearchInput(BaseModel):
+    """Direct DNO search input with validation."""
+    dno_id: Optional[str] = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
+    dno_name: Optional[str] = Field(None, max_length=200)
 
 
-class SearchJobListItem(BaseModel):
-    """Item in search history list."""
-    job_id: str
-    input_text: str
+class PublicSearchRequest(BaseModel):
+    """Public search request - one of three input types."""
+    address: Optional[AddressSearchInput] = None
+    coordinates: Optional[CoordinatesSearchInput] = None
+    dno: Optional[DNOSearchInput] = None
+    year: Optional[int] = Field(None, ge=2000, le=2100)  # Single year (backward compat)
+    years: Optional[list[int]] = Field(None, description="Multiple years filter")
+
+
+class DNOMetadata(BaseModel):
+    """Lightweight DNO info."""
+    id: int
+    slug: str
+    name: str
+    official_name: Optional[str] = None
+    vnb_id: Optional[str] = None
     status: str
-    created_at: datetime
-    completed_at: Optional[datetime] = None
 
 
-class SearchResponse(BaseModel):
-    """Response after starting a search job."""
-    job_id: str
-    status: str = "pending"
-    message: str
+class LocationInfo(BaseModel):
+    """Location info."""
+    street: str
+    number: Optional[str] = None
+    zip_code: str
+    city: str
+    latitude: float
+    longitude: float
 
 
-# ============================================================================
+class NetzentgelteData(BaseModel):
+    """Netzentgelte data."""
+    year: int
+    voltage_level: str
+    leistung: Optional[float] = None
+    arbeit: Optional[float] = None
+
+
+class HLZFData(BaseModel):
+    """HLZF data."""
+    year: int
+    voltage_level: str
+    winter: Optional[str] = None
+    fruehling: Optional[str] = None
+    sommer: Optional[str] = None
+    herbst: Optional[str] = None
+
+
+class PublicSearchResponse(BaseModel):
+    """Response for public search."""
+    found: bool
+    has_data: bool
+    dno: Optional[DNOMetadata] = None
+    location: Optional[LocationInfo] = None
+    netzentgelte: Optional[list[NetzentgelteData]] = None
+    hlzf: Optional[list[HLZFData]] = None
+    message: Optional[str] = None
+
+
+# =============================================================================
 # Endpoints
-# ============================================================================
+# =============================================================================
 
 
 @router.post(
-    "",
-    response_model=SearchResponse,
-    summary="Start Natural Language Search",
-    description="Start a search job from natural language input. Returns job_id for polling."
+    "/",
+    response_model=PublicSearchResponse,
+    summary="Public Search with Lazy Registration",
+    responses={
+        200: {"description": "DNO found with data"},
+        202: {"description": "DNO registered (skeleton), no data yet"},
+        429: {"description": "Rate limit exceeded"},
+        503: {"description": "External API quota exhausted"},
+    },
 )
-async def create_search(
-    request: SearchRequest,
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_optional_user),
-):
-    """
-    Start a natural language search job.
-    
-    Flow:
-    1. Create SearchJob record in DB
-    2. Queue job to ARQ worker (respects max_jobs=1)
-    3. Return job_id for frontend polling
-    
-    The frontend should poll GET /search/{job_id}/status every ~1.5 seconds.
-    """
-    log = logger.bind(
-        prompt=request.prompt[:50],
-        user=current_user.email if current_user else "anonymous"
-    )
-    log.info("Creating search job")
-    
-    try:
-        # 1. Create job record in DB
-        job = SearchJobModel(
-            user_id=current_user.id if current_user else None,
-            input_text=request.prompt,
-            filters={
-                "years": request.filters.years,
-                "types": request.filters.types,
-            },
-            status="pending",
-            steps_history=[],
-        )
-        db.add(job)
-        await db.commit()
-        await db.refresh(job)
-        
-        job_id = str(job.id)
-        log.info("Search job created", job_id=job_id)
-        
-        # 2. Queue to ARQ worker (CRITICAL: use ARQ, not BackgroundTasks)
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
-        )
-        
-        await redis_pool.enqueue_job(
-            "job_process_search_request",
-            job_id=job_id,
-            prompt=request.prompt,
-            filters=request.filters.model_dump(),
-        )
-        
-        await redis_pool.close()
-        
-        log.info("Search job queued to ARQ", job_id=job_id)
-        
-        return SearchResponse(
-            job_id=job_id,
-            status="pending",
-            message=f"Search started for: {request.prompt[:50]}..."
-        )
-        
-    except Exception as e:
-        log.error("Failed to create search job", error=str(e))
-        raise HTTPException(status_code=500, detail=f"Failed to start search: {str(e)}")
-
-
-@router.get(
-    "/{job_id}/status",
-    response_model=SearchJobStatus,
-    summary="Get Search Job Status",
-    description="Poll for search job status. Call every ~1.5 seconds for Timeline UI."
-)
-async def get_search_status(
-    job_id: str,
+async def public_search(
+    request: PublicSearchRequest,
+    http_request: Request,
     db: AsyncSession = Depends(get_db),
 ):
     """
-    Get the current status of a search job for the Timeline UI.
+    Public Search API with Lazy Registration.
     
-    Returns:
-    - steps_history: Array of completed/running steps for the timeline
-    - current_step: What the agent is currently doing
-    - result: Final data if status == "completed"
-    - error: Error message if status == "failed"
+    Accepts address, coordinates, or DNO name.
+    Returns existing data or registers skeleton for future crawling.
+    
+    **Rate Limits:**
+    - 60 requests/minute per IP
+    - 50 VNB API calls/minute globally
     """
+    log = logger.bind(endpoint="public_search")
+    
+    # Get rate limiter and client IP
     try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
+        rate_limiter = get_rate_limiter()
+        client_ip = get_client_ip(http_request)
+        await rate_limiter.check_ip_limit(client_ip)
+    except RuntimeError:
+        # Rate limiter not initialized (dev mode without Redis)
+        log.warning("Rate limiter not available")
+        rate_limiter = None
+        client_ip = "unknown"
     
-    result = await db.execute(
-        select(SearchJobModel).where(SearchJobModel.id == job_uuid)
-    )
-    job = result.scalar_one_or_none()
-    
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
-    
-    return SearchJobStatus(
-        job_id=str(job.id),
-        status=job.status,
-        input_text=job.input_text,
-        filters=job.filters,
-        current_step=job.current_step,
-        steps_history=job.steps_history or [],
-        result=job.result if job.status == "completed" else None,
-        error=job.error_message if job.status == "failed" else None,
-        created_at=job.created_at,
-    )
-
-
-@router.post(
-    "/{job_id}/cancel",
-    summary="Cancel Search Job",
-    description="Cancel a running or pending search job."
-)
-async def cancel_search(
-    job_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Cancel a pending or running search job.
-    
-    Sets the job status to 'cancelled'. The worker will check this
-    and stop processing if it hasn't completed yet.
-    """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
-    
-    result = await db.execute(
-        select(SearchJobModel).where(
-            SearchJobModel.id == job_uuid,
-            SearchJobModel.user_id == current_user.id
-        )
-    )
-    job = result.scalar_one_or_none()
-    
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
-    
-    if job.status in ("completed", "failed", "cancelled"):
+    # Validate exactly one input type provided
+    inputs_provided = sum([
+        request.address is not None,
+        request.coordinates is not None,
+        request.dno is not None,
+    ])
+    if inputs_provided != 1:
         raise HTTPException(
-            status_code=400, 
-            detail=f"Cannot cancel job with status: {job.status}"
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Exactly one of 'address', 'coordinates', or 'dno' must be provided.",
         )
     
-    job.status = "cancelled"
-    job.error_message = "Cancelled by user"
-    job.completed_at = datetime.utcnow()
-    await db.commit()
+    # Merge year/years into a single list
+    filter_years = request.years if request.years else ([request.year] if request.year else None)
     
-    logger.info("Search job cancelled", job_id=job_id, user=current_user.email)
-    
-    return {"status": "cancelled", "message": "Search job cancelled"}
+    # Route to appropriate handler
+    if request.address:
+        return await _search_by_address(
+            db, rate_limiter, request.address, filter_years, log
+        )
+    elif request.coordinates:
+        return await _search_by_coordinates(
+            db, rate_limiter, request.coordinates, filter_years, log
+        )
+    else:
+        return await _search_by_dno(db, request.dno, filter_years, log)
 
 
-@router.get(
-    "/history",
-    response_model=list[SearchJobListItem],
-    summary="Get Search History",
-    description="Get list of past searches for the current user."
-)
-async def get_search_history(
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-    limit: int = Query(default=20, ge=1, le=100),
-):
+# =============================================================================
+# Search Handlers
+# =============================================================================
+
+
+async def _search_by_address(
+    db: AsyncSession,
+    rate_limiter: Optional[RateLimiter],
+    address_input: AddressSearchInput,
+    years: Optional[list[int]],
+    log,
+) -> PublicSearchResponse:
     """
-    Get past searches for the current user's history sidebar.
+    Waterfall logic for address search:
+    1. Normalize address → hash
+    2. Check DB for existing hash → Location
+    3. If found → get DNO → evaluate data
+    4. If not found → call VNB API → create skeleton → evaluate data
+    """
+    log = log.bind(zip=address_input.zip_code, city=address_input.city)
     
-    Returns the most recent searches, ordered by creation date.
-    """
-    result = await db.execute(
-        select(SearchJobModel)
-        .where(SearchJobModel.user_id == current_user.id)
-        .order_by(SearchJobModel.created_at.desc())
-        .limit(limit)
+    # Step 1: Normalize address
+    normalized = normalize_address(
+        address_input.street,
+        address_input.zip_code,
+        address_input.city,
     )
-    jobs = result.scalars().all()
+    log.debug("Address normalized", hash=normalized.address_hash[:16])
     
-    return [
-        SearchJobListItem(
-            job_id=str(job.id),
-            input_text=job.input_text,
-            status=job.status,
-            created_at=job.created_at,
-            completed_at=job.completed_at,
+    # Step 2: Check DB for existing location by hash
+    location = await skeleton_service.find_location_by_hash(db, normalized.address_hash)
+    
+    if location:
+        log.debug("Location found in cache", location_id=location.id)
+        dno = await db.get(DNOModel, location.dno_id)
+        return await _build_response(db, dno, location, years)
+    
+    # Step 3: Not in cache - call VNB Digital API
+    log.info("Cache miss, calling VNB Digital API")
+    
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    
+    # Get coordinates
+    full_address = f"{address_input.street}, {address_input.zip_code} {address_input.city}"
+    location_result = await vnb_client.search_address_async(full_address)
+    
+    if not location_result:
+        log.warning("Address not found in VNB Digital")
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="Address not found. Please check the address and try again.",
         )
-        for job in jobs
+    
+    # Parse coordinates
+    lat, lon = map(float, location_result.coordinates.split(","))
+    
+    # Step 4: Check if we have a location for these coordinates
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    existing_location = await skeleton_service.find_location_by_geocoord(db, lat, lon)
+    
+    if existing_location:
+        log.debug("Location found by coordinates", location_id=existing_location.id)
+        dno = await db.get(DNOModel, existing_location.dno_id)
+        
+        # Create location alias for this address hash
+        await skeleton_service.get_or_create_location(
+            db, existing_location.dno_id, normalized, lat, lon
+        )
+        
+        return await _build_response(db, dno, existing_location, years)
+    
+    # Step 5: Get DNO from VNB Digital
+    vnbs = await vnb_client.lookup_by_coordinates_async(location_result.coordinates)
+    
+    if not vnbs:
+        log.warning("No DNO found for coordinates")
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="No distribution network operator found for this location.",
+        )
+    
+    # Prefer electricity DNO
+    vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
+    
+    # Step 6: Create or get DNO skeleton
+    dno, dno_created = await skeleton_service.get_or_create_dno(
+        db,
+        name=vnb.name,
+        vnb_id=vnb.vnb_id,
+        official_name=vnb.official_name,
+    )
+    
+    # Step 7: Create location
+    location, loc_created = await skeleton_service.get_or_create_location(
+        db, dno.id, normalized, lat, lon
+    )
+    
+    log.info(
+        "Created skeleton",
+        dno_created=dno_created,
+        loc_created=loc_created,
+        dno_name=dno.name,
+    )
+    
+    return await _build_response(db, dno, location, years)
+
+
+async def _search_by_coordinates(
+    db: AsyncSession,
+    rate_limiter: Optional[RateLimiter],
+    coords_input: CoordinatesSearchInput,
+    years: Optional[list[int]],
+    log,
+) -> PublicSearchResponse:
+    """Search by coordinates - similar to address but skips geocoding."""
+    log = log.bind(lat=coords_input.latitude, lon=coords_input.longitude)
+    
+    # Check DB first
+    location = await skeleton_service.find_location_by_geocoord(
+        db, coords_input.latitude, coords_input.longitude
+    )
+    
+    if location:
+        dno = await db.get(DNOModel, location.dno_id)
+        return await _build_response(db, dno, location, years)
+    
+    # Call VNB Digital
+    log.info("Calling VNB Digital for coordinates")
+    
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    coords_str = f"{coords_input.latitude},{coords_input.longitude}"
+    vnbs = await vnb_client.lookup_by_coordinates_async(coords_str)
+    
+    if not vnbs:
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message="No distribution network operator found for these coordinates.",
+        )
+    
+    vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
+    
+    dno, _ = await skeleton_service.get_or_create_dno(db, name=vnb.name, vnb_id=vnb.vnb_id)
+    
+    # Create simple location without full address
+    from app.services.skeleton_service import NormalizedAddress
+    import hashlib
+    
+    coords_hash = hashlib.sha256(coords_str.encode()).hexdigest()
+    simple_address = NormalizedAddress(
+        street_clean=f"Coordinates ({coords_input.latitude:.4f}, {coords_input.longitude:.4f})",
+        number_clean=None,
+        zip_code="00000",
+        city="Unknown",
+        address_hash=coords_hash,
+    )
+    
+    location, _ = await skeleton_service.get_or_create_location(
+        db, dno.id, simple_address, coords_input.latitude, coords_input.longitude
+    )
+    
+    return await _build_response(db, dno, location, years)
+
+
+async def _search_by_dno(
+    db: AsyncSession,
+    dno_input: DNOSearchInput,
+    years: Optional[list[int]],
+    log,
+) -> PublicSearchResponse:
+    """Search by DNO name or ID directly."""
+    log = log.bind(dno_name=dno_input.dno_name, dno_id=dno_input.dno_id)
+    
+    # Build query
+    if dno_input.dno_id:
+        query = select(DNOModel).where(DNOModel.vnb_id == dno_input.dno_id)
+    elif dno_input.dno_name:
+        query = select(DNOModel).where(
+            (DNOModel.name.ilike(f"%{dno_input.dno_name}%")) |
+            (DNOModel.slug == dno_input.dno_name.lower())
+        )
+    else:
+        raise HTTPException(400, "Either dno_id or dno_name must be provided")
+    
+    result = await db.execute(query)
+    dno = result.scalar_one_or_none()
+    
+    if not dno:
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message=f"DNO not found. Try searching by address instead.",
+        )
+    
+    return await _build_response(db, dno, None, years)
+
+
+async def _build_response(
+    db: AsyncSession,
+    dno: DNOModel,
+    location: Optional[LocationModel],
+    years: Optional[list[int]],
+) -> PublicSearchResponse:
+    """Build response with data evaluation."""
+    
+    # Build DNO metadata
+    dno_meta = DNOMetadata(
+        id=dno.id,
+        slug=dno.slug,
+        name=dno.name,
+        official_name=dno.official_name,
+        vnb_id=dno.vnb_id,
+        status=dno.status,
+    )
+    
+    # Build location info
+    loc_info = None
+    if location:
+        loc_info = LocationInfo(
+            street=location.street_clean,
+            number=location.number_clean,
+            zip_code=location.zip_code,
+            city=location.city,
+            latitude=float(location.latitude),
+            longitude=float(location.longitude),
+        )
+    
+    # Check for data
+    netzentgelte_query = select(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno.id)
+    hlzf_query = select(HLZFModel).where(HLZFModel.dno_id == dno.id)
+    
+    if years:
+        netzentgelte_query = netzentgelte_query.where(NetzentgelteModel.year.in_(years))
+        hlzf_query = hlzf_query.where(HLZFModel.year.in_(years))
+    
+    netzentgelte_result = await db.execute(netzentgelte_query)
+    hlzf_result = await db.execute(hlzf_query)
+    
+    netzentgelte = [
+        NetzentgelteData(
+            year=n.year,
+            voltage_level=n.voltage_level,
+            leistung=n.leistung,
+            arbeit=n.arbeit,
+        )
+        for n in netzentgelte_result.scalars().all()
     ]
-
-
-@router.get(
-    "/{job_id}",
-    response_model=SearchJobStatus,
-    summary="Get Search Job Details",
-    description="Get full details of a past search job (for loading from history)."
-)
-async def get_search_job(
-    job_id: str,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Get full details of a search job (for loading from history).
     
-    Unlike /status, this requires authentication and returns the full result.
-    """
-    try:
-        job_uuid = UUID(job_id)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid job ID format")
-    
-    result = await db.execute(
-        select(SearchJobModel).where(
-            SearchJobModel.id == job_uuid,
-            SearchJobModel.user_id == current_user.id
+    hlzf = [
+        HLZFData(
+            year=h.year,
+            voltage_level=h.voltage_level,
+            winter=h.winter,
+            fruehling=h.fruehling,
+            sommer=h.sommer,
+            herbst=h.herbst,
         )
-    )
-    job = result.scalar_one_or_none()
+        for h in hlzf_result.scalars().all()
+    ]
     
-    if not job:
-        raise HTTPException(status_code=404, detail="Search job not found")
+    has_data = len(netzentgelte) > 0 or len(hlzf) > 0
     
-    return SearchJobStatus(
-        job_id=str(job.id),
-        status=job.status,
-        current_step=job.current_step,
-        steps_history=job.steps_history or [],
-        result=job.result,
-        error=job.error_message,
-        created_at=job.created_at,
+    # Build message for skeleton DNOs
+    message = None
+    if not has_data:
+        message = f"DNO '{dno.name}' registered. No detailed data available yet. Request crawl via dashboard."
+    
+    return PublicSearchResponse(
+        found=True,
+        has_data=has_data,
+        dno=dno_meta,
+        location=loc_info,
+        netzentgelte=netzentgelte if netzentgelte else None,
+        hlzf=hlzf if hlzf else None,
+        message=message,
     )
