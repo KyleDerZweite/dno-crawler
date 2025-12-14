@@ -257,7 +257,7 @@ export const api = {
 
     async triggerCrawl(
       dno_id: string,
-      payload: { year: number; data_type?: string; priority?: number }
+      payload: { year: number; data_type?: 'all' | 'netzentgelte' | 'hlzf'; priority?: number }
     ): Promise<ApiResponse<{ job_id: string }>> {
       const { data } = await apiClient.post(`/dnos/${dno_id}/crawl`, payload);
       return data;

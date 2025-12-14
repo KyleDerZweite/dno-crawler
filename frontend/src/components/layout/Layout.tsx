@@ -19,11 +19,10 @@ const navigation = [
   { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
   { name: "Search", href: "/search", icon: Search },
   { name: "DNOs", href: "/dnos", icon: Database },
-  { name: "Settings", href: "/settings", icon: Settings },
+  { name: "Jobs", href: "/jobs", icon: Activity },
 ]
 
 const adminNavigation = [
-  { name: "Jobs", href: "/jobs", icon: Activity },
   { name: "Admin", href: "/admin", icon: Shield },
 ]
 
@@ -176,14 +175,26 @@ export function Layout() {
             </div>
           )}
           {user && (
-            <Button
-              variant="ghost"
-              className="w-full justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10 h-9 text-xs font-medium transition-colors"
-              onClick={logout}
-            >
-              <LogOut className="h-3.5 w-3.5 mr-2" />
-              Sign Out
-            </Button>
+            <div className="flex gap-2">
+              <Button
+                variant="ghost"
+                className="flex-1 justify-start text-muted-foreground hover:text-white hover:bg-white/5 h-9 text-xs font-medium transition-colors"
+                asChild
+              >
+                <Link to="/settings">
+                  <Settings className="h-3.5 w-3.5 mr-2" />
+                  Settings
+                </Link>
+              </Button>
+              <Button
+                variant="ghost"
+                className="flex-1 justify-start text-muted-foreground hover:text-red-400 hover:bg-red-500/10 h-9 text-xs font-medium transition-colors"
+                onClick={logout}
+              >
+                <LogOut className="h-3.5 w-3.5 mr-2" />
+                Sign Out
+              </Button>
+            </div>
           )}
         </div>
       </aside>

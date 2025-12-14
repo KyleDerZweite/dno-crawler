@@ -5,6 +5,15 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
+    Dialog,
+    DialogContent,
+    DialogDescription,
+    DialogFooter,
+    DialogHeader,
+    DialogTitle,
+    DialogTrigger,
+} from "@/components/ui/dialog";
+import {
     ArrowLeft,
     Database,
     ExternalLink,
@@ -20,12 +29,19 @@ import {
     FileDown,
     MoreVertical,
     Pencil,
+    Check,
+    ChevronDown,
+    ChevronUp,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import { useState, useMemo, useRef, useEffect } from "react";
+
+// Crawl configuration - matching SearchPage defaults
+const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
+const DEFAULT_CRAWL_YEARS = [2025, 2024];
 
 export function DNODetailPage() {
     const { id } = useParams<{ id: string }>();
@@ -52,6 +68,12 @@ export function DNODetailPage() {
         sommer?: string;
         herbst?: string;
     } | null>(null);
+
+    // Crawl dialog state
+    const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
+    const [crawlYears, setCrawlYears] = useState<number[]>(DEFAULT_CRAWL_YEARS);
+    const [crawlDataType, setCrawlDataType] = useState<'all' | 'netzentgelte' | 'hlzf'>('all');
+    const [showAdvancedCrawl, setShowAdvancedCrawl] = useState(false);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -93,13 +115,27 @@ export function DNODetailPage() {
     });
 
     const triggerCrawlMutation = useMutation({
-        mutationFn: () => api.dnos.triggerCrawl(id!, { year: new Date().getFullYear() }),
-        onSuccess: () => {
+        mutationFn: async ({ years, dataType }: { years: number[]; dataType: 'all' | 'netzentgelte' | 'hlzf' }) => {
+            // When 'all' is selected, create separate jobs for netzentgelte and hlzf
+            const typesToCrawl = dataType === 'all' ? ['netzentgelte', 'hlzf'] as const : [dataType];
+            const results = [];
+
+            for (const year of years) {
+                for (const type of typesToCrawl) {
+                    const result = await api.dnos.triggerCrawl(id!, { year, data_type: type });
+                    results.push(result);
+                }
+            }
+            return results;
+        },
+        onSuccess: (results, variables) => {
+            const jobCount = results.length;
             toast({
                 title: "Crawl triggered",
-                description: "The crawler job has been queued",
+                description: `${jobCount} job${jobCount > 1 ? 's' : ''} queued for years: ${variables.years.join(', ')}`,
             });
             queryClient.invalidateQueries({ queryKey: ["dno-jobs", id] });
+            setCrawlDialogOpen(false);
         },
         onError: (error: unknown) => {
             const message =
@@ -115,6 +151,20 @@ export function DNODetailPage() {
             });
         },
     });
+
+    // Calculate total job count based on years and data type selection
+    const crawlJobCount = crawlYears.length * (crawlDataType === 'all' ? 2 : 1);
+
+    // Toggle year in crawl selection
+    const toggleCrawlYear = (year: number) => {
+        setCrawlYears((prev) => {
+            if (prev.includes(year)) {
+                if (prev.length === 1) return prev; // keep at least one
+                return prev.filter((y) => y !== year);
+            }
+            return [...prev, year].sort((a, b) => b - a);
+        });
+    };
 
     const dno = dnoResponse?.data;
     const dnoData = dataResponse?.data;
@@ -420,22 +470,117 @@ export function DNODetailPage() {
                             </a>
                         </Button>
                     )}
-                    <Button
-                        onClick={() => triggerCrawlMutation.mutate()}
-                        disabled={triggerCrawlMutation.isPending}
-                    >
-                        {triggerCrawlMutation.isPending ? (
-                            <>
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                Triggering...
-                            </>
-                        ) : (
-                            <>
+                    <Dialog open={crawlDialogOpen} onOpenChange={setCrawlDialogOpen}>
+                        <DialogTrigger asChild>
+                            <Button>
                                 <RefreshCw className="mr-2 h-4 w-4" />
                                 Trigger Crawl
-                            </>
-                        )}
-                    </Button>
+                            </Button>
+                        </DialogTrigger>
+                        <DialogContent className="sm:max-w-md">
+                            <DialogHeader>
+                                <DialogTitle>Trigger Crawl for {dno.name}</DialogTitle>
+                                <DialogDescription>
+                                    Select years and data types to crawl. One job will be created per year.
+                                </DialogDescription>
+                            </DialogHeader>
+
+                            {/* Year Selection */}
+                            <div className="space-y-3">
+                                <label className="text-sm font-medium">Years to crawl</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_YEARS.map((year) => {
+                                        const isSelected = crawlYears.includes(year);
+                                        return (
+                                            <button
+                                                key={year}
+                                                type="button"
+                                                onClick={() => toggleCrawlYear(year)}
+                                                className={cn(
+                                                    "flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors",
+                                                    isSelected
+                                                        ? "bg-primary text-primary-foreground border-primary"
+                                                        : "bg-background border-input hover:bg-muted"
+                                                )}
+                                            >
+                                                <div className={cn(
+                                                    "w-4 h-4 rounded border flex items-center justify-center",
+                                                    isSelected
+                                                        ? "bg-primary-foreground/20 border-primary-foreground/50"
+                                                        : "border-current opacity-50"
+                                                )}>
+                                                    {isSelected && <Check className="w-3 h-3" />}
+                                                </div>
+                                                {year}
+                                            </button>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+
+                            {/* Advanced Options (Collapsible) */}
+                            <div className="border rounded-lg overflow-hidden">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowAdvancedCrawl(!showAdvancedCrawl)}
+                                    className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm"
+                                >
+                                    <span className="font-medium">Advanced Options</span>
+                                    {showAdvancedCrawl ? (
+                                        <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                                    ) : (
+                                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                    )}
+                                </button>
+                                {showAdvancedCrawl && (
+                                    <div className="p-3 border-t space-y-3">
+                                        <label className="text-sm font-medium">Data Type</label>
+                                        <div className="flex gap-2">
+                                            {(['all', 'netzentgelte', 'hlzf'] as const).map((type) => (
+                                                <button
+                                                    key={type}
+                                                    type="button"
+                                                    onClick={() => setCrawlDataType(type)}
+                                                    className={cn(
+                                                        "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
+                                                        crawlDataType === type
+                                                            ? "bg-primary text-primary-foreground border-primary"
+                                                            : "bg-background border-input hover:bg-muted"
+                                                    )}
+                                                >
+                                                    {type === 'all' ? 'All' : type === 'netzentgelte' ? 'Netzentgelte' : 'HLZF'}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+
+                            <DialogFooter className="gap-2 sm:gap-0">
+                                <Button
+                                    variant="outline"
+                                    onClick={() => setCrawlDialogOpen(false)}
+                                >
+                                    Cancel
+                                </Button>
+                                <Button
+                                    onClick={() => triggerCrawlMutation.mutate({ years: crawlYears, dataType: crawlDataType })}
+                                    disabled={triggerCrawlMutation.isPending || crawlYears.length === 0}
+                                >
+                                    {triggerCrawlMutation.isPending ? (
+                                        <>
+                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                            Creating jobs...
+                                        </>
+                                    ) : (
+                                        <>
+                                            Start {crawlJobCount} Job{crawlJobCount > 1 ? 's' : ''}
+                                        </>
+                                    )}
+                                </Button>
+                            </DialogFooter>
+                        </DialogContent>
+                    </Dialog>
                 </div>
             </div>
 
