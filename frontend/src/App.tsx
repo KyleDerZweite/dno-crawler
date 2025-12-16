@@ -7,6 +7,7 @@ import { DNODetailPage } from "./pages/DNODetailPage";
 import { AdminPage } from "./pages/AdminPage";
 import { SettingsPage } from "./pages/SettingsPage";
 import { JobsPage } from "./pages/JobsPage";
+import { JobDetailsPage } from "./pages/JobDetailsPage";
 import SearchPage from "./pages/SearchPage";
 
 function LoginRedirect() {
@@ -57,6 +58,7 @@ function App() {
         <Route path="dnos" element={<DNOsPage />} />
         <Route path="dnos/:id" element={<DNODetailPage />} />
         <Route path="jobs" element={<JobsPage />} />
+        <Route path="jobs/:id" element={<JobDetailsPage />} />
         <Route path="admin" element={<AdminPage />} />
         <Route path="settings" element={<SettingsPage />} />
       </Route>

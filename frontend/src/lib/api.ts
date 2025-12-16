@@ -242,6 +242,56 @@ export const api = {
     },
   },
 
+  // Jobs API - Unified job management
+  jobs: {
+    async list(params?: {
+      status?: string;
+      limit?: number;
+      page?: number;
+    }): Promise<{
+      jobs: Array<{
+        job_id: string;
+        dno_id: string;
+        dno_name?: string;
+        year: number;
+        data_type: string;
+        status: string;
+        progress: number;
+        current_step?: string;
+        error_message?: string;
+        queue_position?: number;
+        started_at?: string;
+        completed_at?: string;
+        created_at?: string;
+      }>;
+      queue_length: number;
+      meta?: {
+        total: number;
+        page: number;
+        per_page: number;
+        total_pages: number;
+      };
+    }> {
+      const { data } = await apiClient.get("/jobs/", { params });
+      return data;
+    },
+
+    async get(jobId: string): Promise<ApiResponse<JobDetails>> {
+      const { data } = await apiClient.get(`/jobs/${jobId}`);
+      return data;
+    },
+
+    async cancel(jobId: string): Promise<ApiResponse<{ job_id: string }>> {
+      const { data } = await apiClient.delete(`/jobs/${jobId}`);
+      return data;
+    },
+
+    async rerun(jobId: string): Promise<ApiResponse<{ job_id: string; original_job_id: string; status: string }>> {
+      const { data } = await apiClient.post(`/jobs/${jobId}/rerun`);
+      return data;
+    },
+  },
+
   dnos: {
     async list(include_stats?: boolean): Promise<ApiResponse<DNO[]>> {
       const { data } = await apiClient.get("/dnos/", {

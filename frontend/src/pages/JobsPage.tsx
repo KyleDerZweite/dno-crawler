@@ -70,10 +70,10 @@ export function JobsPage() {
 
   const isAdminUser = isAdmin();
 
-  // Fetch search jobs list (not crawl jobs)
+  // Fetch jobs list using unified jobs API
   const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
-    queryKey: ["search-jobs", statusFilter],
-    queryFn: () => api.search.listJobs({
+    queryKey: ["jobs", statusFilter],
+    queryFn: () => api.jobs.list({
       status: statusFilter === "all" ? undefined : statusFilter,
       limit: 50
     }),
@@ -85,13 +85,13 @@ export function JobsPage() {
 
   // Rerun mutation
   const rerunMutation = useMutation({
-    mutationFn: (jobId: string) => api.admin.rerunJob(jobId),
+    mutationFn: (jobId: string) => api.jobs.rerun(jobId),
     onSuccess: (data) => {
       toast({
         title: "Job rerun created",
         description: `New job ID: ${data.data.job_id}`,
       });
-      queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof AxiosError
@@ -103,11 +103,10 @@ export function JobsPage() {
 
   // Cancel mutation
   const cancelMutation = useMutation({
-    mutationFn: (jobId: string) => api.admin.cancelJob(jobId),
+    mutationFn: (jobId: string) => api.jobs.cancel(jobId),
     onSuccess: () => {
       toast({ title: "Job cancelled" });
-      queryClient.invalidateQueries({ queryKey: ["admin", "jobs"] });
-      queryClient.invalidateQueries({ queryKey: ["admin", "job", selectedJobId] });
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof AxiosError
@@ -131,13 +130,9 @@ export function JobsPage() {
     );
   }
 
-  // Detail view - navigate to batch or job page
+  // Detail view - navigate to job detail page
   const handleJobClick = (job: typeof jobs[0]) => {
-    if (job.batch_id) {
-      navigate(`/search/batch/${job.batch_id}`);
-    } else {
-      navigate(`/search/${job.job_id}`);
-    }
+    navigate(`/jobs/${job.job_id}`);
   };
 
   return (
@@ -145,9 +140,9 @@ export function JobsPage() {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Extraction Jobs</h1>
+          <h1 className="text-2xl font-bold text-foreground">Jobs</h1>
           <p className="text-muted-foreground mt-1">
-            Monitor and manage crawl/extraction jobs
+            Monitor and manage crawl jobs
           </p>
         </div>
         <CreateJobDialog
@@ -197,7 +192,7 @@ export function JobsPage() {
       ) : (
         <div className="space-y-3">
           {jobs.map((job) => (
-            <SearchJobCard
+            <CrawlJobCard
               key={job.job_id}
               job={job}
               onClick={() => handleJobClick(job)}
@@ -209,24 +204,24 @@ export function JobsPage() {
   );
 }
 
-// Type for search jobs from the new API
-type SearchJobItem = {
+// Type for crawl jobs from the unified API
+type CrawlJobItem = {
   job_id: string;
-  input_text: string;
-  status: string;
+  dno_id: string;
   dno_name?: string;
-  year?: number;
-  data_type?: string;
+  year: number;
+  data_type: string;
+  status: string;
+  progress: number;
   current_step?: string;
+  error_message?: string;
   queue_position?: number;
-  batch_id?: string;
-  batch_index?: number;
-  batch_total?: number;
+  started_at?: string;
+  completed_at?: string;
   created_at?: string;
-  error?: string;
 };
 
-function SearchJobCard({ job, onClick }: { job: SearchJobItem; onClick: () => void }) {
+function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void }) {
   const status = job.status as keyof typeof statusConfig;
   const config = statusConfig[status] || statusConfig["pending"];
   const StatusIcon = config.icon;
@@ -243,19 +238,14 @@ function SearchJobCard({ job, onClick }: { job: SearchJobItem; onClick: () => vo
           </div>
           <div>
             <div className="flex items-center gap-2">
-              <span className="font-semibold">{job.dno_name || job.input_text}</span>
-              {job.year && <Badge variant="outline">{job.year}</Badge>}
-              {job.data_type && <Badge variant="secondary">{job.data_type}</Badge>}
+              <span className="font-semibold">{job.dno_name || `Job ${job.job_id.slice(0, 8)}`}</span>
+              <Badge variant="outline">{job.year}</Badge>
+              <Badge variant="secondary">{job.data_type}</Badge>
             </div>
             <div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
               {job.queue_position && (
                 <Badge variant="outline" className="text-xs">
                   Queue #{job.queue_position}
-                </Badge>
-              )}
-              {job.batch_index && job.batch_total && (
-                <Badge variant="outline" className="text-xs">
-                  Job {job.batch_index}/{job.batch_total}
                 </Badge>
               )}
               <span>{job.current_step || "Waiting to start"}</span>

@@ -295,7 +295,7 @@ async def delete_dno(
 
 @router.post("/{dno_id}/crawl")
 async def trigger_crawl(
-    dno_id: int,
+    dno_id: str,
     request: TriggerCrawlRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
@@ -305,6 +305,7 @@ async def trigger_crawl(
     
     Creates a new crawl job that will be picked up by the worker.
     Any authenticated user (member or admin) can trigger this.
+    Accepts either numeric ID or slug.
     """
     from datetime import datetime, timedelta, timezone
     from arq import create_pool
@@ -313,8 +314,11 @@ async def trigger_crawl(
     import structlog
     logger = structlog.get_logger()
     
-    # Verify DNO exists
-    query = select(DNOModel).where(DNOModel.id == dno_id)
+    # Verify DNO exists - support both ID and slug
+    if dno_id.isdigit():
+        query = select(DNOModel).where(DNOModel.id == int(dno_id))
+    else:
+        query = select(DNOModel).where(DNOModel.slug == dno_id)
     result = await db.execute(query)
     dno = result.scalar_one_or_none()
     
@@ -343,17 +347,18 @@ async def trigger_crawl(
                 detail=f"A crawl is already in progress for {dno.name}",
             )
     
-    # Check for existing pending/running job for this year
+    # Check for existing pending/running job for this year AND data_type
     existing_query = select(CrawlJobModel).where(
-        CrawlJobModel.dno_id == dno_id,
+        CrawlJobModel.dno_id == dno.id,
         CrawlJobModel.year == request.year,
+        CrawlJobModel.data_type == request.data_type.value,
         CrawlJobModel.status.in_(["pending", "running"]),
     )
     result = await db.execute(existing_query)
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A crawl job for this DNO and year is already in progress",
+            detail=f"A crawl job for this DNO, year, and data type is already in progress",
         )
     
     # Update DNO status
@@ -363,7 +368,7 @@ async def trigger_crawl(
     # Create crawl job in database
     job = CrawlJobModel(
         user_id=None,
-        dno_id=dno_id,
+        dno_id=dno.id,
         year=request.year,
         data_type=request.data_type.value,
         priority=request.priority,
