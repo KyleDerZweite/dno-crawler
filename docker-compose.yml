@@ -127,9 +127,8 @@ services:
     volumes:
       - ./frontend:/app:Z
       - ./data/frontend/node_modules/:/app/node_modules:Z
-    environment:
-      # Ensure FE builds against the backend API base path including the /api/v1 prefix
-      - VITE_API_URL=http://localhost:8000/api/v1
+    env_file:
+      - .env
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     depends_on:
       - backend

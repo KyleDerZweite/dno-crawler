@@ -103,9 +103,6 @@ async def get_current_user(
         async def protected(user: User = Depends(get_current_user)):
             return {"user": user.email}
     """
-    import structlog
-    logger = structlog.get_logger()
-    
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -127,6 +124,7 @@ async def get_current_user(
             algorithms=["RS256"],
             issuer=auth_settings.issuer,
             options={"verify_aud": False},  # Zitadel uses project-based audience
+            leeway=30,  # Allow 30 seconds clock skew
         )
 
         # Extract roles from token claims
@@ -134,7 +132,6 @@ async def get_current_user(
         
         # If no roles in token, fetch from userinfo endpoint
         if not roles:
-            logger.info("No roles in token, fetching from userinfo endpoint")
             userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -143,12 +140,7 @@ async def get_current_user(
                 )
                 if response.status_code == 200:
                     userinfo = response.json()
-                    logger.info("Userinfo response", userinfo_keys=list(userinfo.keys()))
                     roles = extract_roles(userinfo)
-                else:
-                    logger.warning("Userinfo request failed", status=response.status_code)
-        
-        logger.info("User authenticated", email=claims.get("email"), roles=roles, is_admin=any(r.upper() == "ADMIN" for r in roles))
 
         return User(
             id=claims.get("sub", ""),
@@ -166,6 +158,11 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Authentication failed: {str(e)}",
         )
 
 

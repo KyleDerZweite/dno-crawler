@@ -70,7 +70,7 @@ export function useAuth() {
         login: () => auth.signinRedirect(),
         logout: () =>
             auth.signoutRedirect({
-                post_logout_redirect_uri: import.meta.env.VITE_ZITADEL_POST_LOGOUT_URI,
+                post_logout_redirect_uri: `${window.location.origin}/logout`,
             }),
         openSettings,
 

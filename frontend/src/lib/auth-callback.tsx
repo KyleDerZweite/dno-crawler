@@ -25,7 +25,7 @@ export function AuthCallback() {
         if (!auth.isLoading) {
             if (auth.isAuthenticated) {
                 // Check for stored redirect path
-                const redirectPath = sessionStorage.getItem("auth_redirect") || "/";
+                const redirectPath = sessionStorage.getItem("auth_redirect") || "/dashboard";
                 sessionStorage.removeItem("auth_redirect");
                 navigate(redirectPath, { replace: true });
             } else if (auth.error) {

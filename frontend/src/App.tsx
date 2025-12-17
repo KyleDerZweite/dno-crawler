@@ -9,6 +9,8 @@ import { SettingsPage } from "./pages/SettingsPage";
 import { JobsPage } from "./pages/JobsPage";
 import { JobDetailsPage } from "./pages/JobDetailsPage";
 import SearchPage from "./pages/SearchPage";
+import LandingPage from "./pages/LandingPage";
+import LogoutPage from "./pages/LogoutPage";
 
 function LoginRedirect() {
   const { isAuthenticated, isLoading, login } = useAuth();
@@ -37,22 +39,26 @@ function LoginRedirect() {
 function App() {
   return (
     <Routes>
+      {/* Public landing page */}
+      <Route path="/" element={<LandingPage />} />
+
       {/* OIDC Callback route */}
       <Route path="/callback" element={<AuthCallback />} />
 
       {/* Login redirect */}
       <Route path="/login" element={<LoginRedirect />} />
 
-      {/* Protected routes */}
+      {/* Logout confirmation page */}
+      <Route path="/logout" element={<LogoutPage />} />
+
+      {/* Protected routes with sidebar layout */}
       <Route
-        path="/"
         element={
           <ProtectedRoute>
             <Layout />
           </ProtectedRoute>
         }
       >
-        <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="dnos" element={<DNOsPage />} />
@@ -76,8 +82,8 @@ function App() {
         }
       />
 
-      {/* Catch all - redirect to dashboard */}
-      <Route path="*" element={<Navigate to="/dashboard" replace />} />
+      {/* Catch all - redirect to landing */}
+      <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 }
