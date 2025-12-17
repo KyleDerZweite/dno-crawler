@@ -168,7 +168,10 @@ async def delete_job(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
-    """Delete a job permanently."""
+    """Delete a job permanently.
+    
+    Permission: Admins can delete any job, creators can delete their own.
+    """
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
     result = await db.execute(query)
     job = result.scalar_one_or_none()
@@ -179,7 +182,14 @@ async def delete_job(
             detail="Job not found",
         )
     
-    # Delete the job
+    # Permission check: admin OR creator
+    is_creator = job.triggered_by == current_user.email
+    if not current_user.is_admin and not is_creator:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="You can only delete jobs you created",
+        )
+    
     await db.delete(job)
     await db.commit()
     
@@ -190,4 +200,5 @@ async def delete_job(
         message="Job deleted",
         data={"job_id": str(job_id)},
     )
+
 

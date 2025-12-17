@@ -12,9 +12,8 @@ export const apiClient = axios.create({
 // Request interceptor to add auth token from OIDC session
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Get token from OIDC storage
-    // react-oidc-context stores user in sessionStorage with key pattern:
-    // oidc.user:<authority>:<client_id>
+    // Get token from OIDC storage (configured to use localStorage in auth-config.ts)
+    // react-oidc-context stores user with key pattern: oidc.user:<authority>:<client_id>
     const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
     const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
     const storageKey = `oidc.user:${authority}:${clientId}`;
@@ -40,12 +39,13 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
     if (error.response?.status === 401) {
-      // Token expired or invalid - clear OIDC storage and redirect
+      // Token expired or invalid - clear OIDC storage and force full reload
       const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
       const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
       const storageKey = `oidc.user:${authority}:${clientId}`;
       localStorage.removeItem(storageKey);
-      window.location.href = "/";
+      // Force full page reload to reset OIDC in-memory state
+      window.location.replace("/");
     }
     return Promise.reject(error);
   }

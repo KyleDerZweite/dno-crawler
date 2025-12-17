@@ -12,31 +12,25 @@ import {
     PlayCircle,
 } from "lucide-react";
 
-import { api } from "@/lib/api";
+import { api, type ApiResponse, type JobDetails } from "@/lib/api";
+import { JOB_STATUS_CONFIG, type JobStatus } from "@/lib/job-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-const statusConfig = {
-    pending: { icon: Clock, color: "bg-yellow-500/10 text-yellow-500", label: "Pending" },
-    running: { icon: Loader2, color: "bg-blue-500/10 text-blue-500", label: "Running" },
-    completed: { icon: CheckCircle, color: "bg-green-500/10 text-green-500", label: "Completed" },
-    failed: { icon: AlertCircle, color: "bg-red-500/10 text-red-500", label: "Failed" },
-    cancelled: { icon: Ban, color: "bg-gray-500/10 text-gray-500", label: "Cancelled" },
-};
-
 export function JobDetailsPage() {
     const { id } = useParams<{ id: string }>();
+    const isValidId = id && /^\d+$/.test(id);
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { toast } = useToast();
 
-    const { data, isLoading, error } = useQuery({
+    const { data, isLoading, error } = useQuery<ApiResponse<JobDetails>>({
         queryKey: ["job", id],
         queryFn: () => api.jobs.get(id!),
-        enabled: !!id,
+        enabled: Boolean(id && isValidId),
         refetchInterval: (query) => {
             // Poll every 3s while job is pending/running
             const job = query.state.data?.data;
@@ -52,6 +46,11 @@ export function JobDetailsPage() {
         onSuccess: () => {
             toast({ title: "Job deleted" });
             queryClient.invalidateQueries({ queryKey: ["jobs"] });
+            // Also invalidate the DNO's job list cache
+            const job = data?.data;
+            if (job?.dno_id) {
+                queryClient.invalidateQueries({ queryKey: ["dno-jobs", job.dno_id] });
+            }
             navigate("/jobs");
         },
         onError: (error: unknown) => {
@@ -70,7 +69,7 @@ export function JobDetailsPage() {
         );
     }
 
-    if (error || !data?.data) {
+    if (!isValidId || error || !data?.data) {
         return (
             <div className="space-y-4">
                 <Button variant="ghost" onClick={() => navigate("/jobs")}>
@@ -88,8 +87,8 @@ export function JobDetailsPage() {
     }
 
     const job = data.data;
-    const status = job.status as keyof typeof statusConfig;
-    const config = statusConfig[status] || statusConfig.pending;
+    const status = job.status as JobStatus;
+    const config = JOB_STATUS_CONFIG[status] ?? JOB_STATUS_CONFIG.pending;
     const StatusIcon = config.icon;
 
     return (

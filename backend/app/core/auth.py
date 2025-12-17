@@ -129,9 +129,11 @@ async def get_current_user(
 
         # Extract roles from token claims
         roles = extract_roles(claims)
+        email = claims.get("email", "")
+        name = claims.get("name", claims.get("preferred_username", ""))
         
-        # If no roles in token, fetch from userinfo endpoint
-        if not roles:
+        # If email or roles missing from access token, fetch from userinfo endpoint
+        if not email or not roles:
             userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
             async with httpx.AsyncClient() as client:
                 response = await client.get(
@@ -140,12 +142,17 @@ async def get_current_user(
                 )
                 if response.status_code == 200:
                     userinfo = response.json()
-                    roles = extract_roles(userinfo)
+                    if not roles:
+                        roles = extract_roles(userinfo)
+                    if not email:
+                        email = userinfo.get("email", "")
+                    if not name:
+                        name = userinfo.get("name", userinfo.get("preferred_username", ""))
 
         return User(
             id=claims.get("sub", ""),
-            email=claims.get("email", ""),
-            name=claims.get("name", claims.get("preferred_username", "")),
+            email=email,
+            name=name,
             roles=roles,
         )
 
@@ -194,6 +201,7 @@ async def get_optional_user(
             algorithms=["RS256"],
             issuer=auth_settings.issuer,
             options={"verify_aud": False},
+            leeway=30,  # Allow 30 seconds clock skew
         )
         
         return User(
