@@ -34,7 +34,7 @@ async def shutdown(ctx):
     logger.info("Worker shutdown complete.")
 
 # Import job functions
-from app.jobs.search_job import job_process_search_request
+from app.jobs.search_job import process_dno_crawl
 
 
 class WorkerSettings:
@@ -42,7 +42,7 @@ class WorkerSettings:
     
     functions = [
         health_check_job,
-        job_process_search_request,
+        process_dno_crawl,
     ]
     redis_settings = RedisSettings.from_dsn(str(settings.redis_url))
     on_startup = startup

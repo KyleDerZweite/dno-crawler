@@ -23,7 +23,6 @@ import {
   Loader2,
   Search,
   Check,
-  RefreshCw,
   Zap,
   Clock,
 } from "lucide-react";
@@ -57,7 +56,8 @@ export function DNOsPage() {
   const { data: dnosResponse, isLoading } = useQuery({
     queryKey: ["dnos"],
     queryFn: () => api.dnos.list(true),
-    refetchOnMount: "always",  // Always refetch when navigating back to this page
+    refetchOnMount: "always",
+    refetchInterval: 5000, // Poll every 5 seconds for live status updates
   });
 
   const dnos = dnosResponse?.data;
@@ -290,22 +290,7 @@ export function DNOsPage() {
 }
 
 function DNOCard({ dno }: { dno: DNO }) {
-  // Stuck detection: crawling for > 1 hour
-  const isStuck =
-    dno.status === "crawling" &&
-    dno.crawl_locked_at &&
-    new Date().getTime() - new Date(dno.crawl_locked_at).getTime() > 3600 * 1000;
-
   const getStatusBadge = () => {
-    if (isStuck) {
-      return (
-        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
-          <RefreshCw className="h-3 w-3" />
-          Stuck
-        </span>
-      );
-    }
-
     switch (dno.status) {
       case "crawled":
         return (
@@ -314,11 +299,18 @@ function DNOCard({ dno }: { dno: DNO }) {
             Crawled
           </span>
         );
-      case "crawling":
+      case "running":
         return (
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
             <Loader2 className="h-3 w-3 animate-spin" />
-            Crawling
+            Running
+          </span>
+        );
+      case "pending":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400">
+            <Clock className="h-3 w-3" />
+            Pending
           </span>
         );
       case "failed":

@@ -59,7 +59,7 @@ export interface DNO {
   name: string;
   official_name?: string;
   vnb_id?: string;
-  status?: "uncrawled" | "crawling" | "crawled" | "failed";
+  status?: "uncrawled" | "pending" | "running" | "crawled" | "failed";
   crawl_locked_at?: string;
   description?: string;
   region?: string;
@@ -281,13 +281,8 @@ export const api = {
       return data;
     },
 
-    async cancel(jobId: string): Promise<ApiResponse<{ job_id: string }>> {
+    async delete(jobId: string): Promise<ApiResponse<{ job_id: string }>> {
       const { data } = await apiClient.delete(`/jobs/${jobId}`);
-      return data;
-    },
-
-    async rerun(jobId: string): Promise<ApiResponse<{ job_id: string; original_job_id: string; status: string }>> {
-      const { data } = await apiClient.post(`/jobs/${jobId}/rerun`);
       return data;
     },
   },

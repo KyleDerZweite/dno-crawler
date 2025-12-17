@@ -4,7 +4,6 @@ import { AxiosError } from "axios";
 import {
     ArrowLeft,
     Loader2,
-    RefreshCw,
     XCircle,
     Clock,
     CheckCircle,
@@ -48,31 +47,18 @@ export function JobDetailsPage() {
         },
     });
 
-    const cancelMutation = useMutation({
-        mutationFn: () => api.jobs.cancel(id!),
+    const deleteMutation = useMutation({
+        mutationFn: () => api.jobs.delete(id!),
         onSuccess: () => {
-            toast({ title: "Job cancelled" });
-            queryClient.invalidateQueries({ queryKey: ["job", id] });
+            toast({ title: "Job deleted" });
+            queryClient.invalidateQueries({ queryKey: ["jobs"] });
+            navigate("/jobs");
         },
         onError: (error: unknown) => {
             const message = error instanceof AxiosError
                 ? error.response?.data?.detail ?? error.message
                 : "Unknown error";
-            toast({ variant: "destructive", title: "Failed to cancel", description: message });
-        },
-    });
-
-    const rerunMutation = useMutation({
-        mutationFn: () => api.jobs.rerun(id!),
-        onSuccess: (data) => {
-            toast({ title: "Job rerun created", description: `New job: ${data.data.job_id}` });
-            navigate(`/jobs/${data.data.job_id}`);
-        },
-        onError: (error: unknown) => {
-            const message = error instanceof AxiosError
-                ? error.response?.data?.detail ?? error.message
-                : "Unknown error";
-            toast({ variant: "destructive", title: "Failed to rerun", description: message });
+            toast({ variant: "destructive", title: "Failed to delete", description: message });
         },
     });
 
@@ -105,8 +91,6 @@ export function JobDetailsPage() {
     const status = job.status as keyof typeof statusConfig;
     const config = statusConfig[status] || statusConfig.pending;
     const StatusIcon = config.icon;
-    const canCancel = status === "pending" || status === "running";
-    const canRerun = status === "completed" || status === "failed" || status === "cancelled";
 
     return (
         <div className="space-y-6">
@@ -123,28 +107,18 @@ export function JobDetailsPage() {
                         {job.year} · {job.data_type}
                     </p>
                 </div>
-                <div className="flex gap-2">
-                    {canRerun && (
-                        <Button
-                            variant="outline"
-                            onClick={() => rerunMutation.mutate()}
-                            disabled={rerunMutation.isPending}
-                        >
-                            <RefreshCw className={cn("mr-2 h-4 w-4", rerunMutation.isPending && "animate-spin")} />
-                            Rerun
-                        </Button>
+                <Button
+                    variant="destructive"
+                    onClick={() => deleteMutation.mutate()}
+                    disabled={deleteMutation.isPending}
+                >
+                    {deleteMutation.isPending ? (
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                        <XCircle className="mr-2 h-4 w-4" />
                     )}
-                    {canCancel && (
-                        <Button
-                            variant="destructive"
-                            onClick={() => cancelMutation.mutate()}
-                            disabled={cancelMutation.isPending}
-                        >
-                            <XCircle className="mr-2 h-4 w-4" />
-                            Cancel
-                        </Button>
-                    )}
-                </div>
+                    Delete
+                </Button>
             </div>
 
             {/* Status Card */}

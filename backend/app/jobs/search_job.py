@@ -20,7 +20,7 @@ from app.db import get_db_session
 logger = structlog.get_logger()
 
 
-async def job_process_search_request(
+async def process_dno_crawl(
     ctx: dict, 
     # Structured payload format (from batch search)
     payload: Optional[dict] = None,

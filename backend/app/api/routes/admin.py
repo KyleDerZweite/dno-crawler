@@ -127,7 +127,7 @@ async def trigger_dno_crawl(
                     RedisSettings.from_dsn(str(settings.redis_url))
                 )
                 await redis_pool.enqueue_job(
-                    "crawl_dno_job",
+                    "process_dno_crawl",
                     job.id,
                     _job_id=f"crawl_{job.id}",
                 )
@@ -363,7 +363,7 @@ async def create_standalone_job(
             RedisSettings.from_dsn(str(settings.redis_url))
         )
         await redis_pool.enqueue_job(
-            "crawl_dno_job",
+            "process_dno_crawl",
             job.id,
             _job_id=f"crawl_{job.id}",
         )
@@ -430,7 +430,7 @@ async def rerun_job(
             RedisSettings.from_dsn(str(settings.redis_url))
         )
         await redis_pool.enqueue_job(
-            "crawl_dno_job",
+            "process_dno_crawl",
             new_job.id,
             _job_id=f"crawl_{new_job.id}",
         )

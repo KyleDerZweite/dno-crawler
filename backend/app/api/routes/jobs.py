@@ -161,12 +161,12 @@ async def get_job(
 
 
 @router.delete("/{job_id}")
-async def cancel_job(
+async def delete_job(
     job_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
-    """Cancel a pending or running job."""
+    """Delete a job permanently."""
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
     result = await db.execute(query)
     job = result.scalar_one_or_none()
@@ -177,92 +177,15 @@ async def cancel_job(
             detail="Job not found",
         )
     
-    if job.status == "completed":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot cancel a completed job",
-        )
-    
-    if job.status == "cancelled":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Job is already cancelled",
-        )
-    
-    job.status = "cancelled"
-    job.error_message = f"Cancelled by {current_user.email}"
+    # Delete the job
+    await db.delete(job)
     await db.commit()
     
-    logger.info("Job cancelled", job_id=job_id, user=current_user.email)
+    logger.info("Job deleted", job_id=job_id, user=current_user.email)
     
     return APIResponse(
         success=True,
-        message="Job cancelled",
+        message="Job deleted",
         data={"job_id": str(job_id)},
     )
 
-
-@router.post("/{job_id}/rerun")
-async def rerun_job(
-    job_id: int,
-    db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthUser, Depends(get_current_user)],
-) -> APIResponse:
-    """Rerun a failed, completed, or cancelled job."""
-    from arq import create_pool
-    from arq.connections import RedisSettings
-    from app.core.config import settings
-    
-    query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-    result = await db.execute(query)
-    job = result.scalar_one_or_none()
-    
-    if not job:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Job not found",
-        )
-    
-    if job.status in ["pending", "running"]:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Cannot rerun a job that is still pending or running",
-        )
-    
-    # Create a new job based on the old one
-    new_job = CrawlJobModel(
-        user_id=None,
-        dno_id=job.dno_id,
-        year=job.year,
-        data_type=job.data_type,
-        priority=job.priority,
-        current_step=f"Rerun of job {job_id} by {current_user.email}",
-    )
-    db.add(new_job)
-    await db.commit()
-    await db.refresh(new_job)
-    
-    # Enqueue to arq worker
-    try:
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
-        )
-        await redis_pool.enqueue_job(
-            "crawl_dno_job",
-            new_job.id,
-            _job_id=f"crawl_{new_job.id}",
-        )
-        await redis_pool.aclose()
-        logger.info("Rerun job enqueued", job_id=new_job.id, original_id=job_id)
-    except Exception as e:
-        logger.error("Failed to enqueue rerun job", job_id=new_job.id, error=str(e))
-    
-    return APIResponse(
-        success=True,
-        message="Job rerun created",
-        data={
-            "job_id": str(new_job.id),
-            "original_job_id": str(job_id),
-            "status": new_job.status,
-        },
-    )

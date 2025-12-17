@@ -107,7 +107,11 @@ async def list_dnos_detailed(
     """
     List all DNOs with detailed information.
     
-    Authenticated endpoint with more details than public endpoint.
+    Status is computed dynamically from active jobs:
+    - running: at least one running job
+    - pending: at least one pending job (none running)
+    - crawled: has data points and no active jobs
+    - uncrawled: no data points and no active jobs
     """
     query = select(DNOModel).order_by(DNOModel.name)
     result = await db.execute(query)
@@ -130,13 +134,36 @@ async def list_dnos_detailed(
         
         data_points_count = netzentgelte_count + hlzf_count
         
+        # Compute live status from jobs
+        running_count_result = await db.execute(
+            text("SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'running'"),
+            {"dno_id": dno.id}
+        )
+        running_count = running_count_result.scalar() or 0
+        
+        pending_count_result = await db.execute(
+            text("SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'pending'"),
+            {"dno_id": dno.id}
+        )
+        pending_count = pending_count_result.scalar() or 0
+        
+        # Determine status
+        if running_count > 0:
+            live_status = "running"
+        elif pending_count > 0:
+            live_status = "pending"
+        elif data_points_count > 0:
+            live_status = "crawled"
+        else:
+            live_status = "uncrawled"
+        
         dno_data = {
             "id": str(dno.id),
             "slug": dno.slug,
             "name": dno.name,
             "official_name": dno.official_name,
             "vnb_id": dno.vnb_id,
-            "status": getattr(dno, 'status', 'uncrawled'),  # New field
+            "status": live_status,
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
@@ -384,7 +411,7 @@ async def trigger_crawl(
             RedisSettings.from_dsn(str(settings.redis_url))
         )
         await redis_pool.enqueue_job(
-            "crawl_dno_job",
+            "process_dno_crawl",
             job.id,
             _job_id=f"crawl_{job.id}",
         )
