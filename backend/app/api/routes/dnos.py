@@ -400,6 +400,7 @@ async def trigger_crawl(
         data_type=request.data_type.value,
         priority=request.priority,
         current_step=f"Triggered by {current_user.email}",
+        triggered_by=current_user.email,
     )
     db.add(job)
     await db.commit()
