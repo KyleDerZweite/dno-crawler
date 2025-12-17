@@ -11,7 +11,6 @@ Replace with actual implementation once queue mechanism is verified.
 
 import asyncio
 from datetime import datetime
-from typing import Optional
 
 import structlog
 
@@ -21,29 +20,28 @@ logger = structlog.get_logger()
 
 
 async def process_dno_crawl(
-    ctx: dict, 
-    # Structured payload format (from batch search)
-    payload: Optional[dict] = None,
-    # NL search format
-    job_id: Optional[str] = None,
-    prompt: Optional[str] = None,
-    filters: Optional[dict] = None,
+    ctx: dict,
+    job_id: int,  # First positional arg after ctx - matches how API enqueues
 ) -> dict:
     """
     TEMPORARY: Simplified job function for testing queue mechanism.
     
-    Accepts the job, then simulates processing with 5-second status updates.
+    Accepts the job ID, then simulates processing with 5-second status updates.
+    
+    Args:
+        ctx: ARQ context (contains redis connection etc)
+        job_id: CrawlJobModel.id from the database
     """
     log = logger.bind(job_id=job_id)
-    log.info("🧪 TEMP WORKER: Job received", payload=payload, prompt=prompt)
+    log.info("🧪 TEMP WORKER: Job received")
     
     # Get job from DB and mark as running
     async with get_db_session() as db:
         from sqlalchemy import select
-        from app.db.models import SearchJobModel
+        from app.db.models import CrawlJobModel
         
         result = await db.execute(
-            select(SearchJobModel).where(SearchJobModel.id == job_id)
+            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
         )
         job = result.scalar_one_or_none()
         
@@ -86,21 +84,17 @@ async def process_dno_crawl(
     # Mark job as completed with mock result
     async with get_db_session() as db:
         from sqlalchemy import select
-        from app.db.models import SearchJobModel
+        from app.db.models import CrawlJobModel
         
         result = await db.execute(
-            select(SearchJobModel).where(SearchJobModel.id == job_id)
+            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
         )
         job = result.scalar_one_or_none()
         
         if job:
             job.status = "completed"
-            job.result = {
-                "dno_name": "Test DNO (Temporary Worker)",
-                "netzentgelte": {"2024": [], "2025": []},
-                "hlzf": {"2024": [], "2025": []},
-                "note": "This is mock data from the temporary test worker",
-            }
+            job.current_step = "Completed"
+            job.progress = 100
             job.completed_at = datetime.utcnow()
             await db.commit()
     
@@ -109,7 +103,7 @@ async def process_dno_crawl(
 
 
 async def _update_step(
-    job_id: str,
+    job_id: int,
     step_num: int,
     label: str,
     status: str,
@@ -119,40 +113,19 @@ async def _update_step(
     try:
         async with get_db_session() as db:
             from sqlalchemy import select
-            from app.db.models import SearchJobModel
+            from app.db.models import CrawlJobModel
             
             result = await db.execute(
-                select(SearchJobModel).where(SearchJobModel.id == job_id)
+                select(CrawlJobModel).where(CrawlJobModel.id == job_id)
             )
             job = result.scalar_one_or_none()
             
             if not job:
                 return
             
-            now = datetime.utcnow().isoformat()
-            
-            if status == "running":
-                # Add new step
-                new_step = {
-                    "step": step_num,
-                    "label": label,
-                    "status": status,
-                    "detail": detail,
-                    "started_at": now,
-                }
-                job.steps_history = [*job.steps_history, new_step]
-                job.current_step = label
-            else:
-                # Update last step
-                if job.steps_history:
-                    updated_history = list(job.steps_history)
-                    updated_history[-1] = {
-                        **updated_history[-1],
-                        "status": status,
-                        "detail": detail,
-                        "completed_at": now,
-                    }
-                    job.steps_history = updated_history
+            # Update current step and progress
+            job.current_step = label
+            job.progress = int((step_num / 8) * 100)  # 8 total steps
             
             await db.commit()
             

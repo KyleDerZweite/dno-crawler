@@ -104,6 +104,7 @@ class CrawlJob(CrawlJobBase, TimestampMixin):
     progress: int = Field(0, ge=0, le=100)
     current_step: str | None = None
     error_message: str | None = None
+    triggered_by: str | None = None
     started_at: datetime | None = None
     completed_at: datetime | None = None
 

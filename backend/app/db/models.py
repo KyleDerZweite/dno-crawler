@@ -274,6 +274,7 @@ class CrawlJobModel(Base, TimestampMixin):
     progress: Mapped[int] = mapped_column(Integer, default=0)
     current_step: Mapped[str | None] = mapped_column(String(255))
     error_message: Mapped[str | None] = mapped_column(Text)
+    triggered_by: Mapped[str | None] = mapped_column(String(255))  # User email who triggered
     priority: Mapped[int] = mapped_column(Integer, default=5)
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

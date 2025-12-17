@@ -186,6 +186,7 @@ export interface Job {
   progress: number;
   current_step?: string;
   error_message?: string;
+  triggered_by?: string;
   priority: number;
   started_at?: string;
   completed_at?: string;
@@ -431,42 +432,6 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.get("/admin/dashboard");
-      return data;
-    },
-
-    async listJobs(params?: {
-      status?: string;
-      page?: number;
-      per_page?: number;
-    }): Promise<ApiResponse<Job[]>> {
-      const { data } = await apiClient.get("/admin/jobs", { params });
-      return data;
-    },
-
-    async getJob(jobId: string): Promise<ApiResponse<JobDetails>> {
-      const { data } = await apiClient.get(`/admin/jobs/${jobId}`);
-      return data;
-    },
-
-    async createJob(payload: {
-      dno_id: number;
-      year: number;
-      data_type?: string;
-      priority?: number;
-      job_type?: string;
-      target_file_id?: number;
-    }): Promise<ApiResponse<{ job_id: string }>> {
-      const { data } = await apiClient.post("/admin/jobs", payload);
-      return data;
-    },
-
-    async rerunJob(jobId: string): Promise<ApiResponse<{ job_id: string }>> {
-      const { data } = await apiClient.post(`/admin/jobs/${jobId}/rerun`);
-      return data;
-    },
-
-    async cancelJob(jobId: string): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.delete(`/admin/jobs/${jobId}`);
       return data;
     },
   },

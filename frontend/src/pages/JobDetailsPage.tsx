@@ -209,6 +209,10 @@ export function JobDetailsPage() {
                         <dd>{job.data_type}</dd>
                     </div>
                     <div>
+                        <dt className="text-muted-foreground">Triggered By</dt>
+                        <dd>{job.triggered_by || "System"}</dd>
+                    </div>
+                    <div>
                         <dt className="text-muted-foreground">Priority</dt>
                         <dd>{job.priority}</dd>
                     </div>
