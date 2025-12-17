@@ -149,7 +149,7 @@ export function JobDetailsPage() {
             {/* Timeline */}
             <Card className="p-6">
                 <h2 className="font-semibold mb-4">Timeline</h2>
-                <div className="space-y-4">
+                <div className="space-y-0 [&>div:last-child>div:first-child>div:last-child]:hidden">
                     <TimelineItem
                         icon={Clock}
                         label="Created"
@@ -242,16 +242,22 @@ function TimelineItem({
     const isRunning = status === "running";
 
     return (
-        <div className="flex gap-4">
-            <div className={cn(
-                "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center",
-                isDone ? "bg-green-500/10 text-green-500" :
-                    isRunning ? "bg-blue-500/10 text-blue-500" :
-                        "bg-muted text-muted-foreground"
-            )}>
-                <Icon className={cn("h-4 w-4", isRunning && "animate-spin")} />
+        <div className="flex gap-4 relative">
+            {/* Icon column with dashed connector line */}
+            <div className="flex flex-col items-center">
+                <div className={cn(
+                    "flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center z-10",
+                    isDone ? "bg-green-500/10 text-green-500" :
+                        isRunning ? "bg-blue-500/10 text-blue-500" :
+                            "bg-muted text-muted-foreground"
+                )}>
+                    <Icon className={cn("h-4 w-4", isRunning && "animate-spin")} />
+                </div>
+                {/* Dashed line connector - hidden for last item via CSS in parent */}
+                <div className="w-px flex-1 border-l border-dashed border-border mt-1" />
             </div>
-            <div className="flex-1 pb-4 border-l border-border pl-4 -ml-4">
+            {/* Content aligned with icon center */}
+            <div className="flex-1 pb-4 pt-1">
                 <div className="flex justify-between items-start">
                     <span className={isDone || isRunning ? "text-foreground" : "text-muted-foreground"}>
                         {label}
