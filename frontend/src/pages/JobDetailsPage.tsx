@@ -12,7 +12,7 @@ import {
     PlayCircle,
 } from "lucide-react";
 
-import { api, type ApiResponse, type JobDetails, type JobStep } from "@/lib/api";
+import { api, type ApiResponse, type JobDetails } from "@/lib/api";
 import { JOB_STATUS_CONFIG, type JobStatus } from "@/lib/job-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -149,7 +149,7 @@ export function JobDetailsPage() {
             {/* Timeline */}
             <Card className="p-6">
                 <h2 className="font-semibold mb-4">Timeline</h2>
-                <div className="space-y-2">
+                <div className="space-y-4">
                     <TimelineItem
                         icon={Clock}
                         label="Created"
@@ -157,25 +157,24 @@ export function JobDetailsPage() {
                         status="done"
                     />
                     {job.started_at && (
-                        <>
+                        <TimelineItem
+                            icon={PlayCircle}
+                            label="Started"
+                            time={job.started_at}
+                            status="done"
+                        />
+                    )}
+                    {job.steps && job.steps.length > 0 && (
+                        job.steps.map((step, idx) => (
                             <TimelineItem
-                                icon={PlayCircle}
-                                label="Started"
-                                time={job.started_at}
-                                status="done"
+                                key={step.id || idx}
+                                icon={step.status === "done" ? CheckCircle : step.status === "running" ? Loader2 : Clock}
+                                label={step.step_name}
+                                time={step.completed_at || step.started_at}
+                                status={step.status}
+                                detail={step.details ? JSON.stringify(step.details) : undefined}
                             />
-                            {/* Nested Steps under Started */}
-                            {job.steps && job.steps.length > 0 && (
-                                <div className="ml-4 pl-4 border-l-2 border-border/50 space-y-1">
-                                    {job.steps.map((step, idx) => (
-                                        <StepItem
-                                            key={step.id || idx}
-                                            step={step}
-                                        />
-                                    ))}
-                                </div>
-                            )}
-                        </>
+                        ))
                     )}
                     {job.completed_at && (
                         <TimelineItem
@@ -222,63 +221,6 @@ export function JobDetailsPage() {
                     </div>
                 </dl>
             </Card>
-        </div>
-    );
-}
-
-function StepItem({ step }: { step: JobStep }) {
-    const isDone = step.status === "done";
-    const isRunning = step.status === "running";
-    const isPending = step.status === "pending";
-
-    // Extract result text from details if available
-    const resultText = step.details?.result as string | undefined;
-    const runningState = step.details?.running_state as string | undefined;
-
-    return (
-        <div className="flex items-start gap-3 py-1.5">
-            {/* Status indicator */}
-            <div className={cn(
-                "flex-shrink-0 w-5 h-5 rounded-full flex items-center justify-center mt-0.5",
-                isDone ? "bg-green-500/20 text-green-400" :
-                    isRunning ? "bg-blue-500/20 text-blue-400" :
-                        "bg-muted/50 text-muted-foreground"
-            )}>
-                {isDone ? (
-                    <CheckCircle className="h-3 w-3" />
-                ) : isRunning ? (
-                    <Loader2 className="h-3 w-3 animate-spin" />
-                ) : (
-                    <Clock className="h-3 w-3" />
-                )}
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 min-w-0">
-                <div className="flex items-center justify-between gap-2">
-                    <span className={cn(
-                        "text-sm font-medium",
-                        isDone ? "text-green-400" :
-                            isRunning ? "text-blue-400" :
-                                "text-muted-foreground"
-                    )}>
-                        {step.step_name}
-                    </span>
-                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        {isRunning && runningState && (
-                            <span className="text-blue-400">{runningState}</span>
-                        )}
-                        {isPending && <span>Waiting</span>}
-                        {step.completed_at && (
-                            <span>{new Date(step.completed_at).toLocaleTimeString()}</span>
-                        )}
-                    </div>
-                </div>
-                {/* Show result for completed steps */}
-                {isDone && resultText && (
-                    <p className="text-xs text-muted-foreground mt-0.5">{resultText}</p>
-                )}
-            </div>
         </div>
     );
 }
