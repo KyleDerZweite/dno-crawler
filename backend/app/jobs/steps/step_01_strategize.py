@@ -60,20 +60,34 @@ class StrategizeStep(BaseStep):
     
     def _build_queries(self, ctx: dict, job: CrawlJobModel) -> list[str]:
         """Build DuckDuckGo search queries."""
-        dno_name = ctx.get("dno_name", "Unknown DNO")
+        raw_name = ctx.get("dno_name", "Unknown DNO")
+        
+        # Normalize name (remove "GmbH", "(RNG)", etc.)
+        name = raw_name.replace("GmbH", "").replace("AG", "").split("(")[0].strip()
+        
         year = job.year
         
         if job.data_type == "netzentgelte":
             return [
-                f'"{dno_name}" Netzentgelte {year} filetype:pdf',
-                f'"{dno_name}" Preisblatt Netznutzung {year} filetype:pdf',
-                f'"{dno_name}" Netzentgelte {year} filetype:xlsx',
-                f'"{dno_name}" Netzentgelte {year}',
+                # Precise PDF search (original name)
+                f'"{raw_name}" Netzentgelte {year} filetype:pdf',
+                # PDF search (normalized name)
+                f'"{name}" Preisblatt Netznutzung {year} filetype:pdf',
+                f'"{name}" Netzentgelte {year} filetype:pdf',
+                # Excel/General
+                f'"{name}" Netzentgelte {year} filetype:xlsx',
+                f'"{name}" Netzentgelte {year}',
+                # Very relaxed (no quotes)
+                f'{name} Netzentgelte {year}',
+                f'{name} Preisblatt {year}',
             ]
         else:  # hlzf
             return [
-                f'"{dno_name}" Hochlastzeitfenster {year} filetype:pdf',
-                f'"{dno_name}" HLZF {year} filetype:pdf',
-                f'"{dno_name}" "§19 StromNEV" {year}',
-                f'"{dno_name}" Hochlastzeitfenster {year}',
+                f'"{name}" Hochlastzeitfenster {year} filetype:pdf',
+                f'"{name}" HLZF {year} filetype:pdf',
+                f'"{name}" "§19 StromNEV" {year}',
+                f'"{name}" Hochlastzeitfenster {year}',
+                # Very relaxed
+                f'{name} Hochlastzeitfenster {year}',
+                f'{name} HLZF {year}',
             ]

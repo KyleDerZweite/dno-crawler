@@ -37,8 +37,6 @@ class DownloadStep(BaseStep):
     description = "Downloading data source to local storage..."
 
     async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
-        # TODO: Replace mock with actual implementation
-        
         ctx = job.context or {}
         strategy = ctx.get("strategy", "search")
         
@@ -47,10 +45,7 @@ class DownloadStep(BaseStep):
             # Use the cached file
             ctx["downloaded_file"] = ctx.get("file_to_process")
             ctx["file_format"] = self._detect_format(ctx["downloaded_file"])
-            await db.commit()
             return "Skipped → Using cached file"
-        
-        await asyncio.sleep(0.5)  # Simulate download time
         
         url = ctx.get("found_url")
         if not url:
@@ -64,20 +59,24 @@ class DownloadStep(BaseStep):
         save_dir = Path("data/downloads") / dno_slug
         save_path = save_dir / f"{dno_slug}-{job.data_type}-{job.year}.{file_format}"
         
-        # TODO: Actually download
-        # save_dir.mkdir(parents=True, exist_ok=True)
-        # if file_format == "html":
-        #     content = await self._fetch_html(url)
-        #     save_path.write_text(content)
-        # else:
-        #     await self._download_file(url, save_path)
+        # Ensure directory exists
+        save_dir.mkdir(parents=True, exist_ok=True)
         
-        # Mock: Just set the path
+        # Download the file
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+            response = await client.get(url)
+            response.raise_for_status()
+            
+            # Save to disk
+            save_path.write_bytes(response.content)
+        
+        # Update context
         ctx["downloaded_file"] = str(save_path)
         ctx["file_format"] = file_format
-        await db.commit()
+        job.context = ctx
+        # Let base class handle commit
         
-        return f"Downloaded to: {save_path.name} ({file_format.upper()})"
+        return f"Downloaded to: {save_path.name} ({file_format.upper()}, {len(response.content) // 1024} KB)"
     
     def _detect_format(self, url_or_path: str) -> str:
         """Detect file format from URL or path."""

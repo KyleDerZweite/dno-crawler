@@ -103,6 +103,11 @@ class DdgsProvider(SearchProvider):
                 ]
                 
             except Exception as e:
+                err_msg = str(e).lower()
+                self.log.debug("Caught search exception", error=err_msg)
+                if "no results" in err_msg or "not found" in err_msg:
+                    self.log.info("Handled empty search results")
+                    return []
                 if self._is_rate_limit(e):
                     wait = min((2 ** attempt) + random.uniform(0, 1), self.max_backoff)
                     self.log.warning("Rate limited, backing off", 

@@ -14,6 +14,8 @@ Output stored in job.context:
 - successful_query: Which query found it (for learning)
 """
 
+import asyncio
+
 import httpx
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -21,6 +23,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
 from app.services.search_engine import DdgsProvider, UrlProber
+
+# Delay between DuckDuckGo queries to avoid rate limiting
+SEARCH_DELAY_SECONDS = 1.0
 
 logger = structlog.get_logger()
 
@@ -80,7 +85,11 @@ class SearchStep(BaseStep):
             if not queries:
                 raise ValueError("No search queries configured")
             
-            for query in queries:
+            for idx, query in enumerate(queries):
+                # Add delay between searches to avoid rate limiting
+                if idx > 0:
+                    await asyncio.sleep(SEARCH_DELAY_SECONDS)
+                
                 log.info("Executing search query", query=query[:60])
                 
                 try:

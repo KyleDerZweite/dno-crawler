@@ -60,7 +60,6 @@ class GatherContextStep(BaseStep):
             "profile_source_format": profile.source_format if profile else None,
             "cached_file": cached_file,
         }
-        await db.commit()
         
         # Return summary based on what we found
         if cached_file:
