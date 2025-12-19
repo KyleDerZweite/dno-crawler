@@ -161,7 +161,6 @@ class CrawlJobCreate(CrawlJobBase):
 class CrawlJob(CrawlJobBase, TimestampMixin):
     """Full crawl job schema."""
     id: int
-    user_id: str | None = None
     status: JobStatus = JobStatus.PENDING
     progress: int = Field(0, ge=0, le=100)
     current_step: str | None = None

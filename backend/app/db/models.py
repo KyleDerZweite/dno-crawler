@@ -296,7 +296,9 @@ class CrawlJobModel(Base, TimestampMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
-    steps: Mapped[list["CrawlJobStepModel"]] = relationship(back_populates="job")
+    steps: Mapped[list["CrawlJobStepModel"]] = relationship(
+        back_populates="job", cascade="all, delete-orphan"
+    )
 
 
 class CrawlJobStepModel(Base, TimestampMixin):

@@ -394,7 +394,6 @@ async def trigger_crawl(
     
     # Create crawl job in database
     job = CrawlJobModel(
-        user_id=None,
         dno_id=dno.id,
         year=request.year,
         data_type=request.data_type.value,

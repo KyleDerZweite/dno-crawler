@@ -20,8 +20,6 @@ Output stored in job.context:
 - search_queries: list of DDG queries (if search)
 """
 
-import asyncio
-
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CrawlJobModel
@@ -33,10 +31,6 @@ class StrategizeStep(BaseStep):
     description = "Deciding how to find the data based on available knowledge..."
 
     async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
-        # TODO: Replace mock with actual implementation
-        
-        await asyncio.sleep(0.3)
-        
         ctx = job.context or {}
         
         # Priority 1: Use cached file

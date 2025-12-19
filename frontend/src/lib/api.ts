@@ -179,7 +179,6 @@ export interface Job {
   id: string;
   dno_id: string;
   dno_name?: string;
-  user_id?: string;
   year: number;
   data_type: string;
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
