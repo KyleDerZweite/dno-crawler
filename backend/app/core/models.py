@@ -1,29 +1,25 @@
 """
-Core models and types for DNO Crawler.
+Core models and enums for DNO Crawler.
 
-Cleaned up - removed unused Pydantic models (auth handled by Zitadel).
+This module contains:
+- Enums used by database models
+- Pydantic schemas for API requests/responses
 """
 
 from datetime import datetime
 from enum import Enum
 from typing import Any
-from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
 
-# =============================================================================
-# Enums (used by db/models.py)
-# =============================================================================
-
-
-class UserRole(str, Enum):
-    PENDING = "pending"
-    USER = "user"
-    ADMIN = "admin"
+# ==============================================================================
+# Enums
+# ==============================================================================
 
 
 class JobStatus(str, Enum):
+    """Status of a crawl job."""
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -32,12 +28,21 @@ class JobStatus(str, Enum):
 
 
 class DataType(str, Enum):
+    """Types of data to extract."""
     NETZENTGELTE = "netzentgelte"
     HLZF = "hlzf"
-    ALL = "all"
+    ALL = "all"  # Both netzentgelte and hlzf
+
+
+class UserRole(str, Enum):
+    """User roles (for Zitadel integration)."""
+    PENDING = "pending"
+    USER = "user"
+    ADMIN = "admin"
 
 
 class Season(str, Enum):
+    """Seasons for HLZF data."""
     WINTER = "winter"
     SPRING = "fruehling"
     SUMMER = "sommer"
@@ -45,17 +50,12 @@ class Season(str, Enum):
 
 
 class ContentFormat(str, Enum):
+    """Content format types."""
     HTML = "html"
     PDF = "pdf"
     IMAGE = "image"
     TABLE = "table"
     API = "api"
-
-
-class VerificationStatus(str, Enum):
-    UNVERIFIED = "unverified"
-    VERIFIED = "verified"
-    REJECTED = "rejected"
 
 
 class DNOStatus(str, Enum):
@@ -66,14 +66,78 @@ class DNOStatus(str, Enum):
     FAILED = "failed"
 
 
-# =============================================================================
-# Base Models
-# =============================================================================
+class SourceFormat(str, Enum):
+    """Source document formats."""
+    PDF = "pdf"
+    XLSX = "xlsx"
+    XLS = "xls"
+    DOCX = "docx"
+    HTML = "html"
+    CSV = "csv"
+    IMAGE = "image"
+    PPTX = "pptx"
+
+
+class VerificationStatus(str, Enum):
+    """Verification status of extracted data."""
+    UNVERIFIED = "unverified"
+    VERIFIED = "verified"
+    REJECTED = "rejected"
+
+
+class CrawlStrategy(str, Enum):
+    """Strategy for finding data."""
+    USE_CACHE = "use_cache"         # File already downloaded locally
+    TRY_PATTERN = "try_pattern"     # Try known URL pattern with new year
+    SEARCH = "search"               # Full DuckDuckGo search
+
+
+class AIProvider(str, Enum):
+    """Supported AI providers for extraction."""
+    GEMINI = "gemini"       # Google Gemini (gemini-2.0-flash, gemini-1.5-pro)
+    OPENAI = "openai"       # OpenAI GPT-4 Vision (gpt-4o, gpt-4-turbo)
+    ANTHROPIC = "anthropic" # Anthropic Claude (claude-3-5-sonnet)
+    OLLAMA = "ollama"       # Local Ollama (llava, bakllava)
+
+
+# ==============================================================================
+# Base Schemas
+# ==============================================================================
 
 
 class BaseSchema(BaseModel):
-    """Base schema with common configuration."""
+    """Base schema with ORM compatibility."""
     model_config = ConfigDict(from_attributes=True)
+
+
+# ==============================================================================
+# API Response Models
+# ==============================================================================
+
+
+class APIResponse(BaseSchema):
+    """Standard API response wrapper."""
+    success: bool = True
+    message: str | None = None
+    data: Any = None
+    meta: dict[str, Any] | None = None
+
+
+class PaginatedResponse(APIResponse):
+    """Paginated API response."""
+    meta: dict[str, Any] = Field(
+        default_factory=lambda: {
+            "total": 0,
+            "page": 1,
+            "per_page": 20,
+            "total_pages": 0,
+        }
+    )
+
+
+# ==============================================================================
+# Crawl Job Schemas
+# ==============================================================================
 
 
 class TimestampMixin(BaseModel):
@@ -82,24 +146,22 @@ class TimestampMixin(BaseModel):
     updated_at: datetime | None = None
 
 
-# =============================================================================
-# Crawl Job Models (used by dnos.py)
-# =============================================================================
-
-
 class CrawlJobBase(BaseSchema):
-    dno_id: UUID
+    """Base schema for crawl jobs."""
+    dno_id: int
     year: int
     data_type: DataType
 
 
 class CrawlJobCreate(CrawlJobBase):
+    """Schema for creating a crawl job."""
     priority: int = Field(5, ge=1, le=10)
 
 
 class CrawlJob(CrawlJobBase, TimestampMixin):
-    id: UUID
-    user_id: UUID | None = None
+    """Full crawl job schema."""
+    id: int
+    user_id: str | None = None
     status: JobStatus = JobStatus.PENDING
     progress: int = Field(0, ge=0, le=100)
     current_step: str | None = None
@@ -109,24 +171,79 @@ class CrawlJob(CrawlJobBase, TimestampMixin):
     completed_at: datetime | None = None
 
 
-# =============================================================================
-# API Response Models (used by admin.py, dnos.py)
-# =============================================================================
+# ==============================================================================
+# Job Context (Shared Between Steps)
+# ==============================================================================
 
 
-class APIResponse(BaseSchema):
-    success: bool = True
-    message: str | None = None
-    data: Any = None
-    meta: dict[str, Any] | None = None
+class JobContext(BaseSchema):
+    """
+    Context passed between crawl job steps.
+    
+    Stored in CrawlJobModel.context as JSON.
+    """
+    # DNO info (loaded in step_00)
+    dno_id: int
+    dno_slug: str
+    dno_name: str
+    dno_website: str | None = None
+    
+    # Source profile (if exists)
+    has_profile: bool = False
+    profile_url_pattern: str | None = None
+    profile_source_format: str | None = None
+    
+    # Cached file path (if exists)
+    cached_file: str | None = None
+    
+    # Strategy (set in step_01)
+    strategy: str = "search"  # use_cache | try_pattern | search
+    search_queries: list[str] = Field(default_factory=list)
+    
+    # Found source (set in step_02)
+    found_url: str | None = None
+    successful_query: str | None = None
+    
+    # Downloaded file (set in step_03)
+    downloaded_file: str | None = None
+    file_format: str | None = None
+    
+    # Extraction results (set in step_04)
+    extracted_data: list[dict] | None = None
+    extraction_notes: str | None = None
+    extraction_confidence: float = 0.0
+    
+    # Validation (set in step_05)
+    is_valid: bool = False
+    validation_issues: list[str] = Field(default_factory=list)
 
 
-class PaginatedResponse(APIResponse):
-    meta: dict[str, Any] = Field(
-        default_factory=lambda: {
-            "total": 0,
-            "page": 1,
-            "per_page": 20,
-            "total_pages": 0,
-        }
-    )
+# ==============================================================================
+# Extraction Result Models
+# ==============================================================================
+
+
+class ExtractionResult(BaseSchema):
+    """Result from Gemini extraction."""
+    success: bool
+    data_type: str
+    source_page: int | None = None
+    notes: str | None = None
+    data: list[dict] = Field(default_factory=list)
+    reason: str | None = None  # If success=False
+
+
+class NetzentgelteRecord(BaseSchema):
+    """Single Netzentgelte record from extraction."""
+    voltage_level: str
+    arbeitspreis: float | None = None
+    leistungspreis: float | None = None
+
+
+class HLZFRecord(BaseSchema):
+    """Single HLZF record from extraction."""
+    voltage_level: str
+    winter: str | None = None
+    fruehling: str | None = None
+    sommer: str | None = None
+    herbst: str | None = None

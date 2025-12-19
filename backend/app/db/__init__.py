@@ -4,19 +4,15 @@ Database package initialization.
 
 from app.db.database import Base, async_session_maker, close_db, engine, get_db, get_db_session, init_db, DatabaseError
 from app.db.models import (
-    CrawlAttemptModel,
     CrawlJobModel,
     CrawlJobStepModel,
     DataSourceModel,
-    DNOAddressCacheModel,
-    DNOCrawlConfigModel,
     DNOModel,
-    ExtractionStrategyModel,
+    DNOSourceProfile,
     HLZFModel,
     LocationModel,
     NetzentgelteModel,
     QueryLogModel,
-    StrategyInsightModel,
     SystemLogModel,
 )
 
@@ -32,18 +28,13 @@ __all__ = [
     "DatabaseError",
     # Models
     "DNOModel",
-    "DNOAddressCacheModel",
-    "DNOCrawlConfigModel",
     "LocationModel",
+    "DNOSourceProfile",
     "NetzentgelteModel",
     "HLZFModel",
     "DataSourceModel",
     "CrawlJobModel",
     "CrawlJobStepModel",
-    "ExtractionStrategyModel",
-    "CrawlAttemptModel",
-    "StrategyInsightModel",
     "QueryLogModel",
     "SystemLogModel",
 ]
-

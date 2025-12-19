@@ -1,31 +1,42 @@
-from app.jobs.steps.step_00_parse_input import ParseInputStep
-from app.jobs.steps.step_01_check_cache import CheckCacheStep
-from app.jobs.steps.step_02_external_search import ExternalSearchStep
-from app.jobs.steps.step_03_find_data import FindDataStep
-from app.jobs.steps.step_04_download_data import DownloadDataStep
-from app.jobs.steps.step_05_validate_data import ValidateDataStep
-from app.jobs.steps.step_06_extract_data import ExtractDataStep
-from app.jobs.steps.step_07_finalize import FinalizeStep
+"""
+Crawl Job Steps
 
-SEARCH_JOB_STEPS = [
-    ParseInputStep(),
-    CheckCacheStep(),
-    ExternalSearchStep(),
-    FindDataStep(),
-    DownloadDataStep(),
-    ValidateDataStep(),
-    ExtractDataStep(),
+Pipeline:
+    step_00: Gather Context  - Load DNO info, check cache
+    step_01: Strategize      - Decide: cache / pattern / search
+    step_02: Search          - DuckDuckGo queries (if needed)
+    step_03: Download        - Download file to local storage
+    step_04: Extract         - AI extraction (configurable provider)
+    step_05: Validate        - Check data quality
+    step_06: Finalize        - Save data, update learning profile
+"""
+
+from app.jobs.steps.step_00_gather_context import GatherContextStep
+from app.jobs.steps.step_01_strategize import StrategizeStep
+from app.jobs.steps.step_02_search import SearchStep
+from app.jobs.steps.step_03_download import DownloadStep
+from app.jobs.steps.step_04_extract import ExtractStep
+from app.jobs.steps.step_05_validate import ValidateStep
+from app.jobs.steps.step_06_finalize import FinalizeStep
+
+# Ordered list of steps for crawl jobs
+CRAWL_JOB_STEPS = [
+    GatherContextStep(),
+    StrategizeStep(),
+    SearchStep(),
+    DownloadStep(),
+    ExtractStep(),
+    ValidateStep(),
     FinalizeStep(),
 ]
 
 __all__ = [
-    "ParseInputStep",
-    "CheckCacheStep",
-    "ExternalSearchStep",
-    "FindDataStep",
-    "DownloadDataStep",
-    "ValidateDataStep",
-    "ExtractDataStep",
+    "GatherContextStep",
+    "StrategizeStep",
+    "SearchStep",
+    "DownloadStep",
+    "ExtractStep",
+    "ValidateStep",
     "FinalizeStep",
-    "SEARCH_JOB_STEPS",
+    "CRAWL_JOB_STEPS",
 ]

@@ -148,41 +148,70 @@ export function JobDetailsPage() {
 
             {/* Timeline */}
             <Card className="p-6">
-                <h2 className="font-semibold mb-4">Timeline</h2>
+                <h2 className="font-semibold mb-6">Timeline</h2>
                 <div className="space-y-0 [&>div:last-child>div:first-child>div:last-child]:hidden">
-                    <TimelineItem
-                        icon={Clock}
-                        label="Created"
-                        time={job.created_at}
-                        status="done"
-                    />
-                    {job.started_at && (
+                    {/* Lifecycle: Start */}
+                    <div className="opacity-70">
                         <TimelineItem
-                            icon={PlayCircle}
-                            label="Started"
-                            time={job.started_at}
+                            icon={Clock}
+                            label="Created"
+                            time={job.created_at}
                             status="done"
                         />
-                    )}
-                    {job.steps && job.steps.length > 0 && (
-                        job.steps.map((step, idx) => (
+                        {job.started_at && (
                             <TimelineItem
-                                key={step.id || idx}
-                                icon={step.status === "done" ? CheckCircle : step.status === "running" ? Loader2 : Clock}
-                                label={step.step_name}
-                                time={step.completed_at || step.started_at}
-                                status={step.status}
-                                detail={(step.status === "done" ? (step.details?.result as string) : (step.details?.description as string)) || (step.details?.description as string)}
+                                icon={PlayCircle}
+                                label="Started"
+                                time={job.started_at}
+                                status="done"
                             />
-                        ))
+                        )}
+                    </div>
+
+                    {/* Separator / Connector */}
+                    {(job.steps?.length ?? 0) > 0 && (
+                        <div className="flex gap-4 h-4">
+                            <div className="flex flex-col items-center w-8">
+                                <div className="w-px flex-1 border-l border-dashed border-border" />
+                            </div>
+                        </div>
                     )}
+
+                    {/* Processing Steps */}
+                    {job.steps && job.steps.length > 0 && (
+                        <div className="relative pl-2 border-l-2 border-primary/10 ml-[15px] space-y-0 my-2 py-2 bg-muted/30 rounded-r-lg">
+                            {job.steps.map((step, idx) => (
+                                <TimelineItem
+                                    key={step.id || idx}
+                                    icon={step.status === "done" ? CheckCircle : step.status === "running" ? Loader2 : Clock}
+                                    label={step.step_name}
+                                    time={step.completed_at || step.started_at}
+                                    status={step.status}
+                                    detail={(step.status === "done" ? (step.details?.result as string) : (step.details?.description as string)) || (step.details?.description as string)}
+                                />
+                            ))}
+                        </div>
+                    )}
+
+                    {/* Separator / Connector */}
                     {job.completed_at && (
-                        <TimelineItem
-                            icon={status === "completed" ? CheckCircle : status === "failed" ? AlertCircle : Ban}
-                            label={status === "completed" ? "Completed" : status === "failed" ? "Failed" : "Cancelled"}
-                            time={job.completed_at}
-                            status="done"
-                        />
+                        <div className="flex gap-4 h-4">
+                            <div className="flex flex-col items-center w-8">
+                                <div className="w-px flex-1 border-l border-dashed border-border" />
+                            </div>
+                        </div>
+                    )}
+
+                    {/* Lifecycle: End */}
+                    {job.completed_at && (
+                        <div className="mt-2">
+                            <TimelineItem
+                                icon={status === "completed" ? CheckCircle : status === "failed" ? AlertCircle : Ban}
+                                label={status === "completed" ? "Completed" : status === "failed" ? "Failed" : "Cancelled"}
+                                time={job.completed_at}
+                                status="done"
+                            />
+                        </div>
                     )}
                 </div>
             </Card>

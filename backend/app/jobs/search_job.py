@@ -26,7 +26,7 @@ async def process_dno_crawl(
     """
     Orchestrates the DNO crawl process using modular steps.
     """
-    from app.jobs.steps import SEARCH_JOB_STEPS
+    from app.jobs.steps import CRAWL_JOB_STEPS
     from app.db.models import CrawlJobModel
     from sqlalchemy import select
 
@@ -47,10 +47,10 @@ async def process_dno_crawl(
         job.started_at = datetime.utcnow()
         await db.commit()
         
-        total_steps = len(SEARCH_JOB_STEPS)
+        total_steps = len(CRAWL_JOB_STEPS)
         
         try:
-            for i, step in enumerate(SEARCH_JOB_STEPS, 1):
+            for i, step in enumerate(CRAWL_JOB_STEPS, 1):
                 # execute() handles commit for status and progress
                 await step.execute(db, job, i, total_steps)
             
