@@ -21,25 +21,19 @@ logger = structlog.get_logger()
 
 async def process_dno_crawl(
     ctx: dict,
-    job_id: int,  # First positional arg after ctx - matches how API enqueues
+    job_id: int,
 ) -> dict:
     """
-    TEMPORARY: Simplified job function for testing queue mechanism.
-    
-    Accepts the job ID, then simulates processing with 5-second status updates.
-    
-    Args:
-        ctx: ARQ context (contains redis connection etc)
-        job_id: CrawlJobModel.id from the database
+    Orchestrates the DNO crawl process using modular steps.
     """
+    from app.jobs.steps import SEARCH_JOB_STEPS
+    from app.db.models import CrawlJobModel
+    from sqlalchemy import select
+
     log = logger.bind(job_id=job_id)
-    log.info("🧪 TEMP WORKER: Job received")
+    log.info("🚀 Job received, starting execution")
     
-    # Get job from DB and mark as running
     async with get_db_session() as db:
-        from sqlalchemy import select
-        from app.db.models import CrawlJobModel
-        
         result = await db.execute(
             select(CrawlJobModel).where(CrawlJobModel.id == job_id)
         )
@@ -52,56 +46,30 @@ async def process_dno_crawl(
         job.status = "running"
         job.started_at = datetime.utcnow()
         await db.commit()
-    
-    log.info("🧪 TEMP WORKER: Job marked as running")
-    
-    # Simulate processing with status updates
-    test_steps = [
-        ("Analyzing Input", "Parsing the search query..."),
-        ("Checking Cache", "Looking up cached DNO mappings..."),
-        ("External Search", "Querying external APIs..."),
-        ("Finding PDF", "Searching for relevant documents..."),
-        ("Downloading PDF", "Fetching document..."),
-        ("Validating PDF", "Checking document contents..."),
-        ("Extracting Data", "Processing document data..."),
-        ("Finalizing", "Saving results..."),
-    ]
-    
-    for i, (label, detail) in enumerate(test_steps, 1):
-        log.info(f"🧪 TEMP WORKER: Step {i}/{len(test_steps)} - {label}")
         
-        # Report step as running
-        await _update_step(job_id, i, label, "running", detail)
+        total_steps = len(SEARCH_JOB_STEPS)
         
-        # Wait 5 seconds
-        await asyncio.sleep(5)
-        
-        # Report step as done
-        await _update_step(job_id, i, label, "done", f"Completed: {detail}")
-        
-        log.info(f"🧪 TEMP WORKER: Step {i}/{len(test_steps)} - {label} DONE")
-    
-    # Mark job as completed with mock result
-    async with get_db_session() as db:
-        from sqlalchemy import select
-        from app.db.models import CrawlJobModel
-        
-        result = await db.execute(
-            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-        )
-        job = result.scalar_one_or_none()
-        
-        if job:
+        try:
+            for i, step in enumerate(SEARCH_JOB_STEPS, 1):
+                # execute() handles commit for status and progress
+                await step.execute(db, job, i, total_steps)
+            
+            # Finalize Job status
             job.status = "completed"
-            job.current_step = "Completed"
             job.progress = 100
+            job.current_step = "Completed"
             job.completed_at = datetime.utcnow()
             await db.commit()
-    
-    log.info("🧪 TEMP WORKER: Job completed successfully")
-    return {"status": "completed", "message": "Test worker completed"}
+            
+            log.info("✅ Job completed successfully")
+            return {"status": "completed", "message": "Workflow completed"}
+            
+        except Exception as e:
+            log.error("❌ Job failed", error=str(e))
+            # Step base class handles job status update on failure
+            return {"status": "failed", "message": str(e)}
 
-
+# Note: _update_step is now handled by Step classes, but we keep it for now if needed elsewhere
 async def _update_step(
     job_id: int,
     step_num: int,
@@ -109,25 +77,5 @@ async def _update_step(
     status: str,
     detail: str,
 ) -> None:
-    """Update job step in database for frontend polling."""
-    try:
-        async with get_db_session() as db:
-            from sqlalchemy import select
-            from app.db.models import CrawlJobModel
-            
-            result = await db.execute(
-                select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-            )
-            job = result.scalar_one_or_none()
-            
-            if not job:
-                return
-            
-            # Update current step and progress
-            job.current_step = label
-            job.progress = int((step_num / 8) * 100)  # 8 total steps
-            
-            await db.commit()
-            
-    except Exception as e:
-        logger.error("Failed to update step", error=str(e))
+    """Legacy helper, now handled by step classes."""
+    pass
