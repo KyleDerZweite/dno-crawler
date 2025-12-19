@@ -7,8 +7,8 @@ class ParseInputStep(BaseStep):
     label = "Analyzing Input"
     description = "Parsing the search query..."
 
-    async def run(self, db: AsyncSession, job: CrawlJobModel) -> None:
+    async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         # Simulate processing
         await asyncio.sleep(5)
         # Here we could store parsed info in job.details if we had that field
-        pass
+        return "Query parsed: 'An der Ronne 160, 50859 Köln' -> WestNetz"

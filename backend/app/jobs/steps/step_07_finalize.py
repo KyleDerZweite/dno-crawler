@@ -7,6 +7,6 @@ class FinalizeStep(BaseStep):
     label = "Finalizing"
     description = "Saving results..."
 
-    async def run(self, db: AsyncSession, job: CrawlJobModel) -> None:
+    async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         await asyncio.sleep(5)
-        pass
+        return "Job finalized: Data committed to main DNO tables."

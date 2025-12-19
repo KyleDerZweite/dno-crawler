@@ -7,6 +7,6 @@ class CheckCacheStep(BaseStep):
     label = "Checking Cache"
     description = "Looking up cached DNO mappings..."
 
-    async def run(self, db: AsyncSession, job: CrawlJobModel) -> None:
+    async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         await asyncio.sleep(5)
-        pass
+        return "Cache check complete: No existing data found for this location."

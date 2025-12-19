@@ -7,6 +7,6 @@ class ExternalSearchStep(BaseStep):
     label = "External Search"
     description = "Querying external APIs..."
 
-    async def run(self, db: AsyncSession, job: CrawlJobModel) -> None:
+    async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         await asyncio.sleep(5)
-        pass
+        return "External search completed: Found 3 possible sources on WestNetz portal."

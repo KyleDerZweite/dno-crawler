@@ -45,13 +45,20 @@ class BaseStep(ABC):
         start_time = datetime.utcnow()
         try:
             # 3. Actually run the step
-            await self.run(db, job)
+            result_msg = await self.run(db, job)
             
             # 4. Mark step as done
             end_time = datetime.utcnow()
             step_record.status = "done"
             step_record.completed_at = end_time
             step_record.duration_seconds = int((end_time - start_time).total_seconds())
+            
+            # Add result to details if returned
+            if result_msg:
+                step_record.details = {
+                    **(step_record.details or {}),
+                    "result": result_msg
+                }
             
             job.progress = int((step_num / total_steps) * 100)
             await db.commit()

@@ -172,7 +172,7 @@ export function JobDetailsPage() {
                                 label={step.step_name}
                                 time={step.completed_at || step.started_at}
                                 status={step.status}
-                                detail={step.details ? JSON.stringify(step.details) : undefined}
+                                detail={(step.status === "done" ? (step.details?.result as string) : (step.details?.description as string)) || (step.details?.description as string)}
                             />
                         ))
                     )}
