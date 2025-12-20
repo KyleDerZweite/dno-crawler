@@ -67,27 +67,50 @@ class StrategizeStep(BaseStep):
         
         year = job.year
         
+        # Extract domain for site: filter if website is known
+        website = ctx.get("dno_website")
+        site_filter = ""
+        if website:
+            from urllib.parse import urlparse
+            parsed = urlparse(website)
+            if parsed.hostname:
+                domain = parsed.hostname.lower()
+                if domain.startswith("www."):
+                    domain = domain[4:]
+                site_filter = f"site:{domain} "
+        
         if job.data_type == "netzentgelte":
-            return [
-                # Precise PDF search (original name)
+            queries = []
+            # Priority 1: Site-specific searches (if website known)
+            if site_filter:
+                queries.extend([
+                    f'{site_filter}Netzentgelte {year} filetype:pdf',
+                    f'{site_filter}Preisblatt {year} filetype:pdf',
+                    f'{site_filter}Netzentgelte {year}',
+                ])
+            # Priority 2: Name-based searches
+            queries.extend([
                 f'"{raw_name}" Netzentgelte {year} filetype:pdf',
-                # PDF search (normalized name)
                 f'"{name}" Preisblatt Netznutzung {year} filetype:pdf',
                 f'"{name}" Netzentgelte {year} filetype:pdf',
-                # Excel/General
                 f'"{name}" Netzentgelte {year} filetype:xlsx',
                 f'"{name}" Netzentgelte {year}',
-                # Very relaxed (no quotes)
                 f'{name} Netzentgelte {year}',
-                f'{name} Preisblatt {year}',
-            ]
+            ])
+            return queries
         else:  # hlzf
-            return [
+            queries = []
+            if site_filter:
+                queries.extend([
+                    f'{site_filter}Hochlastzeitfenster {year}',
+                    f'{site_filter}HLZF {year}',
+                ])
+            queries.extend([
                 f'"{name}" Hochlastzeitfenster {year} filetype:pdf',
                 f'"{name}" HLZF {year} filetype:pdf',
                 f'"{name}" "§19 StromNEV" {year}',
                 f'"{name}" Hochlastzeitfenster {year}',
-                # Very relaxed
                 f'{name} Hochlastzeitfenster {year}',
                 f'{name} HLZF {year}',
-            ]
+            ])
+            return queries

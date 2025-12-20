@@ -184,7 +184,7 @@ export function JobDetailsPage() {
                                 <TimelineItem
                                     key={step.id || idx}
                                     icon={step.status === "done" ? CheckCircle : step.status === "running" ? Loader2 : Clock}
-                                    label={step.step_name}
+                                    label={step.step_name || "Processing..."}
                                     time={step.completed_at || step.started_at}
                                     status={step.status}
                                     detail={(step.status === "done" ? (step.details?.result as string) : (step.details?.description as string)) || (step.details?.description as string)}

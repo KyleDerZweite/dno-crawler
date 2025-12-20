@@ -65,9 +65,8 @@ class Settings(BaseSettings):
         "Mozilla/5.0 (compatible; DNOCrawler/1.0; +https://github.com/KyleDerZweite/dno-crawler)"
     )
 
-    # Storage
-    storage_path: str = "./data"
-    downloads_path: str = "./data/downloads"
+    # Storage (STORAGE_PATH env var maps to storage_path)
+    storage_path: str = Field(default="/data", validation_alias="STORAGE_PATH")
 
     # Rate Limiting for DDGS Search
     ddgs_request_delay_seconds: int = 5  # Hard cap: wait 5s between searches
@@ -77,6 +76,13 @@ class Settings(BaseSettings):
 
     # LLM Models
     ollama_fast_model: str = "ministral:3b"  # For text parsing (DNO name extraction)
+
+    # Computed storage paths
+    @property
+    def downloads_path(self) -> str:
+        """Path to downloaded files, derived from storage_path."""
+        from pathlib import Path
+        return str(Path(self.storage_path) / "downloads")
 
     # Zitadel auth helper properties
     @property

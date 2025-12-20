@@ -21,6 +21,7 @@ from pathlib import Path
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import settings
 from app.db.models import CrawlJobModel, DNOModel, DNOSourceProfile
 from app.jobs.steps.base import BaseStep
 
@@ -44,7 +45,7 @@ class GatherContextStep(BaseStep):
         profile = result.scalar_one_or_none()
         
         # 3. Check for cached files
-        cache_dir = Path("data/downloads") / dno.slug
+        cache_dir = Path(settings.downloads_path) / dno.slug
         pattern = f"{dno.slug}-{job.data_type}-{job.year}.*"
         cached_files = list(cache_dir.glob(pattern)) if cache_dir.exists() else []
         cached_file = str(cached_files[0]) if cached_files else None
