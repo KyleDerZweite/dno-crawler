@@ -4,7 +4,9 @@ Services layer for DNO Crawler business logic.
 SERVICES:
 - vnb_digital: VNB Digital GraphQL API client for DNO lookup (address/coordinates → DNO)
 - dno_resolver: Address → DNO caching layer (check/save mappings)
-- search_engine: DDGS-based web search for finding PDF URLs
+- web_crawler: BFS web crawler for discovering data sources on DNO websites
+- pattern_learner: Cross-DNO URL pattern learning and application
+- url_utils: SSRF-safe URL probing, robots.txt compliance, URL normalization
 - pdf_downloader: PDF download and validation
 - extraction/pdf_extractor: Regex-based PDF data extraction
 - extraction/html_extractor: HTML table parsing for website data
@@ -12,7 +14,8 @@ SERVICES:
 
 ARCHITECTURE:
 1. DNO Resolution: VNBDigitalClient → address/coords → DNO name
-2. PDF Discovery: SearchEngine (DDGS) → find Netzentgelte/HLZF PDFs
+2. Data Discovery: WebCrawler (BFS) + PatternLearner → find Netzentgelte/HLZF files
 3. PDF Processing: PDFDownloader → pdf_extractor (regex) + llm_extractor (AI fallback)
 4. Website Scraping: html_extractor for tables when PDFs unavailable
 """
+
