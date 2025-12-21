@@ -113,7 +113,7 @@ class SearchStep(BaseStep):
                         continue
                     
                     # Additional content-type verification for direct files
-                    if result.url.lower().endswith(".pdf"):
+                    if result.url.lower().endswith((".pdf", ".pdfx")):
                         if content_type and "pdf" not in content_type.lower():
                             log.debug("PDF URL has wrong content-type", 
                                      url=result.url[:60], content_type=content_type)
@@ -161,6 +161,7 @@ class SearchStep(BaseStep):
         """Filter URLs likely to be data sources (quick heuristic).
         
         This is a fast pre-filter before the full probe.
+        IMPORTANT: Also rejects URLs that clearly contain the WRONG data type.
         """
         url_lower = url.lower()
         
@@ -173,25 +174,38 @@ class SearchStep(BaseStep):
         if any(pattern in url_lower for pattern in skip_patterns):
             return False
         
+        # Keywords for each data type
+        netzentgelte_keywords = [
+            "netzentgelte", "preisblatt", "netzzugang", 
+            "netznutzung", "entgelt", "tarif"
+        ]
+        hlzf_keywords = [
+            "hlzf", "hochlast", "hochlastzeitfenster", 
+            "stromnev", "zeitfenster"
+        ]
+        
+        # CRITICAL: Reject URLs that clearly contain the WRONG data type
+        # This prevents HLZF jobs from picking up Netzentgelte files
+        if data_type == "hlzf":
+            # If searching for HLZF, reject URLs with Netzentgelte keywords
+            if any(kw in url_lower for kw in netzentgelte_keywords):
+                # Exception: If URL also has HLZF keywords, it might be a combined doc
+                if not any(kw in url_lower for kw in hlzf_keywords):
+                    return False
+        elif data_type == "netzentgelte":
+            # If searching for Netzentgelte, reject URLs with HLZF-only keywords
+            if any(kw in url_lower for kw in hlzf_keywords):
+                if not any(kw in url_lower for kw in netzentgelte_keywords):
+                    return False
+        
         # Direct file links are best
-        if any(url_lower.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".docx"]):
+        if any(url_lower.endswith(ext) for ext in [".pdf", ".pdfx", ".xlsx", ".xls", ".docx"]):
             return True
         
-        # Check for data-related keywords in URL
-        keywords = {
-            "netzentgelte": [
-                "netzentgelte", "preisblatt", "netzzugang", 
-                "netznutzung", "entgelt", "tarif"
-            ],
-            "hlzf": [
-                "hlzf", "hochlast", "hochlastzeitfenster", 
-                "stromnev", "zeitfenster"
-            ],
-        }
-        kws = keywords.get(data_type, [])
-        if any(kw in url_lower for kw in kws):
+        # Check for correct data-related keywords in URL (positive signal)
+        target_keywords = hlzf_keywords if data_type == "hlzf" else netzentgelte_keywords
+        if any(kw in url_lower for kw in target_keywords):
             return True
         
-        # If URL is on a known DNO domain, be more lenient
-        # (the probe will verify content-type anyway)
+        # For generic URLs on a known DNO domain, still allow (probe will verify)
         return True

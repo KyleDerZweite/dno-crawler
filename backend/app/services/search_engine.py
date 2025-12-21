@@ -332,7 +332,7 @@ class UrlProber:
                 if content_type not in ALLOWED_CONTENT_TYPES:
                     # Allow files by extension even if content-type is wrong
                     url_lower = current_url.lower()
-                    if not any(url_lower.endswith(ext) for ext in [".pdf", ".xlsx", ".xls", ".docx"]):
+                    if not any(url_lower.endswith(ext) for ext in [".pdf", ".pdfx", ".xlsx", ".xls", ".docx"]):
                         self.log.debug("Content type not allowed", 
                                       content_type=content_type, url=current_url[:80])
                         return False, None, None
