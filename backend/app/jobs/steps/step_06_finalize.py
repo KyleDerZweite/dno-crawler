@@ -45,6 +45,12 @@ class FinalizeStep(BaseStep):
         is_valid = ctx.get("is_valid", False)
         
         if not is_valid or not data:
+            # Record pattern failure if one was used
+            discovered_pattern = ctx.get("discovered_via_pattern")
+            if discovered_pattern:
+                learner = PatternLearner()
+                await learner.record_failure(db, discovered_pattern)
+            
             # Don't save invalid data, but still complete the job
             return "Skipped data save (validation failed)"
         
