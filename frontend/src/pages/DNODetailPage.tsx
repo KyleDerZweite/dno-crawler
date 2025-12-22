@@ -873,6 +873,32 @@ export function DNODetailPage() {
                             </dd>
                         </div>
                     )}
+                    {dno.phone && (
+                        <div>
+                            <dt className="text-sm text-muted-foreground">Phone</dt>
+                            <dd>
+                                <a href={`tel:${dno.phone}`} className="text-primary hover:underline">
+                                    {dno.phone}
+                                </a>
+                            </dd>
+                        </div>
+                    )}
+                    {dno.email && (
+                        <div>
+                            <dt className="text-sm text-muted-foreground">Email</dt>
+                            <dd>
+                                <a href={`mailto:${dno.email}`} className="text-primary hover:underline">
+                                    {dno.email}
+                                </a>
+                            </dd>
+                        </div>
+                    )}
+                    {dno.contact_address && (
+                        <div>
+                            <dt className="text-sm text-muted-foreground">Address</dt>
+                            <dd>{dno.contact_address}</dd>
+                        </div>
+                    )}
                 </dl>
             </Card>
 

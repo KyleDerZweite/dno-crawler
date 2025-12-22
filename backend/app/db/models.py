@@ -69,6 +69,11 @@ class DNOModel(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     website: Mapped[str | None] = mapped_column(String(500))
+    
+    # Contact info (from VNBdigital)
+    phone: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(255))
+    contact_address: Mapped[str | None] = mapped_column(String(500))
 
     # Relationships
     netzentgelte: Mapped[list["NetzentgelteModel"]] = relationship(back_populates="dno")

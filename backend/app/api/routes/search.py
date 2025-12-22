@@ -289,15 +289,25 @@ async def _search_by_address(
     # Prefer electricity DNO
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
     
-    # Step 6: Create or get DNO skeleton
+    # Step 6: Fetch extended details (homepage URL, contact info)
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
+    
+    # Step 7: Create or get DNO skeleton with contact info
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
         vnb_id=vnb.vnb_id,
         official_name=vnb.official_name,
+        website=dno_details.homepage_url if dno_details else None,
+        phone=dno_details.phone if dno_details else None,
+        email=dno_details.email if dno_details else None,
+        contact_address=dno_details.address if dno_details else None,
     )
     
-    # Step 7: Create location
+    # Step 8: Create location
     location, loc_created = await skeleton_service.get_or_create_location(
         db, dno.id, normalized, lat, lon
     )
@@ -307,6 +317,7 @@ async def _search_by_address(
         dno_created=dno_created,
         loc_created=loc_created,
         dno_name=dno.name,
+        has_website=bool(dno.website),
     )
     
     return await _build_response(db, dno, location, years)
@@ -350,7 +361,21 @@ async def _search_by_coordinates(
     
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
     
-    dno, _ = await skeleton_service.get_or_create_dno(db, name=vnb.name, vnb_id=vnb.vnb_id)
+    # Fetch extended details
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
+    
+    dno, _ = await skeleton_service.get_or_create_dno(
+        db,
+        name=vnb.name,
+        vnb_id=vnb.vnb_id,
+        website=dno_details.homepage_url if dno_details else None,
+        phone=dno_details.phone if dno_details else None,
+        email=dno_details.email if dno_details else None,
+        contact_address=dno_details.address if dno_details else None,
+    )
     
     # Create simple location without full address
     from app.services.skeleton_service import NormalizedAddress
