@@ -844,59 +844,49 @@ export function DNODetailPage() {
             </div>
 
             {/* DNO Details */}
-            <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4">Details</h2>
-                <dl className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                        <dt className="text-sm text-muted-foreground">Slug</dt>
-                        <dd className="font-mono text-sm">{dno.slug}</dd>
+            <Card className="p-4">
+                <h2 className="text-sm font-semibold mb-3 text-muted-foreground">Details</h2>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
+                    <div className="flex justify-between sm:block">
+                        <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Slug</dt>
+                        <dd className="font-mono inline">{dno.slug}</dd>
                     </div>
                     {dno.official_name && (
-                        <div>
-                            <dt className="text-sm text-muted-foreground">Official Name</dt>
-                            <dd>{dno.official_name}</dd>
-                        </div>
-                    )}
-                    {dno.description && (
-                        <div className="md:col-span-2">
-                            <dt className="text-sm text-muted-foreground">Description</dt>
-                            <dd>{dno.description}</dd>
+                        <div className="flex justify-between sm:block">
+                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Official</dt>
+                            <dd className="inline">{dno.official_name}</dd>
                         </div>
                     )}
                     {dno.website && (
-                        <div>
-                            <dt className="text-sm text-muted-foreground">Website</dt>
-                            <dd>
-                                <a href={dno.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
-                                    {dno.website}
+                        <div className="flex justify-between sm:block">
+                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Website</dt>
+                            <dd className="inline">
+                                <a href={dno.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline truncate">
+                                    {new URL(dno.website).hostname}
                                 </a>
                             </dd>
                         </div>
                     )}
                     {dno.phone && (
-                        <div>
-                            <dt className="text-sm text-muted-foreground">Phone</dt>
-                            <dd>
-                                <a href={`tel:${dno.phone}`} className="text-primary hover:underline">
-                                    {dno.phone}
-                                </a>
+                        <div className="flex justify-between sm:block">
+                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Phone</dt>
+                            <dd className="inline">
+                                <a href={`tel:${dno.phone}`} className="text-primary hover:underline">{dno.phone}</a>
                             </dd>
                         </div>
                     )}
                     {dno.email && (
-                        <div>
-                            <dt className="text-sm text-muted-foreground">Email</dt>
-                            <dd>
-                                <a href={`mailto:${dno.email}`} className="text-primary hover:underline">
-                                    {dno.email}
-                                </a>
+                        <div className="flex justify-between sm:block">
+                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Email</dt>
+                            <dd className="inline">
+                                <a href={`mailto:${dno.email}`} className="text-primary hover:underline">{dno.email}</a>
                             </dd>
                         </div>
                     )}
                     {dno.contact_address && (
-                        <div>
-                            <dt className="text-sm text-muted-foreground">Address</dt>
-                            <dd>{dno.contact_address}</dd>
+                        <div className="flex justify-between sm:block sm:col-span-2">
+                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Address</dt>
+                            <dd className="inline">{dno.contact_address}</dd>
                         </div>
                     )}
                 </dl>
