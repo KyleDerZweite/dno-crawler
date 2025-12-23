@@ -22,7 +22,7 @@ from app.services.skeleton_service import (
     skeleton_service,
     NormalizedAddress,
 )
-from app.services.vnb_digital import AsyncVNBDigitalClient
+from app.services.vnb_digital import VNBDigitalClient
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -241,11 +241,11 @@ async def _search_by_address(
     if rate_limiter:
         await rate_limiter.before_vnb_call()
     
-    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    vnb_client = VNBDigitalClient(request_delay=0.5)
     
     # Get coordinates
     full_address = f"{address_input.street}, {address_input.zip_code} {address_input.city}"
-    location_result = await vnb_client.search_address_async(full_address)
+    location_result = await vnb_client.search_address(full_address)
     
     if not location_result:
         log.warning("Address not found in VNB Digital")
@@ -276,7 +276,7 @@ async def _search_by_address(
         return await _build_response(db, dno, existing_location, years)
     
     # Step 5: Get DNO from VNB Digital
-    vnbs = await vnb_client.lookup_by_coordinates_async(location_result.coordinates)
+    vnbs = await vnb_client.lookup_by_coordinates(location_result.coordinates)
     
     if not vnbs:
         log.warning("No DNO found for coordinates")
@@ -289,15 +289,25 @@ async def _search_by_address(
     # Prefer electricity DNO
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
     
-    # Step 6: Create or get DNO skeleton
+    # Step 6: Fetch extended details (homepage URL, contact info)
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
+    
+    # Step 7: Create or get DNO skeleton with contact info
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
         vnb_id=vnb.vnb_id,
         official_name=vnb.official_name,
+        website=dno_details.homepage_url if dno_details else None,
+        phone=dno_details.phone if dno_details else None,
+        email=dno_details.email if dno_details else None,
+        contact_address=dno_details.address if dno_details else None,
     )
     
-    # Step 7: Create location
+    # Step 8: Create location
     location, loc_created = await skeleton_service.get_or_create_location(
         db, dno.id, normalized, lat, lon
     )
@@ -307,6 +317,7 @@ async def _search_by_address(
         dno_created=dno_created,
         loc_created=loc_created,
         dno_name=dno.name,
+        has_website=bool(dno.website),
     )
     
     return await _build_response(db, dno, location, years)
@@ -337,9 +348,9 @@ async def _search_by_coordinates(
     if rate_limiter:
         await rate_limiter.before_vnb_call()
     
-    vnb_client = AsyncVNBDigitalClient(request_delay=0.5)
+    vnb_client = VNBDigitalClient(request_delay=0.5)
     coords_str = f"{coords_input.latitude},{coords_input.longitude}"
-    vnbs = await vnb_client.lookup_by_coordinates_async(coords_str)
+    vnbs = await vnb_client.lookup_by_coordinates(coords_str)
     
     if not vnbs:
         return PublicSearchResponse(
@@ -350,7 +361,21 @@ async def _search_by_coordinates(
     
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
     
-    dno, _ = await skeleton_service.get_or_create_dno(db, name=vnb.name, vnb_id=vnb.vnb_id)
+    # Fetch extended details
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+    
+    dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
+    
+    dno, _ = await skeleton_service.get_or_create_dno(
+        db,
+        name=vnb.name,
+        vnb_id=vnb.vnb_id,
+        website=dno_details.homepage_url if dno_details else None,
+        phone=dno_details.phone if dno_details else None,
+        email=dno_details.email if dno_details else None,
+        contact_address=dno_details.address if dno_details else None,
+    )
     
     # Create simple location without full address
     from app.services.skeleton_service import NormalizedAddress

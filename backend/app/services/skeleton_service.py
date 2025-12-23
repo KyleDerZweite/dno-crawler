@@ -138,6 +138,10 @@ class SkeletonService:
         name: str,
         vnb_id: str,
         official_name: str | None = None,
+        website: str | None = None,
+        phone: str | None = None,
+        email: str | None = None,
+        contact_address: str | None = None,
     ) -> tuple[DNOModel, bool]:
         """
         Get existing or create new DNO skeleton.
@@ -157,7 +161,7 @@ class SkeletonService:
             log.debug("DNO already exists", dno_id=existing.id)
             return existing, False
         
-        # Create new skeleton
+        # Create new skeleton with contact info
         slug = generate_slug(name)
         dno = DNOModel(
             slug=slug,
@@ -165,13 +169,17 @@ class SkeletonService:
             official_name=official_name,
             vnb_id=vnb_id,
             status="uncrawled",
+            website=website,
+            phone=phone,
+            email=email,
+            contact_address=contact_address,
         )
         
         try:
             db.add(dno)
             await db.commit()
             await db.refresh(dno)
-            log.info("Created DNO skeleton", dno_id=dno.id, slug=slug)
+            log.info("Created DNO skeleton", dno_id=dno.id, slug=slug, has_website=bool(website))
             return dno, True
         except IntegrityError as e:
             # Race condition: another request created it first

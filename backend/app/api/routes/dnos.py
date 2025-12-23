@@ -209,7 +209,7 @@ async def get_dno_details(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="DNO not found",
         )
-    
+        
     return APIResponse(
         success=True,
         data={
@@ -222,6 +222,9 @@ async def get_dno_details(
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
+            "phone": dno.phone,
+            "email": dno.email,
+            "contact_address": dno.contact_address,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },

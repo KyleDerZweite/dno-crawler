@@ -69,6 +69,11 @@ class DNOModel(Base, TimestampMixin):
     description: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     website: Mapped[str | None] = mapped_column(String(500))
+    
+    # Contact info (from VNBdigital)
+    phone: Mapped[str | None] = mapped_column(String(100))
+    email: Mapped[str | None] = mapped_column(String(255))
+    contact_address: Mapped[str | None] = mapped_column(String(500))
 
     # Relationships
     netzentgelte: Mapped[list["NetzentgelteModel"]] = relationship(back_populates="dno")
@@ -219,6 +224,38 @@ class DataSourceModel(Base, TimestampMixin):
 # ==============================================================================
 
 
+class CrawlPathPatternModel(Base, TimestampMixin):
+    """Cross-DNO learned URL path patterns with year placeholders.
+    
+    Stores patterns like '/veroeffentlichungen/{year}/' that are known to work
+    across multiple DNOs. Higher success_rate patterns are tried first during crawls.
+    """
+    __tablename__ = "crawl_path_patterns"
+    __table_args__ = (
+        Index("idx_path_patterns_data_type", "data_type"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    
+    # Pattern with {year} placeholder (e.g., "/downloads/{year}/strom/")
+    path_pattern: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
+    data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf | both
+    
+    # Stats
+    success_count: Mapped[int] = mapped_column(Integer, default=0)
+    fail_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    
+    # JSON for DB portability (not ARRAY - SQLite compatible)
+    successful_dno_slugs: Mapped[dict | None] = mapped_column(JSON)
+    
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate for pattern prioritization."""
+        total = self.success_count + self.fail_count
+        return self.success_count / total if total > 0 else 0.0
+
+
 class DNOSourceProfile(Base, TimestampMixin):
     """Remember where to find data for each DNO.
     
@@ -244,8 +281,10 @@ class DNOSourceProfile(Base, TimestampMixin):
     last_url: Mapped[str | None] = mapped_column(Text)  # Last successful URL
     url_pattern: Mapped[str | None] = mapped_column(Text)  # URL with {year} placeholder
     
-    # Search query that worked
-    successful_query: Mapped[str | None] = mapped_column(Text)
+    # How this source was discovered (pattern_match | bfs_crawl | exact_url)
+    discovery_method: Mapped[str | None] = mapped_column(String(50))
+    # Which path pattern found this source
+    discovered_via_pattern: Mapped[str | None] = mapped_column(Text)
     
     # Extraction hints (for Gemini prompt context)
     extraction_hints: Mapped[dict | None] = mapped_column(JSON)

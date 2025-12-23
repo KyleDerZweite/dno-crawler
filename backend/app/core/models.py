@@ -88,8 +88,9 @@ class VerificationStatus(str, Enum):
 class CrawlStrategy(str, Enum):
     """Strategy for finding data."""
     USE_CACHE = "use_cache"         # File already downloaded locally
-    TRY_PATTERN = "try_pattern"     # Try known URL pattern with new year
-    SEARCH = "search"               # Full DuckDuckGo search
+    EXACT_URL = "exact_url"         # Known URL from previous crawl
+    PATTERN_MATCH = "pattern_match" # Learned path pattern worked
+    BFS_CRAWL = "bfs_crawl"         # Full BFS website crawl
 
 
 class AIProvider(str, Enum):
@@ -196,12 +197,14 @@ class JobContext(BaseSchema):
     cached_file: str | None = None
     
     # Strategy (set in step_01)
-    strategy: str = "search"  # use_cache | try_pattern | search
-    search_queries: list[str] = Field(default_factory=list)
+    strategy: str = "bfs_crawl"  # use_cache | exact_url | pattern_match | bfs_crawl
     
-    # Found source (set in step_02)
+    # Discovery (set in step_01)
     found_url: str | None = None
-    successful_query: str | None = None
+    found_content_type: str | None = None
+    discovered_via_pattern: str | None = None  # Which pattern found it
+    pages_crawled: int = 0  # For metrics
+    needs_headless_review: bool = False  # JS/SPA detection flag
     
     # Downloaded file (set in step_03)
     downloaded_file: str | None = None
