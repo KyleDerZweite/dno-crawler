@@ -30,6 +30,10 @@ class CreateDNORequest(BaseModel):
     description: str | None = None
     region: str | None = None
     website: str | None = None
+    vnb_id: str | None = None  # VNB Digital ID for validation/deduplication
+    phone: str | None = None
+    email: str | None = None
+    contact_address: str | None = None
 
 
 def _slugify(name: str) -> str:
@@ -46,6 +50,83 @@ def _slugify(name: str) -> str:
     return slug
 
 
+@router.get("/search-vnb")
+async def search_vnb(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    q: str = Query(..., min_length=2, max_length=100, description="Search term for DNO name"),
+) -> APIResponse:
+    """
+    Search VNB Digital for DNO names for autocomplete/validation.
+    
+    Returns matching VNBs with indicator if they already exist in our database.
+    """
+    from app.services.vnb_digital import VNBDigitalClient
+    
+    vnb_client = VNBDigitalClient(request_delay=0.5)
+    vnb_results = await vnb_client.search_vnb(q)
+    
+    # Check which VNBs already exist in our database
+    suggestions = []
+    for vnb in vnb_results:
+        # Check if this VNB already exists by vnb_id
+        existing_query = select(DNOModel).where(DNOModel.vnb_id == vnb.vnb_id)
+        result = await db.execute(existing_query)
+        existing_dno = result.scalar_one_or_none()
+        
+        suggestions.append({
+            "vnb_id": vnb.vnb_id,
+            "name": vnb.name,
+            "subtitle": vnb.subtitle,
+            "logo_url": vnb.logo_url,
+            "exists": existing_dno is not None,
+            "existing_dno_id": str(existing_dno.id) if existing_dno else None,
+            "existing_dno_slug": existing_dno.slug if existing_dno else None,
+        })
+    
+    return APIResponse(
+        success=True,
+        data={
+            "suggestions": suggestions,
+            "count": len(suggestions),
+        },
+    )
+
+
+@router.get("/search-vnb/{vnb_id}/details")
+async def get_vnb_details(
+    vnb_id: str,
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> APIResponse:
+    """
+    Get extended details for a specific VNB (website, phone, email, address).
+    
+    Used when user selects a suggestion to auto-fill the form.
+    """
+    from app.services.vnb_digital import VNBDigitalClient
+    
+    vnb_client = VNBDigitalClient(request_delay=0.5)
+    details = await vnb_client.get_vnb_details(vnb_id)
+    
+    if not details:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"VNB with ID '{vnb_id}' not found",
+        )
+    
+    return APIResponse(
+        success=True,
+        data={
+            "vnb_id": details.vnb_id,
+            "name": details.name,
+            "website": details.homepage_url,
+            "phone": details.phone,
+            "email": details.email,
+            "address": details.address,
+        },
+    )
+
+
 @router.post("/")
 async def create_dno(
     request: CreateDNORequest,
@@ -56,7 +137,10 @@ async def create_dno(
     Create a new DNO.
     
     If slug is not provided, it will be auto-generated from the name.
+    If vnb_id is provided, validates against VNB Digital and fetches missing details.
     """
+    from app.services.vnb_digital import VNBDigitalClient
+    
     # Generate slug if not provided
     slug = request.slug if request.slug else _slugify(request.name)
     
@@ -69,14 +153,45 @@ async def create_dno(
             detail=f"A DNO with slug '{slug}' already exists",
         )
     
+    # Check for duplicate vnb_id if provided
+    if request.vnb_id:
+        existing_vnb_query = select(DNOModel).where(DNOModel.vnb_id == request.vnb_id)
+        result = await db.execute(existing_vnb_query)
+        existing_dno = result.scalar_one_or_none()
+        if existing_dno:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"A DNO with VNB ID '{request.vnb_id}' already exists: {existing_dno.name}",
+            )
+    
+    # Fetch VNB details if vnb_id provided and some fields are missing
+    website = request.website
+    phone = request.phone
+    email = request.email
+    contact_address = request.contact_address
+    official_name = request.official_name
+    
+    if request.vnb_id and not all([website, phone, email]):
+        vnb_client = VNBDigitalClient(request_delay=0.5)
+        vnb_details = await vnb_client.get_vnb_details(request.vnb_id)
+        if vnb_details:
+            website = website or vnb_details.homepage_url
+            phone = phone or vnb_details.phone
+            email = email or vnb_details.email
+            contact_address = contact_address or vnb_details.address
+    
     # Create DNO
     dno = DNOModel(
         name=request.name,
         slug=slug,
-        official_name=request.official_name,
+        official_name=official_name,
         description=request.description,
         region=request.region,
-        website=request.website,
+        website=website,
+        vnb_id=request.vnb_id,
+        phone=phone,
+        email=email,
+        contact_address=contact_address,
     )
     db.add(dno)
     await db.commit()
@@ -90,9 +205,13 @@ async def create_dno(
             "slug": dno.slug,
             "name": dno.name,
             "official_name": dno.official_name,
+            "vnb_id": dno.vnb_id,
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
+            "phone": dno.phone,
+            "email": dno.email,
+            "contact_address": dno.contact_address,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
         },
     )
