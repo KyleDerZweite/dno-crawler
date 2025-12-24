@@ -64,6 +64,9 @@ export interface DNO {
   description?: string;
   region?: string;
   website?: string;
+  phone?: string;
+  email?: string;
+  contact_address?: string;
   data_points_count?: number;
   netzentgelte_count?: number;
   hlzf_count?: number;
@@ -217,6 +220,26 @@ export interface UserInfo {
   is_admin: boolean;
 }
 
+// VNB Search Types (for DNO autocomplete)
+export interface VNBSuggestion {
+  vnb_id: string;
+  name: string;
+  subtitle?: string;  // Official legal name (e.g., "GmbH")
+  logo_url?: string;
+  exists: boolean;    // Already in our database
+  existing_dno_id?: string;
+  existing_dno_slug?: string;
+}
+
+export interface VNBDetails {
+  vnb_id: string;
+  name: string;
+  website?: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+}
+
 // NOTE: Old batch/timeline types removed - now using PublicSearch types above
 
 // API functions
@@ -315,8 +338,26 @@ export const api = {
       description?: string;
       region?: string;
       website?: string;
+      vnb_id?: string;
+      phone?: string;
+      email?: string;
+      contact_address?: string;
     }): Promise<ApiResponse<DNO>> {
       const { data } = await apiClient.post("/dnos/", payload);
+      return data;
+    },
+
+    // VNB Digital search for autocomplete
+    async searchVnb(query: string): Promise<ApiResponse<{ suggestions: VNBSuggestion[]; count: number }>> {
+      const { data } = await apiClient.get("/dnos/search-vnb", {
+        params: { q: query },
+      });
+      return data;
+    },
+
+    // Get extended VNB details for auto-fill
+    async getVnbDetails(vnb_id: string): Promise<ApiResponse<VNBDetails>> {
+      const { data } = await apiClient.get(`/dnos/search-vnb/${vnb_id}/details`);
       return data;
     },
 

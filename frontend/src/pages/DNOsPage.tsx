@@ -1,8 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type DNO } from "@/lib/api";
+import { api, type DNO, type VNBSuggestion } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -25,6 +25,7 @@ import {
   Check,
   Zap,
   Clock,
+  AlertTriangle,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -35,6 +36,10 @@ interface AddDNOForm {
   region: string;
   website: string;
   description: string;
+  vnb_id: string;  // VNB Digital ID for validation
+  phone: string;
+  email: string;
+  contact_address: string;
 }
 
 const initialFormState: AddDNOForm = {
@@ -43,12 +48,24 @@ const initialFormState: AddDNOForm = {
   region: "",
   website: "",
   description: "",
+  vnb_id: "",
+  phone: "",
+  email: "",
+  contact_address: "",
 };
 
 export function DNOsPage() {
   const [searchTerm, setSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [formData, setFormData] = useState<AddDNOForm>(initialFormState);
+
+  // VNB Autocomplete state
+  const [vnbSuggestions, setVnbSuggestions] = useState<VNBSuggestion[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  const [isSearchingVnb, setIsSearchingVnb] = useState(false);
+  const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const suggestionsRef = useRef<HTMLDivElement>(null);
+
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { isAdmin } = useAuth();
@@ -70,6 +87,10 @@ export function DNOsPage() {
         region: data.region || undefined,
         website: data.website || undefined,
         description: data.description || undefined,
+        vnb_id: data.vnb_id || undefined,
+        phone: data.phone || undefined,
+        email: data.email || undefined,
+        contact_address: data.contact_address || undefined,
       }),
     onSuccess: (response) => {
       toast({
@@ -79,6 +100,7 @@ export function DNOsPage() {
       queryClient.invalidateQueries({ queryKey: ["dnos"] });
       setIsAddDialogOpen(false);
       setFormData(initialFormState);
+      setVnbSuggestions([]);
     },
     onError: (error: unknown) => {
       const message =
@@ -95,6 +117,90 @@ export function DNOsPage() {
       });
     },
   });
+
+  // Debounced VNB search (1 second delay per user request)
+  const searchVnb = useCallback(async (query: string) => {
+    if (query.length < 2) {
+      setVnbSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    setIsSearchingVnb(true);
+    try {
+      const response = await api.dnos.searchVnb(query);
+      setVnbSuggestions(response.data.suggestions);
+      setShowSuggestions(response.data.suggestions.length > 0);
+    } catch (error) {
+      console.error("VNB search failed:", error);
+      setVnbSuggestions([]);
+    } finally {
+      setIsSearchingVnb(false);
+    }
+  }, []);
+
+  // Handle name input with debounced VNB search
+  const handleNameChange = (value: string) => {
+    setFormData((prev) => ({ ...prev, name: value, vnb_id: "" }));
+
+    // Clear previous timeout
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    // Set new timeout (1 second debounce)
+    searchTimeoutRef.current = setTimeout(() => {
+      searchVnb(value);
+    }, 1000);
+  };
+
+  // Handle VNB suggestion selection
+  const handleSelectVnb = async (suggestion: VNBSuggestion) => {
+    setShowSuggestions(false);
+    setFormData((prev) => ({
+      ...prev,
+      name: suggestion.name,
+      vnb_id: suggestion.vnb_id,
+    }));
+
+    // Fetch extended details for auto-fill
+    try {
+      const details = await api.dnos.getVnbDetails(suggestion.vnb_id);
+      setFormData((prev) => ({
+        ...prev,
+        website: details.data.website || prev.website,
+        phone: details.data.phone || prev.phone,
+        email: details.data.email || prev.email,
+        contact_address: details.data.address || prev.contact_address,
+      }));
+      toast({
+        title: "VNB details loaded",
+        description: "Form has been auto-filled with VNB data.",
+      });
+    } catch (error) {
+      console.error("Failed to fetch VNB details:", error);
+    }
+  };
+
+  // Close suggestions when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (suggestionsRef.current && !suggestionsRef.current.contains(event.target as Node)) {
+        setShowSuggestions(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Cleanup timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleFormChange = (field: keyof AddDNOForm, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -131,9 +237,16 @@ export function DNOsPage() {
             Manage data sources and trigger crawls
           </p>
         </div>
-        {/* TODO: Future enhancement - validate DNO against VNB Digital API to prevent duplicates */}
+        {/* TODO was: Future enhancement - validate DNO against VNB Digital API - NOW IMPLEMENTED */}
         {isAdmin() && (
-          <Dialog open={isAddDialogOpen} onOpenChange={setIsAddDialogOpen}>
+          <Dialog open={isAddDialogOpen} onOpenChange={(open) => {
+            setIsAddDialogOpen(open);
+            if (!open) {
+              setFormData(initialFormState);
+              setVnbSuggestions([]);
+              setShowSuggestions(false);
+            }
+          }}>
             <DialogTrigger asChild>
               <Button>
                 <Plus className="mr-2 h-4 w-4" />
@@ -145,21 +258,63 @@ export function DNOsPage() {
                 <DialogHeader>
                   <DialogTitle>Add New DNO</DialogTitle>
                   <DialogDescription>
-                    Add a new Distribution Network Operator to the system.
+                    Add a new Distribution Network Operator. Start typing to search VNB Digital.
                   </DialogDescription>
                 </DialogHeader>
                 <div className="grid gap-4 py-4">
-                  <div className="grid gap-2">
+                  {/* Name with VNB Autocomplete */}
+                  <div className="grid gap-2 relative" ref={suggestionsRef}>
                     <Label htmlFor="name">
                       Name <span className="text-destructive">*</span>
                     </Label>
-                    <Input
-                      id="name"
-                      placeholder="e.g., Stadtwerke München"
-                      value={formData.name}
-                      onChange={(e) => handleFormChange("name", e.target.value)}
-                      required
-                    />
+                    <div className="relative">
+                      <Input
+                        id="name"
+                        placeholder="e.g., Stadtwerke München"
+                        value={formData.name}
+                        onChange={(e) => handleNameChange(e.target.value)}
+                        required
+                        autoComplete="off"
+                      />
+                      {isSearchingVnb && (
+                        <Loader2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
+                    </div>
+                    {formData.vnb_id && (
+                      <p className="text-xs text-green-600 flex items-center gap-1">
+                        <Check className="h-3 w-3" />
+                        Linked to VNB: {formData.vnb_id}
+                      </p>
+                    )}
+
+                    {/* Suggestions Dropdown */}
+                    {showSuggestions && vnbSuggestions.length > 0 && (
+                      <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
+                        {vnbSuggestions.map((suggestion) => (
+                          <button
+                            key={suggestion.vnb_id}
+                            type="button"
+                            className="w-full px-3 py-2 text-left hover:bg-accent flex items-center justify-between gap-2"
+                            onClick={() => handleSelectVnb(suggestion)}
+                          >
+                            <div className="flex-1 min-w-0">
+                              <p className="font-medium truncate">{suggestion.name}</p>
+                              {suggestion.subtitle && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {suggestion.subtitle}
+                                </p>
+                              )}
+                            </div>
+                            {suggestion.exists && (
+                              <span className="flex items-center gap-1 text-xs text-amber-600 flex-shrink-0">
+                                <AlertTriangle className="h-3 w-3" />
+                                Exists
+                              </span>
+                            )}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div className="grid gap-2">
                     <Label htmlFor="slug">

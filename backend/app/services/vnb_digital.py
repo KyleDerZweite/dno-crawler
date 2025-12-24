@@ -65,6 +65,15 @@ class DNODetails:
     address: Optional[str] = None
 
 
+@dataclass
+class VNBSearchResult:
+    """Result from VNB name search for autocomplete."""
+    vnb_id: str
+    name: str
+    subtitle: Optional[str] = None  # Often contains official legal name (e.g., "GmbH")
+    logo_url: Optional[str] = None
+
+
 # =============================================================================
 # GraphQL Queries
 # =============================================================================
@@ -487,6 +496,67 @@ class VNBDigitalClient:
         except Exception as e:
             log.error("Error fetching VNB details", error=str(e))
             return None
+    
+    async def search_vnb(self, name: str) -> list[VNBSearchResult]:
+        """
+        Search for VNBs by name for autocomplete/validation.
+        
+        Uses the vnb_search query and filters to only return VNB type results
+        (excludes address/location results).
+        
+        Args:
+            name: Search term (DNO name or partial name)
+            
+        Returns:
+            List of VNBSearchResult matching the query
+        """
+        await self._wait_for_rate_limit()
+        
+        log = self.log.bind(search_term=name[:50])
+        log.info("Searching VNBs by name")
+        
+        payload = {
+            "query": SEARCH_QUERY,
+            "variables": {"searchTerm": name}
+        }
+        
+        try:
+            async with httpx.AsyncClient(timeout=self.timeout) as client:
+                response = await client.post(
+                    self.API_URL,
+                    json=payload,
+                    headers=self.HEADERS,
+                )
+                response.raise_for_status()
+                data = response.json()
+            
+            if "errors" in data:
+                log.error("GraphQL errors", errors=data["errors"])
+                return []
+            
+            results = data.get("data", {}).get("vnb_search", [])
+            
+            # Filter to only VNB type results (exclude locations/addresses)
+            vnb_results = []
+            for item in results:
+                if item.get("type") == "VNB":
+                    logo = item.get("logo", {})
+                    vnb_results.append(VNBSearchResult(
+                        vnb_id=item.get("_id", ""),
+                        name=item.get("title", ""),
+                        subtitle=item.get("subtitle"),
+                        logo_url=logo.get("url") if logo else None,
+                    ))
+            
+            log.info("VNB search completed", total=len(results), vnbs=len(vnb_results))
+            return vnb_results
+            
+        except httpx.TimeoutException:
+            log.error("Request timeout")
+            return []
+        except Exception as e:
+            log.error("Request failed", error=str(e))
+            return []
 
 
 # =============================================================================
