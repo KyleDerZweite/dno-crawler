@@ -83,6 +83,9 @@ export function DNODetailPage() {
         region: '',
         website: '',
         description: '',
+        phone: '',
+        email: '',
+        contact_address: '',
     });
 
     // Delete DNO dialog state
@@ -551,6 +554,9 @@ export function DNODetailPage() {
                                     region: dno.region || '',
                                     website: dno.website || '',
                                     description: dno.description || '',
+                                    phone: dno.phone || '',
+                                    email: dno.email || '',
+                                    contact_address: dno.contact_address || '',
                                 });
                                 setEditDNOOpen(true);
                             }}
@@ -716,6 +722,35 @@ export function DNODetailPage() {
                                             className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.description}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, description: e.target.value }))}
+                                        />
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="grid gap-2">
+                                            <label className="text-sm font-medium">Phone</label>
+                                            <input
+                                                type="text"
+                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                value={editDNOData.phone}
+                                                onChange={(e) => setEditDNOData(prev => ({ ...prev, phone: e.target.value }))}
+                                            />
+                                        </div>
+                                        <div className="grid gap-2">
+                                            <label className="text-sm font-medium">Email</label>
+                                            <input
+                                                type="email"
+                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                                value={editDNOData.email}
+                                                onChange={(e) => setEditDNOData(prev => ({ ...prev, email: e.target.value }))}
+                                            />
+                                        </div>
+                                    </div>
+                                    <div className="grid gap-2">
+                                        <label className="text-sm font-medium">Contact Address</label>
+                                        <input
+                                            type="text"
+                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                                            value={editDNOData.contact_address}
+                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, contact_address: e.target.value }))}
                                         />
                                     </div>
                                 </div>

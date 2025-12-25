@@ -287,14 +287,14 @@ async def list_dnos_detailed(
             "region": dno.region,
             "website": dno.website,
             "data_points_count": data_points_count,
+            "netzentgelte_count": netzentgelte_count,
+            "hlzf_count": hlzf_count,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         }
         
         if include_stats:
             dno_data["stats"] = {
-                "netzentgelte_count": netzentgelte_count,
-                "hlzf_count": hlzf_count,
                 "years_available": [],
                 "last_crawl": None,
             }
@@ -357,6 +357,9 @@ class UpdateDNORequest(BaseModel):
     description: str | None = None
     region: str | None = None
     website: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    contact_address: str | None = None
 
 
 @router.patch("/{dno_id}")
@@ -388,6 +391,12 @@ async def update_dno(
         dno.region = request.region
     if request.website is not None:
         dno.website = request.website
+    if request.phone is not None:
+        dno.phone = request.phone
+    if request.email is not None:
+        dno.email = request.email
+    if request.contact_address is not None:
+        dno.contact_address = request.contact_address
     
     await db.commit()
     await db.refresh(dno)

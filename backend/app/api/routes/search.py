@@ -103,6 +103,8 @@ class NetzentgelteData(BaseModel):
     voltage_level: str
     leistung: Optional[float] = None
     arbeit: Optional[float] = None
+    leistung_unter_2500h: Optional[float] = None
+    arbeit_unter_2500h: Optional[float] = None
 
 
 class HLZFData(BaseModel):
@@ -477,6 +479,8 @@ async def _build_response(
             voltage_level=n.voltage_level,
             leistung=n.leistung,
             arbeit=n.arbeit,
+            leistung_unter_2500h=getattr(n, 'leistung_unter_2500h', None),
+            arbeit_unter_2500h=getattr(n, 'arbeit_unter_2500h', None),
         )
         for n in netzentgelte_result.scalars().all()
     ]

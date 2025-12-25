@@ -355,6 +355,36 @@ export function DNOsPage() {
                       onChange={(e) => handleFormChange("description", e.target.value)}
                     />
                   </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="grid gap-2">
+                      <Label htmlFor="phone">Phone</Label>
+                      <Input
+                        id="phone"
+                        placeholder="+49..."
+                        value={formData.phone}
+                        onChange={(e) => handleFormChange("phone", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        placeholder="contact@dno.de"
+                        value={formData.email}
+                        onChange={(e) => handleFormChange("email", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                  <div className="grid gap-2">
+                    <Label htmlFor="contact_address">Address</Label>
+                    <Input
+                      id="contact_address"
+                      placeholder="Musterstraße 1, 12345 Stadt"
+                      value={formData.contact_address}
+                      onChange={(e) => handleFormChange("contact_address", e.target.value)}
+                    />
+                  </div>
                 </div>
                 <DialogFooter>
                   <Button
