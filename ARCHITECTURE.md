@@ -51,7 +51,7 @@ flowchart TD
         RedisQ[(Redis Queue)]
         Worker[ARQ Worker]
         PDFDownloader[PDF Downloader]
-        LLMExtractor[LLM Extractor]
+        AIExtractor[AI Extractor]
     end
 
     %% Data Layer
@@ -85,7 +85,7 @@ flowchart TD
     
     RedisQ --> Worker
     Worker --> PDFDownloader
-    Worker --> LLMExtractor
+    Worker --> AIExtractor
     PDFDownloader <--> TargetSites
     
     SkeletonSvc --> Postgres

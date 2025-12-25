@@ -8,7 +8,7 @@ Python/React web application for crawling German Distribution Network Operator (
 
 - **Backend**: FastAPI (Python 3.11+) with async SQLAlchemy, PostgreSQL, Redis
 - **Frontend**: React 18 + Vite + TypeScript + TailwindCSS + Base UI
-- **AI/ML**: Google Gemini for structured data extraction
+- **AI/ML**: OpenAI-compatible API for extraction (Gemini, OpenRouter, Ollama) - falls back to regex if not configured
 - **Auth**: Modular OIDC (Zitadel) or automatic mock mode (`ZITADEL_DOMAIN=auth.example.com`)
 - **Jobs**: arq (Redis-based) for background crawling tasks
 

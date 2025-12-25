@@ -7,10 +7,11 @@ SERVICES:
 - web_crawler: BFS web crawler for discovering data sources on DNO websites
 - pattern_learner: Cross-DNO URL pattern learning and application
 - url_utils: SSRF-safe URL probing, robots.txt compliance, URL normalization
+- content_verifier: Pre-download content verification (sniff + keyword analysis)
 - pdf_downloader: PDF download and validation
 - extraction/pdf_extractor: Regex-based PDF data extraction
 - extraction/html_extractor: HTML table parsing for website data
-- extraction/llm_extractor: LLM-based fallback for PDF extraction (Netzentgelte, HLZF)
+- extraction/ai_extractor: AI-based extraction using OpenAI-compatible APIs
 
 ARCHITECTURE:
 1. DNO Resolution: VNBDigitalClient → address/coords → DNO name

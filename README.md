@@ -5,7 +5,7 @@ An intelligent web crawler for discovering German Distribution Network Operator 
 ## Key Features
 
 - **VNB Digital Resolution**: Resolve any German address or coordinate to its responsible DNO using the VNB Digital API.
-- **AI Extraction**: Uses Google Gemini to extract structured pricing data from complex PDF and HTML sources.
+- **AI Extraction**: Configurable OpenAI-compatible API for structured data extraction (supports Gemini, OpenRouter, Ollama).
 - **BFS Web Crawler**: Robust crawling engine with robots.txt respect and adaptive discovery patterns.
 - **OIDC Authentication**: Secure access management via Zitadel (OpenID Connect).
 - **Interactive API Docs**: Built-in Swagger UI for testing all backend endpoints.
@@ -16,7 +16,7 @@ An intelligent web crawler for discovering German Distribution Network Operator 
 ### Backend
 - **Python 3.11+ / FastAPI**: Core async web framework.
 - **SQLAlchemy 2.0**: Modern async ORM with PostgreSQL.
-- **Google Gemini**: AI extraction engine.
+- **OpenAI-compatible AI**: Configurable extraction engine (Gemini, OpenRouter, local Ollama).
 - **arq**: Redis-based async job processing.
 - **Playwright**: Browser automation for JavaScript-heavy DNO sites.
 - **structlog**: High-performance structured logging.
@@ -32,7 +32,7 @@ An intelligent web crawler for discovering German Distribution Network Operator 
 ### Prerequisites
 - **Podman** & **Podman Compose** (or Docker equivalent)
 - Zitadel Instance (OR keep `auth.example.com` for developer mock mode)
-- Google Cloud API Key (for Gemini extraction)
+- Optional: AI API credentials (for AI-powered extraction)
 
 ### Running with Podman Compose
 
@@ -79,7 +79,9 @@ dno-crawler/
 | `DATABASE_URL` | PostgreSQL connection string |
 | `VITE_API_URL` | Frontend pointer to Backend API |
 | `ZITADEL_DOMAIN` | Zitadel domain (set to `auth.example.com` to disable auth) |
-| `GEMINI_API_KEY` | Key for AI-powered extraction |
+| `AI_API_URL` | OpenAI-compatible API URL (optional, falls back to regex extraction) |
+| `AI_API_KEY` | API key for AI provider (optional for local Ollama) |
+| `AI_MODEL` | Vision model name (e.g., `gemini-2.0-flash`, `gpt-4o`, `qwen2.5-vl:8b`) |
 | `VITE_ZITADEL_AUTHORITY` | Must match `ZITADEL_DOMAIN` (with https:// prefix) |
 | `VITE_ZITADEL_CLIENT_ID` | Zitadel OIDC client ID |
 

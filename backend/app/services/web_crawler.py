@@ -147,6 +147,7 @@ class WebCrawler:
         target_keywords: list[str],
         priority_paths: list[str] | None = None,
         target_year: int | None = None,
+        data_type: str | None = None,
     ) -> list[CrawlResult]:
         """BFS crawl from start_url, prioritizing relevant URLs.
         
@@ -155,6 +156,7 @@ class WebCrawler:
             target_keywords: Keywords to look for in URLs/content
             priority_paths: Learned patterns to try first (with {year})
             target_year: Year to substitute in patterns
+            data_type: Target data type for scoring ("netzentgelte" or "hlzf")
             
         Returns:
             List of CrawlResult sorted by relevance score (highest first)
@@ -236,7 +238,7 @@ class WebCrawler:
             is_document = self._is_document(final_url, content_type)
             
             if is_document:
-                score = self._score_url(final_url, depth, target_keywords)
+                score = self._score_url(final_url, depth, target_keywords, data_type)
                 result = CrawlResult(
                     url=url,
                     final_url=final_url,
@@ -278,7 +280,7 @@ class WebCrawler:
                 title = soup.title.string.strip() if soup.title and soup.title.string else None
                 
                 # Score this page
-                score = self._score_url(final_url, depth, target_keywords)
+                score = self._score_url(final_url, depth, target_keywords, data_type)
                 text_content = soup.get_text()
                 text_keywords = self._find_keywords_in_text(text_content, target_keywords)
                 
@@ -303,7 +305,7 @@ class WebCrawler:
                     normalized_link = normalize_url(link)
                     if normalized_link not in visited:
                         visited.add(normalized_link)
-                        link_score = self._score_url(normalized_link, depth + 1, target_keywords)
+                        link_score = self._score_url(normalized_link, depth + 1, target_keywords, data_type)
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
                 
             except httpx.RequestError as e:
@@ -340,11 +342,13 @@ class WebCrawler:
         
         return False
     
-    def _score_url(self, url: str, depth: int, target_keywords: list[str]) -> float:
+    def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
         """Score URL based on relevance.
         
         Higher score = more likely to contain target data.
         """
+        from app.services.content_verifier import score_for_data_type
+        
         score = 0.0
         url_lower = url.lower()
         
@@ -374,6 +378,10 @@ class WebCrawler:
             if pattern in url_lower:
                 score -= 50
                 break
+        
+        # Data-type-specific scoring (NEW)
+        if data_type:
+            score += score_for_data_type(url, data_type)
         
         return score
     

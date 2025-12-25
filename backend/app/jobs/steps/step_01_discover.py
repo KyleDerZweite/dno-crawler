@@ -7,12 +7,19 @@ Combined strategy and discovery step. Finds data sources via:
 3. Learned patterns → Try top patterns on DNO domain
 4. BFS crawl → Full website crawl with keyword scoring
 
+NEW: Content verification before accepting a candidate
+- Verifies content matches expected data_type (netzentgelte vs hlzf)
+- Tries multiple candidates if first doesn't verify
+- Stores verification confidence and rejected candidates
+
 Output stored in job.context:
 - strategy: "use_cache" | "exact_url" | "pattern_match" | "bfs_crawl"
 - found_url: URL of discovered data source
 - discovered_via_pattern: Which pattern found it (if pattern_match)
 - pages_crawled: Number of pages crawled (for metrics)
 - needs_headless_review: True if possible SPA detected
+- verification_confidence: Confidence score from content verification
+- rejected_candidates: List of URLs that failed verification
 """
 
 import httpx
@@ -22,6 +29,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
+from app.services.content_verifier import ContentVerifier
 from app.services.pattern_learner import PatternLearner
 from app.services.url_utils import UrlProber
 from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
@@ -30,6 +38,12 @@ logger = structlog.get_logger()
 
 # User agent for HTTP requests
 USER_AGENT = "DNO-Data-Crawler/1.0 (Data Research Project; contact: abuse@kylehub.dev)"
+
+# Maximum candidates to try before giving up
+MAX_CANDIDATES_TO_TRY = 5
+
+# Minimum confidence required to accept a candidate
+MIN_VERIFICATION_CONFIDENCE = 0.4
 
 
 class DiscoverStep(BaseStep):
@@ -46,6 +60,8 @@ class DiscoverStep(BaseStep):
         ctx["pages_crawled"] = 0
         ctx["needs_headless_review"] = False
         ctx["discovered_via_pattern"] = None
+        ctx["verification_confidence"] = None
+        ctx["rejected_candidates"] = []
         
         # =========================================================================
         # Strategy 1: Use cached file
@@ -67,6 +83,7 @@ class DiscoverStep(BaseStep):
         ) as client:
             prober = UrlProber(client)
             learner = PatternLearner()
+            verifier = ContentVerifier(client)
             
             # Get allowed domains from DNO website
             allowed_domains = self._get_allowed_domains(ctx)
@@ -86,12 +103,33 @@ class DiscoverStep(BaseStep):
                 )
                 
                 if is_valid and final_url:
-                    ctx["strategy"] = "exact_url"
-                    ctx["found_url"] = final_url
-                    ctx["found_content_type"] = content_type
-                    job.context = ctx
-                    await db.commit()
-                    return f"Strategy: EXACT_URL → {final_url}"
+                    # Verify content matches expected data type
+                    verification = await verifier.verify_url(
+                        final_url, job.data_type, job.year
+                    )
+                    
+                    if verification.is_verified:
+                        ctx["strategy"] = "exact_url"
+                        ctx["found_url"] = final_url
+                        ctx["found_content_type"] = content_type
+                        ctx["verification_confidence"] = verification.confidence
+                        job.context = ctx
+                        await db.commit()
+                        return f"Strategy: EXACT_URL → {final_url} (verified: {verification.confidence:.0%})"
+                    else:
+                        log.warning(
+                            "Exact URL failed verification",
+                            url=final_url[:60],
+                            detected=verification.detected_data_type,
+                            expected=job.data_type,
+                            confidence=verification.confidence,
+                        )
+                        ctx["rejected_candidates"].append({
+                            "url": final_url,
+                            "reason": "content_verification_failed",
+                            "detected": verification.detected_data_type,
+                            "confidence": verification.confidence,
+                        })
                 else:
                     log.info("Exact URL failed, trying patterns")
             
@@ -114,20 +152,46 @@ class DiscoverStep(BaseStep):
                     )
                     
                     if is_valid and final_url:
-                        ctx["strategy"] = "pattern_match"
-                        ctx["found_url"] = final_url
-                        ctx["found_content_type"] = content_type
-                        ctx["discovered_via_pattern"] = pattern
-                        job.context = ctx
-                        await db.commit()
-                        log.info("Found via learned pattern", pattern=pattern, url=final_url[:80])
-                        return f"Strategy: PATTERN_MATCH → {pattern} → {final_url}"
+                        # Verify content
+                        verification = await verifier.verify_url(
+                            final_url, job.data_type, job.year
+                        )
+                        
+                        if verification.is_verified:
+                            ctx["strategy"] = "pattern_match"
+                            ctx["found_url"] = final_url
+                            ctx["found_content_type"] = content_type
+                            ctx["discovered_via_pattern"] = pattern
+                            ctx["verification_confidence"] = verification.confidence
+                            job.context = ctx
+                            await db.commit()
+                            log.info(
+                                "Found via learned pattern",
+                                pattern=pattern,
+                                url=final_url[:80],
+                                confidence=verification.confidence,
+                            )
+                            return f"Strategy: PATTERN_MATCH → {pattern} → {final_url} (verified: {verification.confidence:.0%})"
+                        else:
+                            log.debug(
+                                "Pattern URL failed verification",
+                                pattern=pattern,
+                                detected=verification.detected_data_type,
+                            )
+                            ctx["rejected_candidates"].append({
+                                "url": final_url,
+                                "reason": "content_verification_failed",
+                                "pattern": pattern,
+                                "detected": verification.detected_data_type,
+                            })
+                            # Record pattern failure
+                            await learner.record_failure(db, pattern)
                     else:
-                        # Record pattern failure
+                        # Record pattern failure (URL not found)
                         await learner.record_failure(db, pattern)
             
             # =====================================================================
-            # Strategy 4: Full BFS crawl
+            # Strategy 4: Full BFS crawl with multi-candidate verification
             # =====================================================================
             if not dno_website:
                 raise ValueError(f"No website known for DNO {ctx.get('dno_name')}")
@@ -149,52 +213,118 @@ class DiscoverStep(BaseStep):
                 target_keywords=keywords,
                 priority_paths=patterns,
                 target_year=job.year,
+                data_type=job.data_type,  # NEW: pass data_type for scoring
             )
             
             ctx["pages_crawled"] = len(results)
             
-            # Find best document result
-            for result in results:
-                if result.is_document:
+            # Try multiple document candidates with verification
+            candidates_tried = 0
+            document_results = [r for r in results if r.is_document]
+            
+            log.info(
+                "Evaluating document candidates",
+                total_documents=len(document_results),
+                max_to_try=MAX_CANDIDATES_TO_TRY,
+            )
+            
+            for result in document_results[:MAX_CANDIDATES_TO_TRY]:
+                candidates_tried += 1
+                
+                # Verify content before accepting
+                verification = await verifier.verify_url(
+                    result.final_url, job.data_type, job.year
+                )
+                
+                log.debug(
+                    "Candidate verification",
+                    url=result.final_url[:60],
+                    score=round(result.score, 2),
+                    verified=verification.is_verified,
+                    confidence=verification.confidence,
+                    detected=verification.detected_data_type,
+                    keywords=verification.keywords_found[:5],
+                )
+                
+                if verification.is_verified:
                     ctx["strategy"] = "bfs_crawl"
                     ctx["found_url"] = result.final_url
                     ctx["found_content_type"] = result.content_type
                     ctx["needs_headless_review"] = result.needs_headless
+                    ctx["verification_confidence"] = verification.confidence
+                    ctx["candidates_tried"] = candidates_tried
                     job.context = ctx
                     await db.commit()
                     log.info(
-                        "Found document via BFS",
+                        "Found verified document via BFS",
                         url=result.final_url[:80],
                         score=round(result.score, 2),
                         depth=result.depth,
+                        confidence=verification.confidence,
+                        candidates_tried=candidates_tried,
                     )
-                    return f"Strategy: BFS_CRAWL → {result.final_url} (score: {result.score:.1f})"
+                    return (
+                        f"Strategy: BFS_CRAWL → {result.final_url} "
+                        f"(score: {result.score:.1f}, verified: {verification.confidence:.0%}, "
+                        f"tried: {candidates_tried}/{len(document_results)})"
+                    )
+                else:
+                    ctx["rejected_candidates"].append({
+                        "url": result.final_url,
+                        "reason": "content_verification_failed",
+                        "score": result.score,
+                        "detected": verification.detected_data_type,
+                        "confidence": verification.confidence,
+                    })
             
-            # Check for pages that might contain download links
-            for result in results:
-                if not result.is_document and result.score > 20:
-                    # This page might have links to documents
+            # If no verified documents, try high-scoring pages as fallback
+            # (might contain tables or embedded content)
+            page_results = [r for r in results if not r.is_document and r.score > 20]
+            
+            for result in page_results[:3]:
+                verification = await verifier.verify_url(
+                    result.final_url, job.data_type, job.year
+                )
+                
+                if verification.is_verified and verification.confidence >= 0.5:
                     ctx["strategy"] = "bfs_crawl"
                     ctx["found_url"] = result.final_url
                     ctx["found_content_type"] = result.content_type
                     ctx["needs_headless_review"] = result.needs_headless
+                    ctx["verification_confidence"] = verification.confidence
                     job.context = ctx
                     await db.commit()
                     log.info(
-                        "Found promising page via BFS",
+                        "Found verified page via BFS (may contain tables/embedded content)",
                         url=result.final_url[:80],
                         score=round(result.score, 2),
-                        keywords=result.keywords_found,
+                        confidence=verification.confidence,
                     )
-                    return f"Strategy: BFS_CRAWL → {result.final_url} (landing page, score: {result.score:.1f})"
+                    return (
+                        f"Strategy: BFS_CRAWL → {result.final_url} "
+                        f"(landing page, score: {result.score:.1f}, verified: {verification.confidence:.0%})"
+                    )
             
-            # No results found
+            # No verified results found - report what was rejected
             job.context = ctx
             await db.commit()
-            raise ValueError(
-                f"No data source found for {ctx.get('dno_name')} after crawling "
-                f"{ctx['pages_crawled']} pages"
+            
+            rejected_count = len(ctx["rejected_candidates"])
+            error_msg = (
+                f"No verified data source found for {ctx.get('dno_name')} after crawling "
+                f"{ctx['pages_crawled']} pages. "
+                f"Tried {len(document_results)} documents, {rejected_count} failed verification."
             )
+            
+            if ctx["rejected_candidates"]:
+                # Log rejected candidates for debugging
+                log.warning(
+                    "All candidates failed verification",
+                    rejected_count=rejected_count,
+                    first_rejected=ctx["rejected_candidates"][0] if ctx["rejected_candidates"] else None,
+                )
+            
+            raise ValueError(error_msg)
     
     def _get_allowed_domains(self, ctx: dict) -> set[str] | None:
         """Extract allowed domains from context."""
