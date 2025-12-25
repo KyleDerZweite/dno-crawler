@@ -98,11 +98,22 @@ async def get_current_user(
     """
     Dependency to get the current authenticated user.
 
-    Usage:
+    usage:
         @router.get("/protected")
         async def protected(user: User = Depends(get_current_user)):
             return {"user": user.email}
     """
+    from .config import settings
+    
+    # Handle Mock Admin if auth is disabled or pointing to example.com
+    if not settings.is_auth_enabled:
+        return User(
+            id="mock-admin-id",
+            email="admin@dno-crawler.local",
+            name="Mock Admin",
+            roles=["ADMIN", "MEMBER"],
+        )
+
     if not credentials:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -179,13 +190,23 @@ async def get_optional_user(
     """
     Dependency to get the current user if authenticated, or None if not.
     
-    Usage:
+    usage:
         @router.get("/public-or-private")
         async def endpoint(user: Optional[User] = Depends(get_optional_user)):
             if user:
                 return {"personalized": True}
             return {"personalized": False}
     """
+    from .config import settings
+    
+    if not settings.is_auth_enabled:
+        return User(
+            id="mock-admin-id",
+            email="admin@dno-crawler.local",
+            name="Mock Admin",
+            roles=["ADMIN", "MEMBER"],
+        )
+
     if not credentials:
         return None
     

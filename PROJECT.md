@@ -7,20 +7,21 @@ Python/React web application for crawling German Distribution Network Operator (
 ## Architecture
 
 - **Backend**: FastAPI (Python 3.11+) with async SQLAlchemy, PostgreSQL, Redis
-- **Frontend**: React 18 + Vite + TypeScript + TailwindCSS
-- **AI/ML**: Ollama for LLM-powered extraction strategy learning
+- **Frontend**: React 18 + Vite + TypeScript + TailwindCSS + Base UI
+- **AI/ML**: Google Gemini for structured data extraction
+- **Auth**: Modular OIDC (Zitadel) or automatic mock mode (`ZITADEL_DOMAIN=auth.example.com`)
 - **Jobs**: arq (Redis-based) for background crawling tasks
 
 ## Key Directories
 
-- `backend/src/api/` - FastAPI routes and middleware
-- `backend/src/core/` - Pydantic models, config
-- `backend/src/db/` - SQLAlchemy ORM models
-- `backend/src/crawler/` - Web crawling logic (TODO)
-- `backend/src/intelligence/` - LLM integration (TODO)
+- `backend/app/api/` - FastAPI routes and middleware
+- `backend/app/core/` - Pydantic models, config, auth abstraction
+- `backend/app/db/` - SQLAlchemy ORM models
+- `backend/app/crawler/` - BFS engine & discovery logic
+- `backend/app/services/` - VNB client, AI extraction, recovery
 - `frontend/src/pages/` - React page components
 - `frontend/src/components/` - Reusable UI components
-- `frontend/src/lib/` - API client, auth, utilities
+- `frontend/src/lib/` - API client, auth abstraction, utilities
 
 ## Database Schema
 
@@ -38,7 +39,7 @@ Main tables:
 ```bash
 # Backend
 cd backend
-uvicorn src.api.main:create_app --factory --reload
+uvicorn app.api.main:app --reload
 
 # Frontend
 cd frontend
@@ -50,11 +51,12 @@ docker compose up -d
 
 ## API Structure
 
-- `/api/health` - Health checks
-- `/api/public/` - Rate-limited public endpoints
-- `/api/auth/` - Authentication (JWT)
-- `/api/dnos/` - DNO management (authenticated)
-- `/api/admin/` - Admin endpoints (admin role required)
+- `/health` - Health checks
+- `/api/v1/search/` - Public search (DNO/Location skeleton creation)
+- `/api/v1/auth/` - Authentication endpoints
+- `/api/v1/dnos/` - DNO management (authenticated)
+- `/api/v1/jobs/` - Job tracking & management
+- `/api/v1/admin/` - System admin endpoints
 
 ## Development Notes
 

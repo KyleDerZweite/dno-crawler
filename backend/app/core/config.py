@@ -43,19 +43,29 @@ class Settings(BaseSettings):
     redis_url: RedisDsn = Field(default="redis://localhost:6379/0")
     redis_password: str | None = None
 
-    # Zitadel Authentication
-    zitadel_domain: str = "auth.kylehub.dev"
+    # Authentication
+    zitadel_domain: str = Field(default="auth.example.com", validation_alias="ZITADEL_DOMAIN")
 
     # Rate Limiting
     rate_limit_public: int = 10  # requests per minute for unauthenticated
     rate_limit_authenticated: int = 100  # requests per minute for authenticated
 
-    # Ollama (LLM)
-    ollama_url: str = "http://localhost:11434"
-    ollama_model: str = "llama3.2"
-    ollama_vision_model: str = "llava"
-    ollama_embedding_model: str = "nomic-embed-text"
-    ollama_timeout: int = 120
+
+    # AI Extraction (OpenAI-compatible API) - all optional, falls back to regex if not set
+    # URLs: Google AI Studio: https://generativelanguage.googleapis.com/v1beta/openai
+    #       OpenRouter: https://openrouter.ai/api/v1
+    #       Ollama: http://localhost:11434/v1
+    # Models: gemini-2.5-flash-lite, gemini-2.0-flash, gpt-4o, gpt-5-nano, qwen2.5-vl:8b
+    ai_api_url: str | None = Field(default=None, validation_alias="AI_API_URL")
+    ai_api_key: str | None = Field(default=None, validation_alias="AI_API_KEY")
+    ai_model: str | None = Field(default=None, validation_alias="AI_MODEL")
+    ai_rate_limit_retries: int = 3
+    ai_rate_limit_backoff: int = 60  # seconds to wait on 429
+
+    @property
+    def ai_enabled(self) -> bool:
+        """Check if AI extraction is configured."""
+        return bool(self.ai_api_url and self.ai_model)
 
     # Crawler
     crawler_max_concurrent: int = 5
@@ -74,8 +84,6 @@ class Settings(BaseSettings):
     ddgs_rate_limit_cooldown: int = 60   # Cooldown if we hit rate limit (429/418)
     ddgs_timeout: int = 20               # Timeout for DDGS requests
 
-    # LLM Models
-    ollama_fast_model: str = "ministral:3b"  # For text parsing (DNO name extraction)
 
     # Computed storage paths
     @property
@@ -88,6 +96,11 @@ class Settings(BaseSettings):
     @property
     def zitadel_issuer(self) -> str:
         return f"https://{self.zitadel_domain}"
+
+    @property
+    def is_auth_enabled(self) -> bool:
+        """Determine if auth is enabled based on Zitadel domain."""
+        return self.zitadel_domain and self.zitadel_domain != "auth.example.com"
 
     @property
     def zitadel_jwks_url(self) -> str:

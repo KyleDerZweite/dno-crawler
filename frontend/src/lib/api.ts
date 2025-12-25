@@ -12,9 +12,11 @@ export const apiClient = axios.create({
 // Request interceptor to add auth token from OIDC session
 apiClient.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    // Get token from OIDC storage (configured to use localStorage in auth-config.ts)
-    // react-oidc-context stores user with key pattern: oidc.user:<authority>:<client_id>
+    // Detect if auth is enabled based on authority URL
     const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
+    const isAuthEnabled = authority && authority !== "https://auth.example.com";
+    if (!isAuthEnabled) return config;
+
     const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;
     const storageKey = `oidc.user:${authority}:${clientId}`;
 

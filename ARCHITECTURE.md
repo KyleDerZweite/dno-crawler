@@ -104,9 +104,9 @@ flowchart TD
 ```
 
 ### Key Components
-- **Frontend**: Handles OIDC authentication flow and attaches JWT tokens to requests via Axios interceptors.
+- **Frontend**: Handles OIDC authentication flow and attaches JWT tokens to requests via Axios interceptors. Supports a "No-Auth" fallback for simplified local development.
 - **Public API**: Allows unauthenticated users to perform rate-limited searches and generate skeleton DNO records.
-- **Protected API**: Secured by `Depends(get_current_user)`, allowing admins/members to trigger crawls and manage data.
+- **Protected API**: Secured by `Depends(get_current_user)`, allowing admins/members to trigger crawls and manage data. The authentication strategy is modular (Zitadel OIDC vs. Mock Admin).
 - **Async Worker**: Powered by ARQ and Redis, this component handles long-running tasks like crawling, PDF downloading, and LLM extraction to prevent blocking the HTTP API.
 
 ---

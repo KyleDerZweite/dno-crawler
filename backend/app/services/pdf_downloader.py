@@ -80,18 +80,16 @@ class PDFDownloader:
         pdf_path: Path, 
         dno_name: str, 
         year: int,
-        llm_extractor: Optional["LLMExtractor"] = None
     ) -> bool:
         """
         "The Glance" - Read page 1 to verify this is the correct document.
         
-        Performs keyword checks and optionally uses LLM for smart validation.
+        Performs keyword checks to validate the document.
         
         Args:
             pdf_path: Path to the PDF file
             dno_name: Expected DNO name
             year: Expected year
-            llm_extractor: Optional LLM extractor for smart validation
             
         Returns:
             True if document appears valid, False otherwise
@@ -111,19 +109,9 @@ class PDFDownloader:
                 self.log.debug("No Netzentgelte keywords found")
                 return False
             
-            # LLM verification (optional)
-            if llm_extractor:
-                prompt = f"""Is this text from a German electricity price sheet (Preisblatt/Netzentgelte) 
-for the company '{dno_name}'? Respond with only YES or NO.
-
-Text:
-{first_page_text[:1500]}"""
-                
-                response = llm_extractor.call_ollama(prompt, model=settings.ollama_fast_model)
-                return "YES" in response.upper() if response else True
-            
             return True
             
         except Exception as e:
             self.log.error("PDF validation error", error=str(e))
             return False
+

@@ -21,6 +21,13 @@ interface AuthProviderProps {
  * ```
  */
 export function AuthProvider({ children }: AuthProviderProps) {
+    const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
+    const isAuthEnabled = authority && authority !== "https://auth.example.com";
+
+    if (!isAuthEnabled) {
+        return <>{children}</>;
+    }
+
     const onSigninCallback = () => {
         // Remove the code and state from URL after successful login
         window.history.replaceState({}, document.title, window.location.pathname);

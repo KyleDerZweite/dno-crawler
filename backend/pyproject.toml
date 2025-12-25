@@ -39,8 +39,8 @@ dependencies = [
     "pytesseract>=0.3.10",
     "pillow>=10.2.0",
     
-    # LLM Integration
-    "ollama>=0.1.6",
+    # LLM Integration (OpenAI-compatible API)
+    "openai>=1.50.0",
     
     # Data Validation
     "pydantic>=2.5.0",

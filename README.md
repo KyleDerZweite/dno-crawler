@@ -1,251 +1,98 @@
 # DNO Crawler
 
-An intelligent web crawler for extracting German Distribution Network Operator (DNO) data, specifically Netzentgelte (network charges) and HLZF (Hochlastzeitfenster - high load time windows).
+An intelligent web crawler for discovering German Distribution Network Operator (DNO) data. It automates the extraction of Netzentgelte (network charges) and HLZF (high-load time windows) using AI-powered extraction and systematic web crawling.
 
-## Features
+## Key Features
 
-- **Smart Crawling**: Automatically discovers and extracts pricing data from DNO websites
-- **PDF Extraction**: Downloads and parses PDF documents, storing originals for verification
-- **Learning System**: Uses LLM (Ollama) to improve extraction strategies over time
-- **REST API**: Full-featured API with authentication and role-based access
-- **Web Dashboard**: React-based UI for searching data and managing crawls
-- **Background Jobs**: Async job processing with Redis/arq
-- **File Storage**: Local file storage with support for remote backends (OpenCloud, S3)
+- **VNB Digital Resolution**: Resolve any German address or coordinate to its responsible DNO using the VNB Digital API.
+- **AI Extraction**: Uses Google Gemini to extract structured pricing data from complex PDF and HTML sources.
+- **BFS Web Crawler**: Robust crawling engine with robots.txt respect and adaptive discovery patterns.
+- **OIDC Authentication**: Secure access management via Zitadel (OpenID Connect).
+- **Interactive API Docs**: Built-in Swagger UI for testing all backend endpoints.
+- **Async Pipeline**: Scalable job processing with Redis/arq and structured logging.
 
 ## Tech Stack
 
 ### Backend
-- **Python 3.11+** - Core language
-- **FastAPI** - Modern async web framework
-- **SQLAlchemy 2.0** - Async ORM with PostgreSQL
-- **Pydantic v2** - Data validation
-- **arq** - Redis-based job queue
-- **Ollama** - Local LLM for intelligent extraction
-- **BeautifulSoup4** - HTML parsing
-- **pdfplumber/PyMuPDF** - PDF text extraction
-- **Playwright** - Browser automation for JS-rendered pages
+- **Python 3.11+ / FastAPI**: Core async web framework.
+- **SQLAlchemy 2.0**: Modern async ORM with PostgreSQL.
+- **Google Gemini**: AI extraction engine.
+- **arq**: Redis-based async job processing.
+- **Playwright**: Browser automation for JavaScript-heavy DNO sites.
+- **structlog**: High-performance structured logging.
 
 ### Frontend
-- **React 18** - UI library
-- **Vite** - Build tool
-- **TypeScript** - Type safety
-- **TailwindCSS** - Styling
-- **Radix UI** - Accessible components
-- **TanStack Query** - Server state management
-
-### Infrastructure
-- **PostgreSQL 16** - Primary database
-- **Redis 7** - Caching and job queue
-- **Podman / Podman Compose** - Container orchestration
-- **Ollama** - Local LLM inference
+- **React / Vite**: Modern UI build system.
+- **Base UI**: Performance-focused, accessible components.
+- **TanStack Query (v5)**: Sophisticated server-state management.
+- **TailwindCSS**: Utility-first styling with custom design tokens.
 
 ## Quick Start
 
 ### Prerequisites
+- **Podman** & **Podman Compose** (or Docker equivalent)
+- Zitadel Instance (OR keep `auth.example.com` for developer mock mode)
+- Google Cloud API Key (for Gemini extraction)
 
-- **Podman** and **Podman Compose** (or Docker/Docker Compose)
-- Node.js 20+ (for frontend development)
-- Python 3.11+ (for backend development)
+### Running with Podman Compose
 
-### Environment Setup
-
-1. **Clone and enter directory**
+1. **Clone & Configure**
    ```bash
    git clone https://github.com/KyleDerZweite/dno-crawler.git
    cd dno-crawler
+   cp .env.example .env # Update with your Zitadel and Gemini keys
    ```
 
-2. **Create environment file**
+2. **Start Services**
    ```bash
-   cp .env.example .env
-   # Edit .env with your settings (especially JWT_SECRET, POSTGRES_PASSWORD)
+   # Build and start all containers
+   podman-compose up -d --build
    ```
 
-### Full Container Setup (Recommended)
-
-```bash
-# Start all services
-podman-compose up -d
-
-# View logs
-podman-compose logs -f backend
-
-# Pull Ollama models (first time only)
-podman exec dno-crawler-ollama ollama pull llama3.2
-podman exec dno-crawler-ollama ollama pull llava
-
-# Stop everything
-podman-compose down
-```
-
-### Development Setup (Local Backend/Frontend)
-
-1. **Start infrastructure services only**
-   ```bash
-   ```
-
-2. **Backend setup**
-   ```bash
-   cd backend
-   python -m venv .venv
-   source .venv/bin/activate
-   pip install -e ".[dev]"
-   
-   # Run migrations (once alembic is set up)
-   # alembic upgrade head
-   
-   # Start server
-   uvicorn app.api.main:create_app --factory --reload
-   ```
-
-3. **Frontend setup** (new terminal)
-   ```bash
-   cd frontend
-   npm install
-   npm run dev
-   ```
-
-4. **Access the application**
-   - Frontend: http://localhost:5173
-   - API: http://localhost:8000
-   - API Docs: http://localhost:8000/docs
+3. **Access Application**
+   - **Frontend**: http://localhost:5173
+   - **API Docs**: http://localhost:8000/docs
+   - **Metrics**: http://localhost:8000/api/v1/health
 
 ## Project Structure
 
-```
+```text
 dno-crawler/
-├── backend/
+├── backend/            # FastAPI Backend
 │   ├── app/
-│   │   ├── api/           # FastAPI routes and middleware
-│   │   ├── core/          # Pydantic models and config
-│   │   ├── db/            # SQLAlchemy models and database
-│   │   ├── crawler/       # Web crawling logic
-│   │   │   ├── discovery/ # URL/source discovery
-│   │   │   ├── fetcher/   # HTTP/browser fetching
-│   │   │   └── parser/    # HTML/PDF parsing
-│   │   ├── intelligence/  # LLM integration and learning
-│   │   │   ├── analyzer/  # Data analysis
-│   │   │   ├── llm/       # Ollama client
-│   │   │   └── strategy/  # Extraction strategies
-│   │   └── worker/        # Background job processing
-│   ├── migrations/        # Alembic database migrations
-│   ├── tests/             # pytest tests
-│   └── pyproject.toml
-├── frontend/
+│   │   ├── api/        # REST controllers & OIDC security
+│   │   ├── crawler/    # BFS engine & discovery logic
+│   │   ├── services/   # VNB client, AI extraction, recovery
+│   │   └── db/         # PostgreSQL models & migrations
+├── frontend/           # React Frontend
 │   ├── src/
-│   │   ├── components/    # React components
-│   │   ├── pages/         # Page components
-│   │   ├── lib/           # Utilities, API client, auth
-│   │   └── hooks/         # Custom React hooks
-│   └── package.json
-├── data/                  # Persistent file storage (mounted volume)
-│   ├── downloads/         # Downloaded PDFs and documents
-│   └── strategies/        # LLM extraction strategies
-├── docker-compose.yml     # Podman/Docker compose file
-└── README.md
+│   │   ├── pages/      # Search, DNO management, Jobs
+│   │   ├── lib/        # API client & Auth provider
+│   │   └── components/ # Base UI primitives
+└── data/               # Persistent storage for downloads & logs
 ```
-
-## API Endpoints
-
-### Public (rate-limited)
-- `GET /api/v1/search` - Search data by DNO, year, type
-- `GET /api/v1/dnos` - List all DNOs (public info)
-- `GET /api/v1/years` - List available years
-
-### Authenticated
-- `POST /api/v1/auth/login` - Login
-- `POST /api/v1/auth/register` - Register (requires admin approval)
-- `POST /api/v1/auth/refresh` - Refresh access token
-- `GET /api/v1/auth/me` - Current user info
-- `GET /api/v1/dnos/` - List DNOs with stats
-- `GET /api/v1/dnos/{id}` - DNO details
-- `POST /api/v1/dnos/{id}/crawl` - Trigger crawl job
-- `GET /api/v1/dnos/{id}/data` - Get DNO data
-- `GET /api/v1/dnos/{id}/jobs` - Get DNO crawl history
-
-### Admin
-- `GET /api/v1/admin/dashboard` - System statistics
-- `GET /api/v1/admin/users` - List users
-- `GET /api/v1/admin/users/pending` - Pending approvals
-- `POST /api/v1/admin/users/{id}/approve` - Approve/reject user
-- `PATCH /api/v1/admin/users/{id}/role` - Update user role
-- `DELETE /api/v1/admin/users/{id}` - Delete user
-- `GET /api/v1/admin/jobs` - List all jobs
-- `POST /api/v1/admin/jobs` - Create standalone job
 
 ## Configuration
 
-Environment variables (set in `.env`):
-
-| Variable | Description | Default |
-|----------|-------------|---------|
-| `DATABASE_URL` | PostgreSQL connection string | Required |
-| `REDIS_URL` | Redis connection string | `redis://localhost:6379/0` |
-| `OLLAMA_URL` | Ollama API URL | `http://localhost:11434` |
-| `JWT_SECRET` | JWT signing secret (min 32 chars) | Required |
-| `CORS_ORIGINS` | Allowed CORS origins (JSON array) | `["http://localhost:5173"]` |
-| `STORAGE_PATH` | Base path for file storage | `./data` |
-| `ADMIN_EMAIL` | Initial admin email | Optional |
-| `ADMIN_USERNAME` | Initial admin username | Optional |
-| `ADMIN_PASSWORD` | Initial admin password | Optional |
-
-## File Storage
-
-Downloaded PDFs and documents are stored locally with the following structure:
-
-```
-data/downloads/{dno_slug}/{year}/{content_hash}.pdf
-```
-
-Each file record in the database includes:
-- Original download URL
-- Content hash (SHA-256)
-- Download timestamp
-- File size and MIME type
-- Link to extracted data records
-
-This allows:
-- Serving files via API for user download
-- Keeping original files for human verification
-- Deduplication via content hashing
-- Future migration to cloud storage (S3, OpenCloud)
+| Variable | Description |
+|----------|-------------|
+| `DATABASE_URL` | PostgreSQL connection string |
+| `VITE_API_URL` | Frontend pointer to Backend API |
+| `ZITADEL_DOMAIN` | Zitadel domain (set to `auth.example.com` to disable auth) |
+| `GEMINI_API_KEY` | Key for AI-powered extraction |
+| `VITE_ZITADEL_AUTHORITY` | Must match `ZITADEL_DOMAIN` (with https:// prefix) |
+| `VITE_ZITADEL_CLIENT_ID` | Zitadel OIDC client ID |
 
 ## Development
 
-### Running Tests
-
 ```bash
-cd backend
-pytest
-```
+# Backend Tests
+cd backend && pytest
 
-### Code Style
-
-```bash
-# Backend
-ruff check .
-ruff format .
-
-# Frontend
-npm run lint
-npm run format
-```
-
-### Database Migrations
-
-```bash
-cd backend
-
-# Create a new migration
-alembic revision --autogenerate -m "description"
-
-# Apply migrations
-alembic upgrade head
-
-# Rollback one migration
-alembic downgrade -1
+# Frontend Linting
+cd frontend && npm run lint
 ```
 
 ## License
 
-MIT License - see [LICENSE](LICENSE) file
+MIT License - see [LICENSE](LICENSE)

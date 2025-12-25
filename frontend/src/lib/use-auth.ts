@@ -15,8 +15,33 @@ import { useAuth as useOidcAuth } from "react-oidc-context";
  * - hasRole: Function to check if user has a specific role
  */
 export function useAuth() {
-    const auth = useOidcAuth();
     const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
+    const isAuthEnabled = authority && authority !== "https://auth.example.com";
+
+    // Handle Mock Admin if auth is disabled or pointing to example.com
+    if (!isAuthEnabled) {
+        return {
+            user: {
+                sub: "mock-admin-id",
+                email: "admin@dno-crawler.local",
+                name: "Mock Admin",
+                preferred_username: "admin"
+            },
+            avatar: undefined,
+            accessToken: "mock-token",
+            isAuthenticated: true,
+            isLoading: false,
+            error: undefined,
+            login: () => { },
+            logout: () => { },
+            openSettings: () => { },
+            roles: ["ADMIN", "MEMBER"],
+            hasRole: (role: string) => ["ADMIN", "MEMBER"].includes(role),
+            isAdmin: () => true,
+        };
+    }
+
+    const auth = useOidcAuth();
 
     // Extract roles from ID token claims
     const getRoles = (): string[] => {
