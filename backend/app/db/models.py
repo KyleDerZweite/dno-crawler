@@ -153,6 +153,11 @@ class NetzentgelteModel(Base, TimestampMixin):
     verified_by: Mapped[str | None] = mapped_column(String(255))  # Zitadel user sub
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_notes: Mapped[str | None] = mapped_column(Text)
+    
+    # Flagging (when users report data as wrong)
+    flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    flag_reason: Mapped[str | None] = mapped_column(Text)  # Why it's flagged as wrong
 
     dno: Mapped["DNOModel"] = relationship(back_populates="netzentgelte")
 
@@ -187,6 +192,11 @@ class HLZFModel(Base, TimestampMixin):
     )
     verified_by: Mapped[str | None] = mapped_column(String(255))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    
+    # Flagging (when users report data as wrong)
+    flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    flag_reason: Mapped[str | None] = mapped_column(Text)  # Why it's flagged as wrong
 
     dno: Mapped["DNOModel"] = relationship(back_populates="hlzf")
 

@@ -38,6 +38,8 @@ export function useAuth() {
             roles: ["ADMIN", "MEMBER"],
             hasRole: (role: string) => ["ADMIN", "MEMBER"].includes(role),
             isAdmin: () => true,
+            isMaintainer: () => false,  // Mock admin is not maintainer (but is admin)
+            canManageFlags: () => true,  // Admins can manage flags
         };
     }
 
@@ -77,6 +79,16 @@ export function useAuth() {
         return hasRole("ADMIN");
     };
 
+    // Check if user is maintainer
+    const isMaintainer = (): boolean => {
+        return hasRole("MAINTAINER");
+    };
+
+    // Check if user can manage flags (admin or maintainer)
+    const canManageFlags = (): boolean => {
+        return isAdmin() || isMaintainer();
+    };
+
     // Open Zitadel account settings in new tab
     const openSettings = (): void => {
         window.open(`${authority}/ui/console/users/me`, "_blank");
@@ -103,6 +115,8 @@ export function useAuth() {
         roles: getRoles(),
         hasRole,
         isAdmin,
+        isMaintainer,
+        canManageFlags,
     };
 }
 

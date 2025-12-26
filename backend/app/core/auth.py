@@ -44,6 +44,17 @@ class User:
     def is_admin(self) -> bool:
         # Case-insensitive check for admin role
         return any(role.upper() == "ADMIN" for role in self.roles)
+    
+    @property
+    def is_maintainer(self) -> bool:
+        """Check if user has MAINTAINER role."""
+        return any(role.upper() == "MAINTAINER" for role in self.roles)
+    
+    @property
+    def can_manage_flags(self) -> bool:
+        """Check if user can remove flags (Maintainer or Admin)."""
+        return self.is_admin or self.is_maintainer
+
 
 
 async def fetch_jwks() -> dict:
@@ -267,6 +278,26 @@ async def require_member(user: User = Depends(get_current_user)) -> User:
             detail="Member access required",
         )
     return user
+
+
+async def require_maintainer_or_admin(user: User = Depends(get_current_user)) -> User:
+    """
+    Dependency that requires MAINTAINER or ADMIN role.
+    
+    Used for operations like removing data flags.
+
+    Usage:
+        @router.delete("/data/{id}/flag")
+        async def remove_flag(user: User = Depends(require_maintainer_or_admin)):
+            ...
+    """
+    if not user.can_manage_flags:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Maintainer or Admin access required",
+        )
+    return user
+
 
 
 def require_role(role: str):
