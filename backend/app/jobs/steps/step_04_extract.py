@@ -4,18 +4,20 @@ Step 04: Extract Data
 Extracts structured data from downloaded files.
 
 Strategy:
-1. If AI is configured (AI_API_URL + AI_MODEL), use AI vision extraction
-2. Otherwise, fall back to regex-based extraction from pdf_extractor.py
+1. If AI is configured, use AI extraction (text mode for HTML, vision for PDF)
+2. Otherwise, fall back to:
+   - HTML files: BeautifulSoup-based extraction (html_extractor.py)
+   - PDF files: Regex-based extraction (pdf_extractor.py)
 
 What it does:
 - Load the file from local storage
-- Extract using configured method (AI or regex)
+- Extract using configured method (AI or fallback)
 - Parse into structured data format
 
 Output stored in job.context:
 - extracted_data: list of records from extraction
 - extraction_notes: any notes about the extraction
-- extraction_method: "ai" or "regex"
+- extraction_method: "ai", "html_parser", or "pdf_regex"
 """
 
 import asyncio
@@ -35,12 +37,17 @@ class ExtractStep(BaseStep):
     async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         ctx = job.context or {}
         file_path = ctx.get("downloaded_file")
+        file_format = ctx.get("file_format", "").lower()
         
         if not file_path:
             raise ValueError("No file to extract from")
         
         path = Path(file_path)
         dno_name = ctx.get("dno_name", "Unknown")
+        
+        # Detect format from extension if not in context
+        if not file_format:
+            file_format = path.suffix.lstrip(".").lower()
         
         # Try AI extraction if configured
         if settings.ai_enabled:
@@ -50,17 +57,19 @@ class ExtractStep(BaseStep):
                 ctx["extraction_notes"] = result.get("notes", "")
                 ctx["extraction_method"] = "ai"
                 ctx["extraction_model"] = settings.ai_model
+                job.context = ctx
                 await db.commit()
                 return f"Extracted {len(ctx['extracted_data'])} records using AI ({settings.ai_model})"
         
-        # Fallback to regex extraction
-        records = await self._extract_with_regex(path, job.data_type)
+        # Fallback extraction based on file format
+        records, method = await self._extract_fallback(path, file_format, job.data_type, job.year)
         ctx["extracted_data"] = records
-        ctx["extraction_notes"] = "Regex-based extraction"
-        ctx["extraction_method"] = "regex"
+        ctx["extraction_notes"] = f"Fallback {method} extraction"
+        ctx["extraction_method"] = method
+        job.context = ctx
         await db.commit()
         
-        return f"Extracted {len(records)} records using regex"
+        return f"Extracted {len(records)} records using {method}"
 
     async def _extract_with_ai(
         self, 
@@ -69,7 +78,7 @@ class ExtractStep(BaseStep):
         year: int, 
         data_type: str
     ) -> dict | None:
-        """Extract data using AI vision model."""
+        """Extract data using AI (auto-routes to text or vision mode)."""
         try:
             from app.services.extraction.ai_extractor import extract_with_ai
             
@@ -80,18 +89,40 @@ class ExtractStep(BaseStep):
             structlog.get_logger().warning("ai_extraction_failed", error=str(e))
             return None
 
-    async def _extract_with_regex(self, file_path: Path, data_type: str) -> list:
-        """Fallback regex-based extraction."""
+    async def _extract_fallback(
+        self, 
+        file_path: Path, 
+        file_format: str, 
+        data_type: str,
+        year: int
+    ) -> tuple[list, str]:
+        """Fallback extraction when AI is not available."""
+        
+        # HTML files: use BeautifulSoup parser
+        if file_format in ("html", "htm"):
+            from app.services.extraction.html_extractor import extract_hlzf_from_html
+            
+            html_content = file_path.read_text(encoding="utf-8", errors="replace")
+            
+            if data_type == "hlzf":
+                records = extract_hlzf_from_html(html_content, year)
+                return records, "html_parser"
+            else:
+                # No HTML parser for netzentgelte yet
+                return [], "html_parser"
+        
+        # PDF files: use regex extraction
         from app.services.extraction.pdf_extractor import (
             extract_netzentgelte_from_pdf,
             extract_hlzf_from_pdf,
         )
         
-        # Run blocking PDF extraction in thread
         if data_type == "netzentgelte":
-            return await asyncio.to_thread(extract_netzentgelte_from_pdf, file_path)
+            records = await asyncio.to_thread(extract_netzentgelte_from_pdf, file_path)
         else:  # hlzf
-            return await asyncio.to_thread(extract_hlzf_from_pdf, file_path)
+            records = await asyncio.to_thread(extract_hlzf_from_pdf, file_path)
+        
+        return records, "pdf_regex"
 
     def _build_prompt(self, dno_name: str, year: int, data_type: str) -> str:
         """Build the extraction prompt for AI."""

@@ -901,9 +901,12 @@ async def list_dno_files(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
-    """List available PDF files for a DNO."""
+    """List available source files for a DNO (PDFs, HTMLs, etc)."""
     import os
     from pathlib import Path
+    
+    # Supported file extensions
+    SUPPORTED_EXTENSIONS = {".pdf", ".html", ".htm", ".xlsx", ".xls", ".csv", ".docx"}
     
     # Verify DNO exists
     query = select(DNOModel).where(DNOModel.id == dno_id)
@@ -919,26 +922,34 @@ async def list_dno_files(
     # Look for files in both old path and new slug-based path
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     files = []
+    seen_names = set()  # Avoid duplicates
     
     # Check old path (data/downloads/)
     old_path = Path(storage_path) / "downloads"
     if old_path.exists():
-        for f in old_path.glob(f"{dno.slug}-*.pdf"):
-            files.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "path": f"/files/downloads/{f.name}",
-            })
+        for f in old_path.glob(f"{dno.slug}-*.*"):
+            if f.suffix.lower() in SUPPORTED_EXTENSIONS and f.name not in seen_names:
+                seen_names.add(f.name)
+                files.append({
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "path": f"/files/downloads/{f.name}",
+                })
     
     # Check new path (data/downloads/<slug>/)
     new_path = Path(storage_path) / "downloads" / dno.slug
     if new_path.exists():
-        for f in new_path.glob("*.pdf"):
-            files.append({
-                "name": f.name,
-                "size": f.stat().st_size,
-                "path": f"/files/downloads/{dno.slug}/{f.name}",
-            })
+        for f in new_path.iterdir():
+            if f.is_file() and f.suffix.lower() in SUPPORTED_EXTENSIONS and f.name not in seen_names:
+                seen_names.add(f.name)
+                files.append({
+                    "name": f.name,
+                    "size": f.stat().st_size,
+                    "path": f"/files/downloads/{dno.slug}/{f.name}",
+                })
+    
+    # Sort by name for consistent ordering
+    files.sort(key=lambda x: x["name"])
     
     return APIResponse(
         success=True,

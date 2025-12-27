@@ -1,2 +1,2 @@
 # Downloaded PDFs and documents from DNO websites
-# Structure: {dno_slug}/{year}/{content_hash}.{ext}
+# Structure: {dno_slug}/{dno_slug}_{data_type}_{year}.{ext}

@@ -88,9 +88,21 @@ class FinalizeStep(BaseStep):
         await db.commit()
         
         records_saved = len(data)
-        url = ctx.get("found_url", "unknown")
         
-        return f"Saved {records_saved} records from {url}"
+        # Determine source description for message
+        # Priority: found_url > dno_name > file path > "cache"
+        source = ctx.get("found_url")
+        if not source:
+            source = ctx.get("dno_name")
+        if not source:
+            downloaded_file = ctx.get("downloaded_file", "")
+            if downloaded_file:
+                from pathlib import Path
+                source = Path(downloaded_file).name
+        if not source:
+            source = "cache"
+        
+        return f"Saved {records_saved} records from {source}"
     
     async def _update_source_profile(
         self,

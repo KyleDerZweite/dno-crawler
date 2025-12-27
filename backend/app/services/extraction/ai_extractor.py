@@ -7,6 +7,10 @@ Supports any provider with OpenAI-compatible API format:
 - OpenRouter
 - Ollama (local)
 
+Modes:
+- TEXT mode: For HTML files - pass content as text (cheaper, faster)
+- VISION mode: For PDF/images - encode as base64 image
+
 All env vars optional - returns None if AI not configured.
 """
 
@@ -26,7 +30,13 @@ logger = structlog.get_logger()
 
 
 class AIExtractor:
-    """OpenAI-compatible extractor for vision models."""
+    """OpenAI-compatible extractor for vision and text models."""
+    
+    # File extensions that should use vision mode
+    VISION_EXTENSIONS = {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+    
+    # File extensions that should use text mode
+    TEXT_EXTENSIONS = {".html", ".htm", ".txt", ".csv", ".xml"}
     
     def __init__(self):
         if not settings.ai_enabled:
@@ -49,7 +59,76 @@ class AIExtractor:
     )
     async def extract(self, file_path: Path, prompt: str) -> dict[str, Any]:
         """
+        Extract structured data from a file using AI.
+        
+        Automatically selects text or vision mode based on file extension.
+        
+        Args:
+            file_path: Path to file (HTML, PDF, or image)
+            prompt: Extraction prompt with expected JSON schema
+            
+        Returns:
+            Parsed JSON response from the model
+        """
+        suffix = file_path.suffix.lower()
+        
+        # Route to appropriate extraction method
+        if suffix in self.TEXT_EXTENSIONS:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            return await self.extract_text(content, prompt)
+        else:
+            return await self.extract_vision(file_path, prompt)
+    
+    async def extract_text(self, content: str, prompt: str) -> dict[str, Any]:
+        """
+        Extract structured data from text content (HTML, etc).
+        
+        Uses text-only mode - cheaper and faster than vision.
+        
+        Args:
+            content: Text content (e.g., HTML)
+            prompt: Extraction prompt with expected JSON schema
+            
+        Returns:
+            Parsed JSON response from the model
+        """
+        logger.info("ai_extract_text_start", model=self.model, content_len=len(content))
+        
+        # Combine prompt with content
+        full_prompt = f"{prompt}\n\n---\n\nContent to extract from:\n\n{content}"
+        
+        try:
+            response = await self.client.chat.completions.create(
+                model=self.model,
+                messages=[{
+                    "role": "user",
+                    "content": full_prompt
+                }],
+                response_format={"type": "json_object"}
+            )
+            
+            response_content = response.choices[0].message.content
+            result = json.loads(response_content)
+            
+            logger.info(
+                "ai_extract_text_success",
+                model=self.model,
+                records=len(result.get("data", []))
+            )
+            return result
+            
+        except json.JSONDecodeError as e:
+            logger.error("ai_extract_json_error", error=str(e), content=response_content[:500])
+            raise ValueError(f"AI returned invalid JSON: {e}")
+        except Exception as e:
+            logger.error("ai_extract_text_error", error=str(e))
+            raise
+    
+    async def extract_vision(self, file_path: Path, prompt: str) -> dict[str, Any]:
+        """
         Extract structured data from a file using AI vision.
+        
+        Uses base64-encoded image/document for vision models.
         
         Args:
             file_path: Path to PDF or image file
@@ -58,7 +137,7 @@ class AIExtractor:
         Returns:
             Parsed JSON response from the model
         """
-        logger.info("ai_extract_start", file=str(file_path), model=self.model)
+        logger.info("ai_extract_vision_start", file=str(file_path), model=self.model)
         
         # Encode file as base64
         with open(file_path, "rb") as f:
@@ -96,7 +175,7 @@ class AIExtractor:
             result = json.loads(content)
             
             logger.info(
-                "ai_extract_success",
+                "ai_extract_vision_success",
                 model=self.model,
                 records=len(result.get("data", []))
             )
@@ -106,7 +185,7 @@ class AIExtractor:
             logger.error("ai_extract_json_error", error=str(e), content=content[:500])
             raise ValueError(f"AI returned invalid JSON: {e}")
         except Exception as e:
-            logger.error("ai_extract_error", error=str(e))
+            logger.error("ai_extract_vision_error", error=str(e))
             raise
 
 
@@ -128,10 +207,10 @@ async def extract_with_ai(
     prompt: str
 ) -> dict[str, Any] | None:
     """
-    Convenience function for AI extraction.
+    Convenience function for AI extraction (auto-detects file type).
     
     Args:
-        file_path: Path to file
+        file_path: Path to file (HTML, PDF, or image)
         prompt: Extraction prompt
         
     Returns:
@@ -141,3 +220,26 @@ async def extract_with_ai(
     if extractor is None:
         return None
     return await extractor.extract(Path(file_path), prompt)
+
+
+async def extract_html_with_ai(
+    html_content: str,
+    prompt: str
+) -> dict[str, Any] | None:
+    """
+    Convenience function for AI extraction of HTML text content.
+    
+    Uses text mode (cheaper than vision).
+    
+    Args:
+        html_content: HTML content as string
+        prompt: Extraction prompt
+        
+    Returns:
+        Extracted data dict, or None if AI not configured
+    """
+    extractor = get_ai_extractor()
+    if extractor is None:
+        return None
+    return await extractor.extract_text(html_content, prompt)
+

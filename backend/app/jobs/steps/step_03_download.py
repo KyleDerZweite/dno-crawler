@@ -7,7 +7,7 @@ What it does:
 - Skip if strategy is "use_cache"
 - Detect file format from URL (pdf, xlsx, html, etc.)
 - Download file to: data/downloads/{dno_slug}/{dno_slug}-{data_type}-{year}.{ext}
-- For HTML pages, save the page content
+- For HTML pages: strip unnecessary content and split by year
 
 File storage convention:
     data/downloads/
@@ -21,17 +21,21 @@ File storage convention:
 Output stored in job.context:
 - downloaded_file: local file path
 - file_format: detected format (pdf, xlsx, html, etc.)
+- years_split: list of years if HTML was split (optional)
 """
 
 import asyncio
 from pathlib import Path
 
 import httpx
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
+
+logger = structlog.get_logger()
 
 
 class DownloadStep(BaseStep):
@@ -70,16 +74,85 @@ class DownloadStep(BaseStep):
             # Build save path with correct extension
             save_path = save_dir / f"{dno_slug}-{job.data_type}-{job.year}.{file_format}"
             
-            # Save to disk
+            # For HTML files: strip and split by year
+            if file_format == "html":
+                html_content = response.content.decode("utf-8", errors="replace")
+                result = await self._process_html(
+                    html_content=html_content,
+                    save_dir=save_dir,
+                    dno_slug=dno_slug,
+                    data_type=job.data_type,
+                    target_year=job.year
+                )
+                
+                if result:
+                    ctx["downloaded_file"] = result["file_path"]
+                    ctx["file_format"] = "html"
+                    ctx["years_split"] = result.get("years_found", [])
+                    job.context = ctx
+                    
+                    years_str = ", ".join(str(y) for y in result.get("years_found", []))
+                    return f"Downloaded & split HTML: {result['file_path']} (years: {years_str})"
+            
+            # Standard file: save directly
             save_path.write_bytes(response.content)
         
         # Update context
         ctx["downloaded_file"] = str(save_path)
         ctx["file_format"] = file_format
         job.context = ctx
-        # Let base class handle commit
         
         return f"Downloaded to: {save_path.name} ({file_format.upper()}, {len(response.content) // 1024} KB)"
+    
+    async def _process_html(
+        self,
+        html_content: str,
+        save_dir: Path,
+        dno_slug: str,
+        data_type: str,
+        target_year: int
+    ) -> dict | None:
+        """Process HTML: strip unnecessary content and split by year."""
+        from app.services.extraction.html_stripper import HtmlStripper
+        
+        stripper = HtmlStripper()
+        
+        # Strip and split into year-specific files
+        created_files = await asyncio.to_thread(
+            stripper.strip_and_split,
+            html_content=html_content,
+            output_dir=save_dir,
+            slug=dno_slug,
+            data_type=data_type
+        )
+        
+        if not created_files:
+            logger.warning("html_strip_failed", slug=dno_slug, data_type=data_type)
+            return None
+        
+        years_found = [year for year, _ in created_files]
+        
+        # Find the file for our target year
+        target_file = None
+        for year, file_path in created_files:
+            if year == target_year:
+                target_file = str(file_path)
+                break
+        
+        # If target year not found, use the first file
+        if not target_file and created_files:
+            target_file = str(created_files[0][1])
+            logger.warning(
+                "target_year_not_found",
+                target_year=target_year,
+                available_years=years_found,
+                using=target_file
+            )
+        
+        return {
+            "file_path": target_file,
+            "years_found": years_found
+        }
     
     def _detect_format_from_content_type(self, content_type: str, url: str) -> str:
         """Detect file format from Content-Type header, fall back to URL."""
@@ -116,3 +189,4 @@ class DownloadStep(BaseStep):
         else:
             # Assume HTML if no extension
             return "html"
+

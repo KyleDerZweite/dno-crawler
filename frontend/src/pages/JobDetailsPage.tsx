@@ -149,7 +149,7 @@ export function JobDetailsPage() {
             {/* Timeline */}
             <Card className="p-6">
                 <h2 className="font-semibold mb-6">Timeline</h2>
-                <div className="space-y-0 [&>div:last-child>div:first-child>div:last-child]:hidden">
+                <div className="space-y-0">
                     {/* Lifecycle: Start */}
                     <div className="opacity-70">
                         <TimelineItem
@@ -193,7 +193,7 @@ export function JobDetailsPage() {
                         </div>
                     )}
 
-                    {/* Separator / Connector */}
+                    {/* Separator / Connector before completion */}
                     {job.completed_at && (
                         <div className="flex gap-4 h-4">
                             <div className="flex flex-col items-center w-8">
@@ -202,16 +202,14 @@ export function JobDetailsPage() {
                         </div>
                     )}
 
-                    {/* Lifecycle: End */}
+                    {/* Lifecycle: End - Completed/Failed */}
                     {job.completed_at && (
-                        <div className="mt-2">
-                            <TimelineItem
-                                icon={status === "completed" ? CheckCircle : status === "failed" ? AlertCircle : Ban}
-                                label={status === "completed" ? "Completed" : status === "failed" ? "Failed" : "Cancelled"}
-                                time={job.completed_at}
-                                status="done"
-                            />
-                        </div>
+                        <TimelineItem
+                            icon={status === "completed" ? CheckCircle : status === "failed" ? AlertCircle : Ban}
+                            label={status === "completed" ? "Completed" : status === "failed" ? "Failed" : "Cancelled"}
+                            time={job.completed_at}
+                            status="done"
+                        />
                     )}
                 </div>
             </Card>
