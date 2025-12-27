@@ -11,7 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
-from app.api.routes import admin, auth, dnos, files, health, jobs, search
+from app.api.routes import admin, auth, dnos, files, health, jobs, search, verification
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -89,6 +89,7 @@ def create_app() -> FastAPI:
     app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # Public search (skeleton creation)
     app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Authenticated DNO management
     app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])  # Job management
+    app.include_router(verification.router, prefix="/api/v1/verification", tags=["Verification"])  # Data verification
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
 
     # Exception Handlers

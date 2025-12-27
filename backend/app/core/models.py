@@ -38,6 +38,7 @@ class UserRole(str, Enum):
     """User roles (for Zitadel integration)."""
     PENDING = "pending"
     USER = "user"
+    MAINTAINER = "maintainer"  # Can manage data verification flags
     ADMIN = "admin"
 
 
@@ -83,6 +84,7 @@ class VerificationStatus(str, Enum):
     UNVERIFIED = "unverified"
     VERIFIED = "verified"
     REJECTED = "rejected"
+    FLAGGED = "flagged"  # User reported as potentially incorrect
 
 
 class CrawlStrategy(str, Enum):

@@ -38,6 +38,7 @@ import { AxiosError } from "axios";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import { useState, useMemo, useRef, useEffect } from "react";
+import { VerificationBadge } from "@/components/verification-badge";
 
 // Crawl configuration - matching SearchPage defaults
 const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -1007,6 +1008,7 @@ export function DNODetailPage() {
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Voltage Level</th>
                                     <th className="text-right py-2 px-3 font-medium text-muted-foreground">Leistung (€/kW)</th>
                                     <th className="text-right py-2 px-3 font-medium text-muted-foreground">Arbeit (ct/kWh)</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground">Status</th>
                                     {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16"></th>}
                                 </tr>
                             </thead>
@@ -1017,6 +1019,20 @@ export function DNODetailPage() {
                                         <td className="py-2 px-3">{item.voltage_level}</td>
                                         <td className="py-2 px-3 text-right font-mono">{item.leistung?.toFixed(2) || "-"}</td>
                                         <td className="py-2 px-3 text-right font-mono">{item.arbeit?.toFixed(3) || "-"}</td>
+                                        <td className="py-2 px-3 text-center">
+                                            <VerificationBadge
+                                                status={item.verification_status || "unverified"}
+                                                verifiedBy={item.verified_by}
+                                                verifiedAt={item.verified_at}
+                                                flaggedBy={item.flagged_by}
+                                                flaggedAt={item.flagged_at}
+                                                flagReason={item.flag_reason}
+                                                recordId={item.id}
+                                                recordType="netzentgelte"
+                                                dnoId={id!}
+                                                compact
+                                            />
+                                        </td>
                                         {isAdmin() && (
                                             <td className="py-2 px-3 text-right">
                                                 <div className="relative inline-block" ref={openMenuId === `netz-${item.id}` ? menuRef : undefined}>
@@ -1081,6 +1097,7 @@ export function DNODetailPage() {
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Frühling</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Sommer</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground">Herbst</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground">Status</th>
                                     {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16"></th>}
                                 </tr>
                             </thead>
@@ -1093,6 +1110,20 @@ export function DNODetailPage() {
                                         <td className="py-2 px-3 font-mono whitespace-pre-line">{item.fruehling || "-"}</td>
                                         <td className="py-2 px-3 font-mono whitespace-pre-line">{item.sommer || "-"}</td>
                                         <td className="py-2 px-3 font-mono whitespace-pre-line">{item.herbst || "-"}</td>
+                                        <td className="py-2 px-3 text-center">
+                                            <VerificationBadge
+                                                status={item.verification_status || "unverified"}
+                                                verifiedBy={item.verified_by}
+                                                verifiedAt={item.verified_at}
+                                                flaggedBy={item.flagged_by}
+                                                flaggedAt={item.flagged_at}
+                                                flagReason={item.flag_reason}
+                                                recordId={item.id}
+                                                recordType="hlzf"
+                                                dnoId={id!}
+                                                compact
+                                            />
+                                        </td>
                                         {isAdmin() && (
                                             <td className="py-2 px-3 text-right">
                                                 <div className="relative inline-block" ref={openMenuId === `hlzf-${item.id}` ? menuRef : undefined}>

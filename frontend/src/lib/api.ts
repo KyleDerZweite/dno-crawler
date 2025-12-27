@@ -87,6 +87,12 @@ export interface Netzentgelte {
   leistung_unter_2500h?: number;
   arbeit_unter_2500h?: number;
   verification_status?: string;
+  verified_by?: string;
+  verified_at?: string;
+  verification_notes?: string;
+  flagged_by?: string;
+  flagged_at?: string;
+  flag_reason?: string;
 }
 
 export interface HLZF {
@@ -100,6 +106,24 @@ export interface HLZF {
   sommer?: string | null;
   herbst?: string | null;
   verification_status?: string;
+  verified_by?: string;
+  verified_at?: string;
+  flagged_by?: string;
+  flagged_at?: string;
+  flag_reason?: string;
+}
+
+// Verification response from API
+export interface VerificationResponse {
+  id: number;
+  verification_status: string;
+  verified_by?: string;
+  verified_at?: string;
+  verification_notes?: string;
+  flagged_by?: string;
+  flagged_at?: string;
+  flag_reason?: string;
+  message: string;
 }
 
 // =============================================================================
@@ -474,6 +498,69 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.get("/admin/dashboard");
+      return data;
+    },
+  },
+
+  // Verification API - Data quality management
+  verification: {
+    // Netzentgelte verification
+    async verifyNetzentgelte(
+      recordId: number,
+      notes?: string
+    ): Promise<VerificationResponse> {
+      const { data } = await apiClient.post(
+        `/verification/netzentgelte/${recordId}/verify`,
+        notes ? { notes } : undefined
+      );
+      return data;
+    },
+
+    async flagNetzentgelte(
+      recordId: number,
+      reason: string
+    ): Promise<VerificationResponse> {
+      const { data } = await apiClient.post(
+        `/verification/netzentgelte/${recordId}/flag`,
+        { reason }
+      );
+      return data;
+    },
+
+    async unflagNetzentgelte(recordId: number): Promise<VerificationResponse> {
+      const { data } = await apiClient.delete(
+        `/verification/netzentgelte/${recordId}/flag`
+      );
+      return data;
+    },
+
+    // HLZF verification
+    async verifyHLZF(
+      recordId: number,
+      notes?: string
+    ): Promise<VerificationResponse> {
+      const { data } = await apiClient.post(
+        `/verification/hlzf/${recordId}/verify`,
+        notes ? { notes } : undefined
+      );
+      return data;
+    },
+
+    async flagHLZF(
+      recordId: number,
+      reason: string
+    ): Promise<VerificationResponse> {
+      const { data } = await apiClient.post(
+        `/verification/hlzf/${recordId}/flag`,
+        { reason }
+      );
+      return data;
+    },
+
+    async unflagHLZF(recordId: number): Promise<VerificationResponse> {
+      const { data } = await apiClient.delete(
+        `/verification/hlzf/${recordId}/flag`
+      );
       return data;
     },
   },
