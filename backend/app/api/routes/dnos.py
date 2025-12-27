@@ -114,6 +114,17 @@ async def get_vnb_details(
             detail=f"VNB with ID '{vnb_id}' not found",
         )
     
+    # Try to enrich address with postal code + city from Impressum
+    enriched_address = details.address
+    if details.homepage_url and details.address:
+        from app.services.impressum_extractor import impressum_extractor
+        full_addr = await impressum_extractor.extract_full_address(
+            details.homepage_url,
+            details.address,
+        )
+        if full_addr:
+            enriched_address = full_addr.formatted
+    
     return APIResponse(
         success=True,
         data={
@@ -122,7 +133,7 @@ async def get_vnb_details(
             "website": details.homepage_url,
             "phone": details.phone,
             "email": details.email,
-            "address": details.address,
+            "address": enriched_address,
         },
     )
 
@@ -178,7 +189,20 @@ async def create_dno(
             website = website or vnb_details.homepage_url
             phone = phone or vnb_details.phone
             email = email or vnb_details.email
-            contact_address = contact_address or vnb_details.address
+            
+            # Try to enrich address with postal code + city from Impressum
+            if not contact_address and vnb_details.address and vnb_details.homepage_url:
+                from app.services.impressum_extractor import impressum_extractor
+                full_addr = await impressum_extractor.extract_full_address(
+                    vnb_details.homepage_url,
+                    vnb_details.address,
+                )
+                if full_addr:
+                    contact_address = full_addr.formatted
+                else:
+                    contact_address = vnb_details.address
+            elif not contact_address:
+                contact_address = vnb_details.address
     
     # Create DNO
     dno = DNOModel(

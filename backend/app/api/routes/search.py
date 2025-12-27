@@ -297,7 +297,18 @@ async def _search_by_address(
     
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
     
-    # Step 7: Create or get DNO skeleton with contact info
+    # Step 7: Try to enrich address with postal code + city from Impressum
+    enriched_address = dno_details.address if dno_details else None
+    if dno_details and dno_details.homepage_url and dno_details.address:
+        from app.services.impressum_extractor import impressum_extractor
+        full_addr = await impressum_extractor.extract_full_address(
+            dno_details.homepage_url,
+            dno_details.address,
+        )
+        if full_addr:
+            enriched_address = full_addr.formatted
+    
+    # Step 8: Create or get DNO skeleton with contact info
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -306,7 +317,7 @@ async def _search_by_address(
         website=dno_details.homepage_url if dno_details else None,
         phone=dno_details.phone if dno_details else None,
         email=dno_details.email if dno_details else None,
-        contact_address=dno_details.address if dno_details else None,
+        contact_address=enriched_address,
     )
     
     # Step 8: Create location
@@ -369,6 +380,17 @@ async def _search_by_coordinates(
     
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
     
+    # Try to enrich address with postal code + city from Impressum
+    enriched_address = dno_details.address if dno_details else None
+    if dno_details and dno_details.homepage_url and dno_details.address:
+        from app.services.impressum_extractor import impressum_extractor
+        full_addr = await impressum_extractor.extract_full_address(
+            dno_details.homepage_url,
+            dno_details.address,
+        )
+        if full_addr:
+            enriched_address = full_addr.formatted
+    
     dno, _ = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -376,7 +398,7 @@ async def _search_by_coordinates(
         website=dno_details.homepage_url if dno_details else None,
         phone=dno_details.phone if dno_details else None,
         email=dno_details.email if dno_details else None,
-        contact_address=dno_details.address if dno_details else None,
+        contact_address=enriched_address,
     )
     
     # Create simple location without full address
