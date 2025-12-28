@@ -95,6 +95,8 @@ services:
     container_name: dno-crawler-worker
     restart: unless-stopped
     command: arq app.jobs.WorkerSettings
+    stop_signal: SIGINT # arq handles SIGINT more gracefully than SIGTERM
+    stop_grace_period: 30s # Give more time for job completion
     user: "0:0"
     env_file:
       - .env

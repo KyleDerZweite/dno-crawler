@@ -132,19 +132,32 @@ class ExtractStep(BaseStep):
 DNO: {dno_name}
 Year: {year}
 
-For each voltage level, extract:
-- voltage_level: Name as written (e.g., "Niederspannung", "Mittelspannung")
-- arbeitspreis: Work price in ct/kWh
-- leistungspreis: Capacity price in €/kW or €/kW/a
+German electricity tariffs often have TWO sets of prices based on annual usage:
+- "< 2.500 h/a" or "unter 2500h" (under 2500 hours/year usage)
+- "≥ 2.500 h/a" or "über 2500h" (2500+ hours/year usage)
+
+For each voltage level (Spannungsebene), extract:
+- voltage_level: Standardized abbreviation MUST be used:
+  - "HS" for Hochspannung
+  - "HS/MS" for Umspannung Hoch-/Mittelspannung
+  - "MS" for Mittelspannung
+  - "MS/NS" for Umspannung Mittel-/Niederspannung
+  - "NS" for Niederspannung
+- leistung_unter_2500h: Capacity price (Leistungspreis) for < 2500h in €/kW/a
+- arbeit_unter_2500h: Work price (Arbeitspreis) for < 2500h in ct/kWh
+- leistung: Capacity price (Leistungspreis) for ≥ 2500h in €/kW/a  
+- arbeit: Work price (Arbeitspreis) for ≥ 2500h in ct/kWh
+
+If only one set of prices exists (no usage distinction), use leistung and arbeit fields only.
 
 Return valid JSON:
 {{
   "success": true,
   "data_type": "netzentgelte",
   "source_page": <page number>,
-  "notes": "<any observations>",
+  "notes": "<any observations about the data>",
   "data": [
-    {{"voltage_level": "...", "arbeitspreis": ..., "leistungspreis": ...}}
+    {{"voltage_level": "HS", "leistung_unter_2500h": ..., "arbeit_unter_2500h": ..., "leistung": ..., "arbeit": ...}}
   ]
 }}
 """
@@ -155,7 +168,12 @@ DNO: {dno_name}
 Year: {year}
 
 For each voltage level, extract time windows per season:
-- voltage_level: Name as written
+- voltage_level: Standardized abbreviation MUST be used:
+  - "HS" for Hochspannung
+  - "HS/MS" for Umspannung Hoch-/Mittelspannung
+  - "MS" for Mittelspannung
+  - "MS/NS" for Umspannung Mittel-/Niederspannung
+  - "NS" for Niederspannung
 - winter: Time window(s) or "entfällt"
 - fruehling: Time window(s) or "entfällt"
 - sommer: Time window(s) or "entfällt"

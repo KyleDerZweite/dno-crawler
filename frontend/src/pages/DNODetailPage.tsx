@@ -108,27 +108,53 @@ export function DNODetailPage() {
         queryKey: ["dno", id],
         queryFn: () => api.dnos.get(id!),
         enabled: !!id,
+        staleTime: 0, // Always consider data stale
+        refetchOnMount: 'always', // Always refetch when component mounts
     });
 
-    // Fetch DNO data (netzentgelte, hlzf)
-    const { data: dataResponse, isLoading: dataLoading, refetch: refetchData } = useQuery({
-        queryKey: ["dno-data", id],
-        queryFn: () => api.dnos.getData(id!),
-        enabled: !!id,
-    });
-
-    // Fetch DNO crawl jobs
+    // Fetch DNO crawl jobs (poll when active)
     const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
         queryKey: ["dno-jobs", id],
         queryFn: () => api.dnos.getJobs(id!, 20),
         enabled: !!id,
+        staleTime: 0,
+        refetchOnMount: 'always',
+        refetchInterval: (query) => {
+            // Poll every 3s while there are active jobs
+            const jobs = query.state.data?.data || [];
+            const hasActiveJobs = jobs.some((job: { status: string }) =>
+                job.status === "pending" || job.status === "running"
+            );
+            return hasActiveJobs ? 3000 : false;
+        },
     });
 
-    // Fetch available files
+    // Check if there are active jobs (for data refresh)
+    const hasActiveJobs = useMemo(() => {
+        const jobs = jobsResponse?.data || [];
+        return jobs.some((job: { status: string }) =>
+            job.status === "pending" || job.status === "running"
+        );
+    }, [jobsResponse?.data]);
+
+    // Fetch DNO data (netzentgelte, hlzf) - refetch when jobs change
+    const { data: dataResponse, isLoading: dataLoading, refetch: refetchData } = useQuery({
+        queryKey: ["dno-data", id],
+        queryFn: () => api.dnos.getData(id!),
+        enabled: !!id,
+        staleTime: 0,
+        refetchOnMount: 'always',
+        refetchInterval: hasActiveJobs ? 5000 : false, // Poll every 5s while jobs are active
+    });
+
+    // Fetch available files - also refresh when jobs are active
     const { data: filesResponse } = useQuery({
         queryKey: ["dno-files", id],
         queryFn: () => api.dnos.getFiles(id!),
         enabled: !!id,
+        staleTime: 0,
+        refetchOnMount: 'always',
+        refetchInterval: hasActiveJobs ? 5000 : false,
     });
 
     const triggerCrawlMutation = useMutation({
@@ -1004,21 +1030,37 @@ export function DNODetailPage() {
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Year</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Voltage Level</th>
-                                    <th className="text-right py-2 px-3 font-medium text-muted-foreground">Leistung (€/kW)</th>
-                                    <th className="text-right py-2 px-3 font-medium text-muted-foreground">Arbeit (ct/kWh)</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground">Status</th>
-                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16"></th>}
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Year</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Voltage Level</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"≥ 2.500 h/a"}</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"< 2.500 h/a"}</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" rowSpan={2}>Status</th>
+                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16" rowSpan={2}></th>}
+                                </tr>
+                                <tr className="border-b text-xs">
+                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground border-l border-border/50">Leistung (€/kW)</th>
+                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground">Arbeit (ct/kWh)</th>
+                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground border-l border-border/50">Leistung (€/kW)</th>
+                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground">Arbeit (ct/kWh)</th>
                                 </tr>
                             </thead>
                             <tbody>
                                 {filteredNetzentgelte.map((item) => (
                                     <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
                                         <td className="py-2 px-3">{item.year}</td>
-                                        <td className="py-2 px-3">{item.voltage_level}</td>
-                                        <td className="py-2 px-3 text-right font-mono">{item.leistung?.toFixed(2) || "-"}</td>
-                                        <td className="py-2 px-3 text-right font-mono">{item.arbeit?.toFixed(3) || "-"}</td>
+                                        <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
+                                        <td className="py-2 px-3 text-right font-mono border-l border-border/50">
+                                            <span className="select-all">{item.leistung?.toFixed(2) || "-"}</span>
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-mono">
+                                            <span className="select-all">{item.arbeit?.toFixed(3) || "-"}</span>
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-mono border-l border-border/50">
+                                            <span className="select-all">{item.leistung_unter_2500h?.toFixed(2) || item.leistung?.toFixed(2) || "-"}</span>
+                                        </td>
+                                        <td className="py-2 px-3 text-right font-mono">
+                                            <span className="select-all">{item.arbeit_unter_2500h?.toFixed(3) || item.arbeit?.toFixed(3) || "-"}</span>
+                                        </td>
                                         <td className="py-2 px-3 text-center">
                                             <VerificationBadge
                                                 status={item.verification_status || "unverified"}
@@ -1088,77 +1130,117 @@ export function DNODetailPage() {
                     </div>
                 ) : filteredHLZF.length > 0 ? (
                     <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
+                        <table className="w-full text-sm table-fixed">
                             <thead>
                                 <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Year</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Voltage Level</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Winter</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Frühling</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Sommer</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground">Herbst</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground">Status</th>
-                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16"></th>}
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground w-16">Year</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground w-20">Voltage Level</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Winter</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Frühling</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Sommer</th>
+                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Herbst</th>
+                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground w-24">Status</th>
+                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-12"></th>}
                                 </tr>
                             </thead>
                             <tbody>
-                                {filteredHLZF.map((item) => (
-                                    <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                                        <td className="py-2 px-3">{item.year}</td>
-                                        <td className="py-2 px-3">{item.voltage_level}</td>
-                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.winter || "-"}</td>
-                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.fruehling || "-"}</td>
-                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.sommer || "-"}</td>
-                                        <td className="py-2 px-3 font-mono whitespace-pre-line">{item.herbst || "-"}</td>
-                                        <td className="py-2 px-3 text-center">
-                                            <VerificationBadge
-                                                status={item.verification_status || "unverified"}
-                                                verifiedBy={item.verified_by}
-                                                verifiedAt={item.verified_at}
-                                                flaggedBy={item.flagged_by}
-                                                flaggedAt={item.flagged_at}
-                                                flagReason={item.flag_reason}
-                                                recordId={item.id}
-                                                recordType="hlzf"
-                                                dnoId={id!}
-                                                compact
-                                            />
-                                        </td>
-                                        {isAdmin() && (
-                                            <td className="py-2 px-3 text-right">
-                                                <div className="relative inline-block" ref={openMenuId === `hlzf-${item.id}` ? menuRef : undefined}>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 w-7 p-0"
-                                                        onClick={() => setOpenMenuId(openMenuId === `hlzf-${item.id}` ? null : `hlzf-${item.id}`)}
-                                                    >
-                                                        <MoreVertical className="h-4 w-4" />
-                                                    </Button>
-                                                    {openMenuId === `hlzf-${item.id}` && (
-                                                        <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-md py-1 min-w-[100px]">
-                                                            <button
-                                                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                                                                onClick={() => handleEditHLZF(item)}
-                                                            >
-                                                                <Pencil className="h-3.5 w-3.5" /> Edit
-                                                            </button>
-                                                            <button
-                                                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
-                                                                onClick={() => {
-                                                                    setOpenMenuId(null);
-                                                                    handleDeleteHLZF(item.id);
-                                                                }}
-                                                            >
-                                                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                {filteredHLZF.map((item) => {
+                                    // Helper to format time periods - split by comma and show each on its own line
+                                    const formatTimePeriods = (value: string | null | undefined): React.ReactNode => {
+                                        if (!value || value === "-" || value.toLowerCase() === "entfällt") {
+                                            return <span className="text-muted-foreground">-</span>;
+                                        }
+
+                                        // Helper to add seconds to time values (12:00 -> 12:00:00)
+                                        const addSeconds = (timeStr: string): string => {
+                                            return timeStr.replace(/\b(\d{1,2}:\d{2})\b(?!:\d{2})/g, '$1:00');
+                                        };
+
+                                        // Helper to render a time range - keeps on same line if possible, wraps if needed
+                                        const renderTimeRange = (period: string, idx: number) => {
+                                            // Match pattern like "10:00:00 - 11:30:00"
+                                            const rangeMatch = period.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–]\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
+                                            if (rangeMatch) {
+                                                return (
+                                                    <div key={idx} className="flex flex-wrap items-center gap-x-1 text-sm py-0.5">
+                                                        <span className="select-all whitespace-nowrap">{rangeMatch[1]}</span>
+                                                        <span className="text-muted-foreground select-none">–</span>
+                                                        <span className="select-all whitespace-nowrap">{rangeMatch[2]}</span>
+                                                    </div>
+                                                );
+                                            }
+                                            // Not a range, just a single value
+                                            return <span key={idx} className="text-sm select-all block py-0.5">{period}</span>;
+                                        };
+
+                                        // Split by comma and trim whitespace
+                                        const periods = value.split(',').map(p => addSeconds(p.trim())).filter(p => p);
+                                        if (periods.length === 0) return <span className="text-muted-foreground">-</span>;
+                                        return (
+                                            <div className="space-y-1">
+                                                {periods.map((period, idx) => renderTimeRange(period, idx))}
+                                            </div>
+                                        );
+                                    };
+
+                                    return (
+                                        <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
+                                            <td className="py-2 px-3">{item.year}</td>
+                                            <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.winter)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.fruehling)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.sommer)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.herbst)}</td>
+                                            <td className="py-2 px-3 text-center">
+                                                <VerificationBadge
+                                                    status={item.verification_status || "unverified"}
+                                                    verifiedBy={item.verified_by}
+                                                    verifiedAt={item.verified_at}
+                                                    flaggedBy={item.flagged_by}
+                                                    flaggedAt={item.flagged_at}
+                                                    flagReason={item.flag_reason}
+                                                    recordId={item.id}
+                                                    recordType="hlzf"
+                                                    dnoId={id!}
+                                                    compact
+                                                />
                                             </td>
-                                        )}
-                                    </tr>
-                                ))}
+                                            {isAdmin() && (
+                                                <td className="py-2 px-3 text-right">
+                                                    <div className="relative inline-block" ref={openMenuId === `hlzf-${item.id}` ? menuRef : undefined}>
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 w-7 p-0"
+                                                            onClick={() => setOpenMenuId(openMenuId === `hlzf-${item.id}` ? null : `hlzf-${item.id}`)}
+                                                        >
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                        {openMenuId === `hlzf-${item.id}` && (
+                                                            <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-md py-1 min-w-[100px]">
+                                                                <button
+                                                                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
+                                                                    onClick={() => handleEditHLZF(item)}
+                                                                >
+                                                                    <Pencil className="h-3.5 w-3.5" /> Edit
+                                                                </button>
+                                                                <button
+                                                                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
+                                                                    onClick={() => {
+                                                                        setOpenMenuId(null);
+                                                                        handleDeleteHLZF(item.id);
+                                                                    }}
+                                                                >
+                                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                            )}
+                                        </tr>
+                                    );
+                                })}
                             </tbody>
                         </table>
                     </div>
