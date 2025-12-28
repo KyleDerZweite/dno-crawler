@@ -495,9 +495,31 @@ export const api = {
       ApiResponse<{
         dnos: { total: number };
         jobs: { pending: number; running: number };
+        flagged: { netzentgelte: number; hlzf: number; total: number };
       }>
     > {
       const { data } = await apiClient.get("/admin/dashboard");
+      return data;
+    },
+
+    async getFlagged(): Promise<
+      ApiResponse<{
+        items: Array<{
+          id: number;
+          type: "netzentgelte" | "hlzf";
+          year: number;
+          voltage_level: string;
+          flag_reason: string | null;
+          flagged_at: string | null;
+          flagged_by: string | null;
+          dno_id: number;
+          dno_name: string;
+          dno_slug: string;
+        }>;
+        total: number;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/flagged");
       return data;
     },
   },

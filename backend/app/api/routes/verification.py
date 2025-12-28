@@ -17,7 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User, get_current_user, require_maintainer_or_admin
 from app.core.models import VerificationStatus
-from app.db import get_db_session
+from app.db import get_db
 from app.db.models import HLZFModel, NetzentgelteModel
 
 logger = structlog.get_logger()
@@ -68,7 +68,7 @@ async def verify_netzentgelte(
     record_id: int,
     request: VerifyRequest | None = None,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Mark a Netzentgelte record as verified."""
     result = await db.execute(
@@ -125,7 +125,7 @@ async def flag_netzentgelte(
     record_id: int,
     request: FlagRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Flag a Netzentgelte record as potentially incorrect."""
     result = await db.execute(
@@ -177,7 +177,7 @@ async def flag_netzentgelte(
 async def unflag_netzentgelte(
     record_id: int,
     user: User = Depends(require_maintainer_or_admin),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Remove a flag from a Netzentgelte record (Maintainer/Admin only)."""
     result = await db.execute(
@@ -240,7 +240,7 @@ async def verify_hlzf(
     record_id: int,
     request: VerifyRequest | None = None,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Mark an HLZF record as verified."""
     result = await db.execute(
@@ -296,7 +296,7 @@ async def flag_hlzf(
     record_id: int,
     request: FlagRequest,
     user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Flag an HLZF record as potentially incorrect."""
     result = await db.execute(
@@ -348,7 +348,7 @@ async def flag_hlzf(
 async def unflag_hlzf(
     record_id: int,
     user: User = Depends(require_maintainer_or_admin),
-    db: AsyncSession = Depends(get_db_session),
+    db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Remove a flag from an HLZF record (Maintainer/Admin only)."""
     result = await db.execute(

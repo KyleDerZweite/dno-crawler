@@ -64,7 +64,72 @@ export function VerificationBadge({
     const queryClient = useQueryClient();
 
     const [flagDialogOpen, setFlagDialogOpen] = useState(false);
-    const [flagReasonInput, setFlagReasonInput] = useState("");
+    const [flagNotes, setFlagNotes] = useState("");
+    const [issueType, setIssueType] = useState<string>("");
+    const [affectedFields, setAffectedFields] = useState<string[]>([]);
+
+    // Field options based on record type
+    const netzentgelteFields = [
+        { id: "leistung_high", label: "Leistung (≥2.500 h/a)" },
+        { id: "arbeit_high", label: "Arbeit (≥2.500 h/a)" },
+        { id: "leistung_low", label: "Leistung (<2.500 h/a)" },
+        { id: "arbeit_low", label: "Arbeit (<2.500 h/a)" },
+    ];
+
+    const hlzfFields = [
+        { id: "winter", label: "Winter" },
+        { id: "fruehling", label: "Frühling" },
+        { id: "sommer", label: "Sommer" },
+        { id: "herbst", label: "Herbst" },
+    ];
+
+    const issueTypes = [
+        { id: "wrong_values", label: "Wrong values", desc: "Values don't match source" },
+        { id: "mixed_up", label: "Values mixed up", desc: "Values are in wrong columns" },
+        { id: "missing", label: "Missing data", desc: "Some values should be present" },
+        { id: "other", label: "Other issue", desc: "Different problem" },
+    ];
+
+    const fields = recordType === "netzentgelte" ? netzentgelteFields : hlzfFields;
+
+    // Build reason string from selections
+    const buildFlagReason = (): string => {
+        const parts: string[] = [];
+
+        const issueLabel = issueTypes.find(t => t.id === issueType)?.label;
+        if (issueLabel) parts.push(`Issue: ${issueLabel}`);
+
+        if (affectedFields.length > 0) {
+            const fieldLabels = affectedFields.map(
+                f => fields.find(field => field.id === f)?.label
+            ).filter(Boolean);
+            parts.push(`Fields: ${fieldLabels.join(", ")}`);
+        }
+
+        if (flagNotes.trim()) {
+            parts.push(`Notes: ${flagNotes.trim()}`);
+        }
+
+        return parts.join(" | ");
+    };
+
+    const canSubmitFlag = issueType !== "" && (issueType === "other" ? flagNotes.length >= 10 : true);
+
+    const resetFlagDialog = () => {
+        setFlagNotes("");
+        setIssueType("");
+        setAffectedFields([]);
+    };
+
+    const toggleField = (fieldId: string) => {
+        setAffectedFields(prev =>
+            prev.includes(fieldId)
+                ? prev.filter(f => f !== fieldId)
+                : [...prev, fieldId]
+        );
+    };
+
+
 
     // Mutations for verification actions
     const verifyMutation = useMutation({
@@ -93,7 +158,7 @@ export function VerificationBadge({
             toast({ title: "Flagged", description: "Record flagged for review" });
             queryClient.invalidateQueries({ queryKey: ["dno-data", dnoId] });
             setFlagDialogOpen(false);
-            setFlagReasonInput("");
+            resetFlagDialog();
         },
         onError: (error: unknown) => {
             const message = error instanceof AxiosError
@@ -166,16 +231,56 @@ export function VerificationBadge({
         });
     };
 
+    // Parse structured flag reason for display
+    const parseFlagReason = (reason?: string) => {
+        if (!reason) return null;
+
+        const parts: { issue?: string; fields?: string; notes?: string } = {};
+        reason.split(" | ").forEach(part => {
+            if (part.startsWith("Issue: ")) parts.issue = part.replace("Issue: ", "");
+            else if (part.startsWith("Fields: ")) parts.fields = part.replace("Fields: ", "");
+            else if (part.startsWith("Notes: ")) parts.notes = part.replace("Notes: ", "");
+        });
+
+        return parts;
+    };
+
     // Build tooltip content
     const tooltipContent = () => {
         if (status === "verified" && verifiedAt) {
             return `Verified on ${formatDate(verifiedAt)}`;
         }
-        if (status === "flagged" && flaggedAt) {
+        if (status === "flagged") {
+            const parsed = parseFlagReason(flagReason);
             return (
-                <div className="space-y-1">
-                    <div>Flagged on {formatDate(flaggedAt)}</div>
-                    {flagReason && <div className="text-xs opacity-80">Reason: {flagReason}</div>}
+                <div className="space-y-1.5 max-w-xs">
+                    <div className="font-medium text-amber-400">
+                        ⚠ Flagged{flaggedAt ? ` on ${formatDate(flaggedAt)}` : ""}
+                    </div>
+                    {parsed?.issue && (
+                        <div className="text-xs">
+                            <span className="text-muted-foreground">Issue:</span>{" "}
+                            <span className="font-medium">{parsed.issue}</span>
+                        </div>
+                    )}
+                    {parsed?.fields && (
+                        <div className="text-xs">
+                            <span className="text-muted-foreground">Fields:</span>{" "}
+                            <span>{parsed.fields}</span>
+                        </div>
+                    )}
+                    {parsed?.notes && (
+                        <div className="text-xs">
+                            <span className="text-muted-foreground">Notes:</span>{" "}
+                            <span className="italic">{parsed.notes}</span>
+                        </div>
+                    )}
+                    {!parsed?.issue && flagReason && (
+                        <div className="text-xs opacity-80">{flagReason}</div>
+                    )}
+                    {!parsed?.issue && !flagReason && (
+                        <div className="text-xs opacity-80">No details provided</div>
+                    )}
                 </div>
             );
         }
@@ -283,25 +388,95 @@ export function VerificationBadge({
             </TooltipProvider>
 
             {/* Flag Dialog */}
-            <Dialog open={flagDialogOpen} onOpenChange={setFlagDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+            <Dialog open={flagDialogOpen} onOpenChange={(open) => {
+                setFlagDialogOpen(open);
+                if (!open) resetFlagDialog();
+            }}>
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Flag Data as Incorrect</DialogTitle>
                         <DialogDescription>
-                            Please describe why this data appears to be incorrect. This helps
-                            maintainers review and correct the issue.
+                            Select the type of issue and which fields are affected.
                         </DialogDescription>
                     </DialogHeader>
-                    <div className="py-4">
-                        <textarea
-                            className="w-full min-h-[100px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
-                            placeholder="Describe the issue... (minimum 10 characters)"
-                            value={flagReasonInput}
-                            onChange={(e) => setFlagReasonInput(e.target.value)}
-                        />
-                        <p className="text-xs text-muted-foreground mt-1">
-                            {flagReasonInput.length}/500 characters
-                        </p>
+                    <div className="space-y-5 py-4">
+                        {/* Issue Type Selection */}
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium">What's the issue?</label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {issueTypes.map((type) => (
+                                    <button
+                                        key={type.id}
+                                        type="button"
+                                        onClick={() => setIssueType(type.id)}
+                                        className={cn(
+                                            "flex flex-col items-start p-3 rounded-lg border text-left transition-all",
+                                            issueType === type.id
+                                                ? "border-primary bg-primary/5 ring-1 ring-primary"
+                                                : "border-border hover:border-primary/50 hover:bg-muted/50"
+                                        )}
+                                    >
+                                        <span className="text-sm font-medium">{type.label}</span>
+                                        <span className="text-xs text-muted-foreground">{type.desc}</span>
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Affected Fields Selection */}
+                        <div className="space-y-3">
+                            <label className="text-sm font-medium">
+                                Which fields are affected? <span className="text-muted-foreground font-normal">(optional)</span>
+                            </label>
+                            <div className={cn(
+                                "grid gap-2",
+                                recordType === "netzentgelte" ? "grid-cols-2" : "grid-cols-4"
+                            )}>
+                                {fields.map((field) => (
+                                    <button
+                                        key={field.id}
+                                        type="button"
+                                        onClick={() => toggleField(field.id)}
+                                        className={cn(
+                                            "flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-all",
+                                            affectedFields.includes(field.id)
+                                                ? "border-amber-500 bg-amber-500/10 text-amber-700 dark:text-amber-400"
+                                                : "border-border hover:border-amber-500/50 hover:bg-muted/50"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-4 h-4 rounded border-2 flex items-center justify-center transition-colors",
+                                            affectedFields.includes(field.id)
+                                                ? "border-amber-500 bg-amber-500"
+                                                : "border-muted-foreground/50"
+                                        )}>
+                                            {affectedFields.includes(field.id) && (
+                                                <svg className="w-3 h-3 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}>
+                                                    <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
+                                                </svg>
+                                            )}
+                                        </div>
+                                        {field.label}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Additional Notes */}
+                        <div className="space-y-2">
+                            <label className="text-sm font-medium">
+                                Additional notes {issueType === "other" && <span className="text-destructive">*</span>}
+                            </label>
+                            <textarea
+                                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                                placeholder={issueType === "other" ? "Please describe the issue... (minimum 10 characters)" : "Optional additional details..."}
+                                value={flagNotes}
+                                onChange={(e) => setFlagNotes(e.target.value)}
+                            />
+                            {issueType === "other" && flagNotes.length > 0 && flagNotes.length < 10 && (
+                                <p className="text-xs text-destructive">Minimum 10 characters required</p>
+                            )}
+                        </div>
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => setFlagDialogOpen(false)}>
@@ -309,8 +484,8 @@ export function VerificationBadge({
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={() => flagMutation.mutate(flagReasonInput)}
-                            disabled={flagReasonInput.length < 10 || flagReasonInput.length > 500 || flagMutation.isPending}
+                            onClick={() => flagMutation.mutate(buildFlagReason())}
+                            disabled={!canSubmitFlag || flagMutation.isPending}
                         >
                             {flagMutation.isPending ? (
                                 <>

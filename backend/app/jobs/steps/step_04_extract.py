@@ -53,13 +53,28 @@ class ExtractStep(BaseStep):
         if settings.ai_enabled:
             result = await self._extract_with_ai(path, dno_name, job.year, job.data_type)
             if result:
-                ctx["extracted_data"] = result.get("data", [])
+                extracted_data = result.get("data", [])
+                
+                # Validate HLZF extraction - should have exactly 5 voltage levels
+                if job.data_type == "hlzf" and len(extracted_data) != 5:
+                    import structlog
+                    structlog.get_logger().warning(
+                        "hlzf_extraction_incomplete",
+                        expected=5,
+                        actual=len(extracted_data),
+                        voltage_levels=[r.get("voltage_level") for r in extracted_data],
+                        dno=dno_name,
+                        year=job.year,
+                        msg="AI did not extract all 5 voltage levels"
+                    )
+                
+                ctx["extracted_data"] = extracted_data
                 ctx["extraction_notes"] = result.get("notes", "")
                 ctx["extraction_method"] = "ai"
                 ctx["extraction_model"] = settings.ai_model
                 job.context = ctx
                 await db.commit()
-                return f"Extracted {len(ctx['extracted_data'])} records using AI ({settings.ai_model})"
+                return f"Extracted {len(extracted_data)} records using AI ({settings.ai_model})"
         
         # Fallback extraction based on file format
         records, method = await self._extract_fallback(path, file_format, job.data_type, job.year)
@@ -167,36 +182,40 @@ Return valid JSON:
 DNO: {dno_name}
 Year: {year}
 
-IMPORTANT: This table typically has 5 voltage levels (Entnahmeebene/Spannungsebene). Extract ALL of them:
-1. Hochspannungsnetz / Hochspannung → use "HS"
-2. Umspannung zur Mittelspannung / Umspannung Hoch-/Mittelspannung / HS/MS → use "HS/MS"
-3. Mittelspannungsnetz / Mittelspannung → use "MS"
-4. Umspannung zur Niederspannung / Umspannung Mittel-/Niederspannung / MS/NS → use "MS/NS"  
-5. Niederspannungsnetz / Niederspannung → use "NS"
+CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any rows!
 
-TABLE STRUCTURE: The columns are ordered left-to-right as:
-- Column 1 (Winter): months like "Jan., Feb., Dez." or "Januar, Februar, Dezember"
-- Column 2 (Frühling): months like "Mrz. – Mai" or "März bis Mai"
-- Column 3 (Sommer): months like "Jun. – Aug." or "Juni bis August"
-- Column 4 (Herbst): months like "Sept. – Nov." or "September bis November"
+The 5 voltage levels (Entnahmeebene/Spannungsebene) are:
+1. Hochspannungsnetz / Hochspannung → output as "HS"
+2. Umspannung zur Mittelspannung / Umspann. z. MS / HS/MS-Umspannung → output as "HS/MS"
+3. Mittelspannungsnetz / Mittelspannung → output as "MS"
+4. Umspannung zur Niederspannung / Umspann. z. NS / MS/NS-Umspannung → output as "MS/NS"  
+5. Niederspannungsnetz / Niederspannung → output as "NS"
 
-For each voltage level, extract the time windows:
-- winter: First seasonal column (leftmost) - Time window(s) or null if "entfällt"
-- fruehling: Second seasonal column - Time window(s) or null if "entfällt"
-- sommer: Third seasonal column - Time window(s) or null if "entfällt"
-- herbst: Fourth seasonal column (rightmost) - Time window(s) or null if "entfällt"
+NOTE: In PDF tables, voltage level names may be split across multiple lines (e.g., "Umspannung zur" on one line and "Mittelspannung" on the next). These should be treated as a single voltage level.
 
-Time format: "HH:MM-HH:MM" (e.g., "07:30-15:30"). Multiple windows separated by newlines.
+TABLE STRUCTURE - columns ordered left-to-right:
+- Column 1 (Winter): months Jan., Feb., Dez. / Januar, Februar, Dezember
+- Column 2 (Frühling): months Mrz. – Mai / März bis Mai
+- Column 3 (Sommer): months Jun. – Aug. / Juni bis August
+- Column 4 (Herbst): months Sept. – Nov. / September bis November
 
-Return valid JSON with exactly 5 voltage level records:
+For EACH of the 5 voltage levels, extract:
+- winter: Time window(s) from first column, or null if "entfällt"
+- fruehling: Time window(s) from second column, or null if "entfällt"
+- sommer: Time window(s) from third column, or null if "entfällt"
+- herbst: Time window(s) from fourth column, or null if "entfällt"
+
+Time format: "HH:MM-HH:MM" (e.g., "07:30-15:30"). Multiple windows separated by "\\n".
+
+YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
 {{
   "success": true,
   "data_type": "hlzf",
-  "source_page": <page number>,
+  "source_page": <page number where table was found>,
   "notes": "<any observations>",
   "data": [
     {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": null, "sommer": null, "herbst": "11:15-14:00"}},
-    {{"voltage_level": "HS/MS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
+    {{"voltage_level": "HS/MS", "winter": "07:30-15:45\\n16:30-18:15", "fruehling": null, "sommer": null, "herbst": "16:45-17:30"}},
     {{"voltage_level": "MS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
     {{"voltage_level": "MS/NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
     {{"voltage_level": "NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}}
