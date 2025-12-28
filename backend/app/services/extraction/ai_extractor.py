@@ -114,11 +114,28 @@ class AIExtractor:
             response_content = response.choices[0].message.content
             result = json.loads(response_content)
             
+            # Extract token usage if available
+            usage = None
+            if response.usage:
+                usage = {
+                    "prompt_tokens": response.usage.prompt_tokens,
+                    "completion_tokens": response.usage.completion_tokens,
+                    "total_tokens": response.usage.total_tokens,
+                }
+            
             logger.info(
                 "ai_extract_text_success",
                 model=self.model,
                 records=len(result.get("data", []))
             )
+            
+            # Return enriched result with metadata
+            result["_extraction_meta"] = {
+                "raw_response": response_content,
+                "mode": "text",
+                "model": self.model,
+                "usage": usage,
+            }
             return result
             
         except json.JSONDecodeError as e:
@@ -224,11 +241,28 @@ class AIExtractor:
         content = response.choices[0].message.content
         result = json.loads(content)
         
+        # Extract token usage if available
+        usage = None
+        if response.usage:
+            usage = {
+                "prompt_tokens": response.usage.prompt_tokens,
+                "completion_tokens": response.usage.completion_tokens,
+                "total_tokens": response.usage.total_tokens,
+            }
+        
         logger.info(
             "ai_extract_vision_success",
             model=self.model,
             records=len(result.get("data", []))
         )
+        
+        # Return enriched result with metadata
+        result["_extraction_meta"] = {
+            "raw_response": content,
+            "mode": "vision",
+            "model": self.model,
+            "usage": usage,
+        }
         return result
 
     def _preprocess_pdf(self, file_path: Path, prompt: str) -> tuple[bytes, bool]:

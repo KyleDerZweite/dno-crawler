@@ -10,6 +10,8 @@ import {
     AlertCircle,
     Ban,
     PlayCircle,
+    ChevronDown,
+    FileText,
 } from "lucide-react";
 
 import { api, type ApiResponse, type JobDetails } from "@/lib/api";
@@ -248,6 +250,72 @@ export function JobDetailsPage() {
                     </div>
                 </dl>
             </Card>
+
+            {/* Extraction Log */}
+            {job.extraction_log && (
+                <Card className="p-6">
+                    <h2 className="font-semibold mb-4 flex items-center gap-2">
+                        <FileText className="h-4 w-4" />
+                        Extraction Log
+                    </h2>
+
+                    {/* Mode and Model */}
+                    <div className="flex flex-wrap gap-2 mb-4">
+                        <Badge variant="outline" className={cn(
+                            job.extraction_log.mode === "vision" && "bg-purple-500/10 text-purple-400 border-purple-500/30",
+                            job.extraction_log.mode === "text" && "bg-blue-500/10 text-blue-400 border-blue-500/30",
+                            job.extraction_log.mode === "fallback" && "bg-orange-500/10 text-orange-400 border-orange-500/30"
+                        )}>
+                            {job.extraction_log.mode === "vision" ? "AI Vision" :
+                                job.extraction_log.mode === "text" ? "AI Text" : "Fallback"}
+                        </Badge>
+                        {job.extraction_log.model && (
+                            <Badge variant="secondary">{job.extraction_log.model}</Badge>
+                        )}
+                        {job.extraction_log.usage && (
+                            <Badge variant="outline" className="text-xs">
+                                {job.extraction_log.usage.total_tokens} tokens
+                            </Badge>
+                        )}
+                    </div>
+
+                    {/* File Metadata */}
+                    <div className="bg-muted/30 rounded-lg p-3 mb-4 text-sm">
+                        <div className="flex items-center gap-2 text-muted-foreground">
+                            <FileText className="h-4 w-4" />
+                            <span className="font-mono">{job.extraction_log.file_metadata.name}</span>
+                            <span className="text-xs">
+                                ({(job.extraction_log.file_metadata.size_bytes / 1024).toFixed(1)} KB
+                                {job.extraction_log.file_metadata.pages && `, ${job.extraction_log.file_metadata.pages} pages`})
+                            </span>
+                        </div>
+                    </div>
+
+                    {/* Collapsible Prompt */}
+                    <details className="mb-3">
+                        <summary className="cursor-pointer flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors">
+                            <ChevronDown className="h-4 w-4" />
+                            Prompt
+                        </summary>
+                        <pre className="mt-2 p-3 bg-muted/50 rounded-lg overflow-x-auto text-xs font-mono whitespace-pre-wrap max-h-64 overflow-y-auto">
+                            {job.extraction_log.prompt}
+                        </pre>
+                    </details>
+
+                    {/* Collapsible Response */}
+                    <details>
+                        <summary className="cursor-pointer flex items-center gap-2 text-sm font-medium hover:text-primary transition-colors">
+                            <ChevronDown className="h-4 w-4" />
+                            Response
+                        </summary>
+                        <pre className="mt-2 p-3 bg-muted/50 rounded-lg overflow-x-auto text-xs font-mono whitespace-pre-wrap max-h-96 overflow-y-auto">
+                            {typeof job.extraction_log.response === "string"
+                                ? job.extraction_log.response
+                                : JSON.stringify(job.extraction_log.response, null, 2)}
+                        </pre>
+                    </details>
+                </Card>
+            )}
         </div>
     );
 }

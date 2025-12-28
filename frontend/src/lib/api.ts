@@ -231,10 +231,30 @@ export interface JobStep {
   details?: Record<string, unknown>;
 }
 
+export interface ExtractionLog {
+  prompt: string;
+  response: unknown;
+  file_metadata: {
+    path: string;
+    name: string;
+    format: string;
+    size_bytes: number;
+    pages?: number;
+  };
+  model?: string | null;
+  mode: "vision" | "text" | "fallback";
+  usage?: {
+    prompt_tokens: number;
+    completion_tokens: number;
+    total_tokens: number;
+  } | null;
+}
+
 export interface JobDetails extends Job {
   dno_slug?: string;
   updated_at?: string;
   steps: JobStep[];
+  extraction_log?: ExtractionLog;
 }
 
 // User info response from /auth/me endpoint

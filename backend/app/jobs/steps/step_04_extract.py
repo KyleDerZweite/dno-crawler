@@ -24,6 +24,7 @@ import asyncio
 from pathlib import Path
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel
@@ -51,9 +52,11 @@ class ExtractStep(BaseStep):
         
         # Try AI extraction if configured
         if settings.ai_enabled:
-            result = await self._extract_with_ai(path, dno_name, job.year, job.data_type)
+            prompt = self._build_prompt(dno_name, job.year, job.data_type)
+            result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt)
             if result:
                 extracted_data = result.get("data", [])
+                extraction_meta = result.get("_extraction_meta", {})
                 
                 # Validate HLZF extraction - should have exactly 5 voltage levels
                 if job.data_type == "hlzf" and len(extracted_data) != 5:
@@ -68,20 +71,51 @@ class ExtractStep(BaseStep):
                         msg="AI did not extract all 5 voltage levels"
                     )
                 
+                # Get file metadata
+                file_metadata = self._get_file_metadata(path)
+                
                 ctx["extracted_data"] = extracted_data
                 ctx["extraction_notes"] = result.get("notes", "")
                 ctx["extraction_method"] = "ai"
                 ctx["extraction_model"] = settings.ai_model
+                
+                # Store extraction log for debugging/transparency
+                ctx["extraction_log"] = {
+                    "prompt": prompt,
+                    "response": extraction_meta.get("raw_response"),
+                    "file_metadata": file_metadata,
+                    "model": extraction_meta.get("model"),
+                    "mode": extraction_meta.get("mode"),
+                    "usage": extraction_meta.get("usage"),
+                }
+                
                 job.context = ctx
+                flag_modified(job, 'context')
                 await db.commit()
                 return f"Extracted {len(extracted_data)} records using AI ({settings.ai_model})"
         
         # Fallback extraction based on file format
         records, method = await self._extract_fallback(path, file_format, job.data_type, job.year)
+        
+        # Get file metadata for fallback too
+        file_metadata = self._get_file_metadata(path)
+        
         ctx["extracted_data"] = records
         ctx["extraction_notes"] = f"Fallback {method} extraction"
         ctx["extraction_method"] = method
+        
+        # Store extraction log for fallback
+        ctx["extraction_log"] = {
+            "prompt": f"File: {path.name}",  # Reference to file, not content
+            "response": records,  # The extraction result
+            "file_metadata": file_metadata,
+            "model": None,
+            "mode": "fallback",
+            "usage": None,
+        }
+        
         job.context = ctx
+        flag_modified(job, 'context')
         await db.commit()
         
         return f"Extracted {len(records)} records using {method}"
@@ -91,18 +125,39 @@ class ExtractStep(BaseStep):
         file_path: Path, 
         dno_name: str, 
         year: int, 
-        data_type: str
+        data_type: str,
+        prompt: str
     ) -> dict | None:
         """Extract data using AI (auto-routes to text or vision mode)."""
         try:
             from app.services.extraction.ai_extractor import extract_with_ai
             
-            prompt = self._build_prompt(dno_name, year, data_type)
             return await extract_with_ai(file_path, prompt)
         except Exception as e:
             import structlog
             structlog.get_logger().warning("ai_extraction_failed", error=str(e))
             return None
+
+    def _get_file_metadata(self, file_path: Path) -> dict:
+        """Get file metadata for logging."""
+        metadata = {
+            "path": str(file_path),
+            "name": file_path.name,
+            "format": file_path.suffix.lstrip(".").lower(),
+            "size_bytes": file_path.stat().st_size if file_path.exists() else 0,
+        }
+        
+        # Try to get page count for PDFs
+        if file_path.suffix.lower() == ".pdf":
+            try:
+                import fitz
+                doc = fitz.open(file_path)
+                metadata["pages"] = len(doc)
+                doc.close()
+            except Exception:
+                pass  # Skip if PyMuPDF not available
+        
+        return metadata
 
     async def _extract_fallback(
         self, 

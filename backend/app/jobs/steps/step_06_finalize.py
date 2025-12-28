@@ -192,11 +192,15 @@ class FinalizeStep(BaseStep):
             existing = result.scalar_one_or_none()
             
             if existing:
-                # Update existing record
-                existing.winter = record.get("winter") or existing.winter
-                existing.fruehling = record.get("fruehling") or existing.fruehling
-                existing.sommer = record.get("sommer") or existing.sommer
-                existing.herbst = record.get("herbst") or existing.herbst
+                # Update existing record - always overwrite with new values (including null)
+                if "winter" in record:
+                    existing.winter = record.get("winter")
+                if "fruehling" in record:
+                    existing.fruehling = record.get("fruehling")
+                if "sommer" in record:
+                    existing.sommer = record.get("sommer")
+                if "herbst" in record:
+                    existing.herbst = record.get("herbst")
                 logger.debug("hlzf_updated", voltage_level=voltage_level, year=year)
             else:
                 # Insert new record
