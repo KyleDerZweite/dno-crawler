@@ -38,6 +38,9 @@ class AIExtractor:
     # File extensions that should use text mode
     TEXT_EXTENSIONS = {".html", ".htm", ".txt", ".csv", ".xml"}
     
+    # Maximum tokens to output (prevents runaway generation, safe for structured data)
+    MAX_OUTPUT_TOKENS = 2048
+    
     def __init__(self):
         if not settings.ai_enabled:
             raise RuntimeError("AI extraction not configured. Set AI_API_URL and AI_MODEL.")
@@ -104,7 +107,8 @@ class AIExtractor:
                     "role": "user",
                     "content": full_prompt
                 }],
-                response_format={"type": "json_object"}
+                response_format={"type": "json_object"},
+                max_tokens=self.MAX_OUTPUT_TOKENS
             )
             
             response_content = response.choices[0].message.content
@@ -213,7 +217,8 @@ class AIExtractor:
                     }
                 ]
             }],
-            response_format={"type": "json_object"}
+            response_format={"type": "json_object"},
+            max_tokens=self.MAX_OUTPUT_TOKENS
         )
         
         content = response.choices[0].message.content

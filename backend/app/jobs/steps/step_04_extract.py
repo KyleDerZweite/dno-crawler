@@ -162,31 +162,44 @@ Return valid JSON:
 }}
 """
         else:  # hlzf
-            return f"""Extract HLZF (Hochlastzeitfenster) data from this document.
+            return f"""Extract HLZF (Hochlastzeitfenster) data from this German electricity grid document.
 
 DNO: {dno_name}
 Year: {year}
 
-For each voltage level, extract time windows per season:
-- voltage_level: Standardized abbreviation MUST be used:
-  - "HS" for Hochspannung
-  - "HS/MS" for Umspannung Hoch-/Mittelspannung
-  - "MS" for Mittelspannung
-  - "MS/NS" for Umspannung Mittel-/Niederspannung
-  - "NS" for Niederspannung
-- winter: Time window(s) or "entfällt"
-- fruehling: Time window(s) or "entfällt"
-- sommer: Time window(s) or "entfällt"
-- herbst: Time window(s) or "entfällt"
+IMPORTANT: This table typically has 5 voltage levels (Entnahmeebene/Spannungsebene). Extract ALL of them:
+1. Hochspannungsnetz / Hochspannung → use "HS"
+2. Umspannung zur Mittelspannung / Umspannung Hoch-/Mittelspannung / HS/MS → use "HS/MS"
+3. Mittelspannungsnetz / Mittelspannung → use "MS"
+4. Umspannung zur Niederspannung / Umspannung Mittel-/Niederspannung / MS/NS → use "MS/NS"  
+5. Niederspannungsnetz / Niederspannung → use "NS"
 
-Return valid JSON:
+TABLE STRUCTURE: The columns are ordered left-to-right as:
+- Column 1 (Winter): months like "Jan., Feb., Dez." or "Januar, Februar, Dezember"
+- Column 2 (Frühling): months like "Mrz. – Mai" or "März bis Mai"
+- Column 3 (Sommer): months like "Jun. – Aug." or "Juni bis August"
+- Column 4 (Herbst): months like "Sept. – Nov." or "September bis November"
+
+For each voltage level, extract the time windows:
+- winter: First seasonal column (leftmost) - Time window(s) or null if "entfällt"
+- fruehling: Second seasonal column - Time window(s) or null if "entfällt"
+- sommer: Third seasonal column - Time window(s) or null if "entfällt"
+- herbst: Fourth seasonal column (rightmost) - Time window(s) or null if "entfällt"
+
+Time format: "HH:MM-HH:MM" (e.g., "07:30-15:30"). Multiple windows separated by newlines.
+
+Return valid JSON with exactly 5 voltage level records:
 {{
   "success": true,
   "data_type": "hlzf",
   "source_page": <page number>,
   "notes": "<any observations>",
   "data": [
-    {{"voltage_level": "...", "winter": "...", "sommer": "..."}}
+    {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": null, "sommer": null, "herbst": "11:15-14:00"}},
+    {{"voltage_level": "HS/MS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
+    {{"voltage_level": "MS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
+    {{"voltage_level": "MS/NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
+    {{"voltage_level": "NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}}
   ]
 }}
 """
