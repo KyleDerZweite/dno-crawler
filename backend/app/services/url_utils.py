@@ -46,11 +46,12 @@ ALLOWED_CONTENT_TYPES = {
 # Document file extensions (for content-type fallback)
 DOCUMENT_EXTENSIONS = {".pdf", ".pdfx", ".xlsx", ".xls", ".docx", ".doc"}
 
-# Query parameters to strip (tracking, session, etc.)
+# Query parameters to strip (tracking, session, download flags, etc.)
 STRIP_PARAMS = {
     "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
     "fbclid", "gclid", "session_id", "sessionid", "sid", "ref", "referrer",
     "source", "tracking", "_ga", "_gl", "mc_cid", "mc_eid",
+    "forced",  # Download flag (same file with or without)
 }
 
 
@@ -86,16 +87,14 @@ def normalize_url(url: str) -> str:
         else:
             netloc = hostname
         
-        # Clean path - normalize double slashes, handle trailing slash
+        # Clean path - normalize double slashes
         path = re.sub(r'/+', '/', parsed.path)
         if not path:
             path = "/"
         
-        # Keep trailing slash for directories, remove for files
-        if path != "/" and not any(path.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS):
-            # Assume it's a directory if no extension
-            if not path.endswith("/"):
-                path = path + "/"
+        # DON'T add trailing slashes - many sites return 404 for them
+        # Just preserve the original slash status (except for homepage)
+        # This ensures deduplication still works
         
         # Filter out tracking parameters
         if parsed.query:

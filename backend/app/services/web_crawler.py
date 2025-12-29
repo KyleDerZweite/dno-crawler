@@ -74,11 +74,30 @@ KEYWORDS = {
     ],
     "hlzf": [
         "hlzf", "hochlast", "hochlastzeitfenster", "zeitfenster",
-        "stromnev", "§19", "veroeffentlichung",
+        "stromnev", "§19", "veroeffentlichung", "regelungen",
+        "strom", "netzentgelte",  # HLZF often on same page as netzentgelte
     ],
     "both": [
         "downloads", "dokumente", "service", "veroeffentlichung",
         "netzbetreiber", "netz",
+    ],
+}
+
+# Negative keywords - penalize documents containing these
+# Format: (keyword, penalty) - higher penalty = stronger filter
+NEGATIVE_KEYWORDS = {
+    "netzentgelte": [
+        ("gas", -100),  # HARD filter - wrong energy type entirely
+        ("vermiedene", -25),  # Avoided network charges (different document type)
+        ("referenzpreis", -25),  # Reference prices
+        ("individuelle", -25),  # Individual tariffs (special cases)
+        ("vorlaeufig", -25), ("vorläufig", -25),  # Preliminary versions
+        ("entwurf", -25),  # Draft
+    ],
+    "hlzf": [
+        ("gas", -100),  # HARD filter - wrong energy type
+        # Note: Don't penalize "netzentgelte" - HLZF is often on the same page!
+        ("preisblatt", -15),  # Price sheets (soft penalty, could still have HLZF)
     ],
 }
 
@@ -379,7 +398,13 @@ class WebCrawler:
                 score -= 50
                 break
         
-        # Data-type-specific scoring (NEW)
+        # Negative keyword penalty (filter out wrong document types)
+        if data_type and data_type in NEGATIVE_KEYWORDS:
+            for neg_kw, penalty in NEGATIVE_KEYWORDS[data_type]:
+                if neg_kw.lower() in url_lower:
+                    score += penalty  # penalty is already negative
+        
+        # Data-type-specific scoring
         if data_type:
             score += score_for_data_type(url, data_type)
         
