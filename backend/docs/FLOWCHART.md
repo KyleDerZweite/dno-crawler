@@ -238,7 +238,7 @@ flowchart TD
     HAS_DATA --> |"No"| SKIP
     
     DOWNLOAD --> SAVE[/"Save to:
-    data/{slug}/{year}/{filename}"/]
+    data/downloads/{dno_slug}/{dno_slug}-{type}-{year}.{ext}"/]
     STRIP --> SAVE
     
     SAVE --> RECORD[Record Source URL + File Path]
@@ -403,7 +403,7 @@ erDiagram
 
 ---
 
-## Proposed Codebase Cleanup
+## Codebase Cleanup
 
 ### Current Issues
 1. **Discovery logic split** across `web_crawler.py`, `sitemap_discovery.py`, `bfs_discovery_test.py`
@@ -457,7 +457,7 @@ app/services/discovery/
 | MODIFY | `app/models.py` | Add DNO crawlability fields |
 | MODIFY | `app/services/skeleton_service.py` | Store robots.txt, detect crawlability |
 | MODIFY | `app/api/routes/crawl.py` | Check crawlability before job creation |
-| DELETE | `tests/manual/bfs_discovery_test.py` | Move to proper test suite |
+| ARCHIVE | `tests/manual/bfs_discovery_test.py` | Move to `archive/` - logic integrated into discovery module |
 | MODIFY | `app/jobs/steps/step_01_discover.py` | Use new DiscoveryManager |
 
 ---

@@ -17,12 +17,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.rate_limiter import get_client_ip, get_rate_limiter, RateLimiter
 from app.db import get_db, DNOModel, HLZFModel, NetzentgelteModel, LocationModel
-from app.services.skeleton_service import (
+from app.services.vnb import (
+    VNBDigitalClient,
     normalize_address,
     skeleton_service,
     NormalizedAddress,
 )
-from app.services.vnb_digital import VNBDigitalClient
 
 logger = structlog.get_logger()
 router = APIRouter()
@@ -308,7 +308,20 @@ async def _search_by_address(
         if full_addr:
             enriched_address = full_addr.formatted
     
-    # Step 8: Create or get DNO skeleton with contact info
+    # Step 8: Fetch robots.txt to determine crawlability
+    robots_result = None
+    if dno_details and dno_details.homepage_url:
+        from app.services.robots_parser import fetch_robots_txt
+        import httpx
+        
+        async with httpx.AsyncClient(
+            headers={"User-Agent": "DNO-Crawler/1.0"},
+            follow_redirects=True,
+            timeout=10.0,
+        ) as http_client:
+            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
+    
+    # Step 9: Create or get DNO skeleton with contact info and crawlability
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -318,6 +331,12 @@ async def _search_by_address(
         phone=dno_details.phone if dno_details else None,
         email=dno_details.email if dno_details else None,
         contact_address=enriched_address,
+        # Crawlability info
+        robots_txt=robots_result.raw_content if robots_result else None,
+        sitemap_urls=robots_result.sitemap_urls if robots_result else None,
+        disallow_paths=robots_result.disallow_paths if robots_result else None,
+        crawlable=robots_result.crawlable if robots_result else True,
+        crawl_blocked_reason=robots_result.blocked_reason if robots_result else None,
     )
     
     # Step 8: Create location
@@ -391,6 +410,19 @@ async def _search_by_coordinates(
         if full_addr:
             enriched_address = full_addr.formatted
     
+    # Fetch robots.txt to determine crawlability
+    robots_result = None
+    if dno_details and dno_details.homepage_url:
+        from app.services.robots_parser import fetch_robots_txt
+        import httpx
+        
+        async with httpx.AsyncClient(
+            headers={"User-Agent": "DNO-Crawler/1.0"},
+            follow_redirects=True,
+            timeout=10.0,
+        ) as http_client:
+            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
+    
     dno, _ = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -399,10 +431,16 @@ async def _search_by_coordinates(
         phone=dno_details.phone if dno_details else None,
         email=dno_details.email if dno_details else None,
         contact_address=enriched_address,
+        # Crawlability info
+        robots_txt=robots_result.raw_content if robots_result else None,
+        sitemap_urls=robots_result.sitemap_urls if robots_result else None,
+        disallow_paths=robots_result.disallow_paths if robots_result else None,
+        crawlable=robots_result.crawlable if robots_result else True,
+        crawl_blocked_reason=robots_result.blocked_reason if robots_result else None,
     )
     
     # Create simple location without full address
-    from app.services.skeleton_service import NormalizedAddress
+    from app.services.vnb import NormalizedAddress
     import hashlib
     
     coords_hash = hashlib.sha256(coords_str.encode()).hexdigest()

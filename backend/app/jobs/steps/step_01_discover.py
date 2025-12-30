@@ -4,20 +4,21 @@ Step 01: Discover
 Combined strategy and discovery step. Finds data sources via:
 1. Cached file (if exists) → Skip crawling
 2. Exact URL from profile → Try known URL with year substitution
+2.5. Sitemap discovery → Fast sitemap-based discovery via DiscoveryManager
 3. Learned patterns → Try top patterns on DNO domain
 4. BFS crawl → Full website crawl with keyword scoring
 
-NEW: Content verification before accepting a candidate
+Content verification before accepting a candidate:
 - Verifies content matches expected data_type (netzentgelte vs hlzf)
 - Tries multiple candidates if first doesn't verify
 - Stores verification confidence and rejected candidates
 
 Output stored in job.context:
-- strategy: "use_cache" | "exact_url" | "pattern_match" | "bfs_crawl"
+- strategy: "use_cache" | "exact_url" | "sitemap_*" | "pattern_match" | "bfs_crawl"
 - found_url: URL of discovered data source
 - discovered_via_pattern: Which pattern found it (if pattern_match)
 - pages_crawled: Number of pages crawled (for metrics)
-- needs_headless_review: True if possible SPA detected
+- sitemap_urls_checked: Number of URLs checked from sitemap
 - verification_confidence: Confidence score from content verification
 - rejected_candidates: List of URLs that failed verification
 """
@@ -30,6 +31,7 @@ from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
 from app.services.content_verifier import ContentVerifier
+from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
 from app.services.url_utils import UrlProber
 from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
@@ -131,7 +133,57 @@ class DiscoverStep(BaseStep):
                             "confidence": verification.confidence,
                         })
                 else:
-                    log.info("Exact URL failed, trying patterns")
+                    log.info("Exact URL failed, trying sitemap")
+            
+            # =====================================================================
+            # Strategy 2.5: Sitemap-based discovery (fast, low-impact)
+            # =====================================================================
+            dno_website = ctx.get("dno_website")
+            if dno_website:
+                discovery = DiscoveryManager(client)
+                
+                log.info("Trying sitemap discovery", website=dno_website[:50])
+                
+                discovery_result = await discovery.discover(
+                    base_url=dno_website,
+                    data_type=job.data_type,
+                    target_year=job.year,
+                    max_candidates=10,
+                )
+                
+                if discovery_result.documents:
+                    log.info(
+                        "Sitemap discovered candidates",
+                        count=len(discovery_result.documents),
+                        strategy=discovery_result.strategy.value,
+                    )
+                    
+                    # Try top candidates with verification
+                    for doc in discovery_result.documents[:MAX_CANDIDATES_TO_TRY]:
+                        verification = await verifier.verify_url(
+                            doc.url, job.data_type, job.year
+                        )
+                        
+                        if verification.is_verified:
+                            ctx["strategy"] = f"sitemap_{discovery_result.strategy.value}"
+                            ctx["found_url"] = doc.url
+                            ctx["found_content_type"] = doc.file_type.value if doc.file_type else None
+                            ctx["verification_confidence"] = verification.confidence
+                            ctx["sitemap_urls_checked"] = discovery_result.sitemap_urls_checked
+                            job.context = ctx
+                            await db.commit()
+                            return f"Strategy: SITEMAP → {doc.url} (verified: {verification.confidence:.0%})"
+                        else:
+                            ctx["rejected_candidates"].append({
+                                "url": doc.url,
+                                "reason": "content_verification_failed",
+                                "source": "sitemap",
+                                "detected": verification.detected_data_type,
+                            })
+                    
+                    log.info("Sitemap candidates failed verification, trying patterns")
+                else:
+                    log.info("No sitemap candidates found, trying patterns")
             
             # =====================================================================
             # Strategy 3: Try learned path patterns

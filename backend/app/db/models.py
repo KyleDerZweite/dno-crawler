@@ -74,6 +74,13 @@ class DNOModel(Base, TimestampMixin):
     phone: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str | None] = mapped_column(String(255))
     contact_address: Mapped[str | None] = mapped_column(String(500))
+    
+    # Crawlability info (from skeleton creation)
+    robots_txt: Mapped[str | None] = mapped_column(Text)  # Full robots.txt content
+    sitemap_urls: Mapped[dict | None] = mapped_column(JSON)  # URLs from robots.txt Sitemap: directives
+    disallow_paths: Mapped[dict | None] = mapped_column(JSON)  # Paths from robots.txt Disallow:
+    crawlable: Mapped[bool] = mapped_column(Boolean, default=True)  # False if Cloudflare/JS-protected
+    crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))  # "cloudflare", "robots_disallow", etc.
 
     # Relationships
     netzentgelte: Mapped[list["NetzentgelteModel"]] = relationship(back_populates="dno")

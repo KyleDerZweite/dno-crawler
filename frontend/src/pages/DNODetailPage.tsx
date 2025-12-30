@@ -594,7 +594,7 @@ export function DNODetailPage() {
                     )}
                     <Dialog open={crawlDialogOpen} onOpenChange={setCrawlDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button>
+                            <Button disabled={dno.crawlable === false}>
                                 <RefreshCw className="mr-2 h-4 w-4" />
                                 Trigger Crawl
                             </Button>
@@ -703,6 +703,16 @@ export function DNODetailPage() {
                             </DialogFooter>
                         </DialogContent>
                     </Dialog>
+
+                    {/* Show crawlability warning */}
+                    {dno.crawlable === false && (
+                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
+                            <AlertCircle className="mr-1 h-3 w-3" />
+                            {dno.crawl_blocked_reason === 'cloudflare' ? 'Cloudflare Protected' :
+                                dno.crawl_blocked_reason === 'robots_disallow_all' ? 'Blocked by robots.txt' :
+                                    dno.crawl_blocked_reason || 'Not Crawlable'}
+                        </Badge>
+                    )}
 
                     {/* Edit DNO Dialog - Admin Only */}
                     {isAdmin() && (

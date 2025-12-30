@@ -125,4 +125,7 @@ data/extracted/**
 # Windows
 Thumbs.db
 
+# Lock files
+*.lock
+
 # End of .gitignore

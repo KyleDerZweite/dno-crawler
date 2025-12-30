@@ -142,6 +142,12 @@ class SkeletonService:
         phone: str | None = None,
         email: str | None = None,
         contact_address: str | None = None,
+        # Crawlability info (from robots.txt)
+        robots_txt: str | None = None,
+        sitemap_urls: list[str] | None = None,
+        disallow_paths: list[str] | None = None,
+        crawlable: bool = True,
+        crawl_blocked_reason: str | None = None,
     ) -> tuple[DNOModel, bool]:
         """
         Get existing or create new DNO skeleton.
@@ -161,7 +167,7 @@ class SkeletonService:
             log.debug("DNO already exists", dno_id=existing.id)
             return existing, False
         
-        # Create new skeleton with contact info
+        # Create new skeleton with contact info and crawlability
         slug = generate_slug(name)
         dno = DNOModel(
             slug=slug,
@@ -173,13 +179,25 @@ class SkeletonService:
             phone=phone,
             email=email,
             contact_address=contact_address,
+            # Crawlability info
+            robots_txt=robots_txt,
+            sitemap_urls=sitemap_urls,
+            disallow_paths=disallow_paths,
+            crawlable=crawlable,
+            crawl_blocked_reason=crawl_blocked_reason,
         )
         
         try:
             db.add(dno)
             await db.commit()
             await db.refresh(dno)
-            log.info("Created DNO skeleton", dno_id=dno.id, slug=slug, has_website=bool(website))
+            log.info(
+                "Created DNO skeleton",
+                dno_id=dno.id,
+                slug=slug,
+                has_website=bool(website),
+                crawlable=crawlable,
+            )
             return dno, True
         except IntegrityError as e:
             # Race condition: another request created it first

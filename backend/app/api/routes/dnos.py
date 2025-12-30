@@ -61,7 +61,7 @@ async def search_vnb(
     
     Returns matching VNBs with indicator if they already exist in our database.
     """
-    from app.services.vnb_digital import VNBDigitalClient
+    from app.services.vnb import VNBDigitalClient
     
     vnb_client = VNBDigitalClient(request_delay=0.5)
     vnb_results = await vnb_client.search_vnb(q)
@@ -103,7 +103,7 @@ async def get_vnb_details(
     
     Used when user selects a suggestion to auto-fill the form.
     """
-    from app.services.vnb_digital import VNBDigitalClient
+    from app.services.vnb import VNBDigitalClient
     
     vnb_client = VNBDigitalClient(request_delay=0.5)
     details = await vnb_client.get_vnb_details(vnb_id)
@@ -150,7 +150,7 @@ async def create_dno(
     If slug is not provided, it will be auto-generated from the name.
     If vnb_id is provided, validates against VNB Digital and fetches missing details.
     """
-    from app.services.vnb_digital import VNBDigitalClient
+    from app.services.vnb import VNBDigitalClient
     
     # Generate slug if not provided
     slug = request.slug if request.slug else _slugify(request.name)
@@ -368,6 +368,9 @@ async def get_dno_details(
             "phone": dno.phone,
             "email": dno.email,
             "contact_address": dno.contact_address,
+            # Crawlability info
+            "crawlable": getattr(dno, 'crawlable', True),
+            "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },

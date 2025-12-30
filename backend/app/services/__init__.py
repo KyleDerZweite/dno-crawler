@@ -1,22 +1,23 @@
 """
 Services layer for DNO Crawler business logic.
 
-SERVICES:
-- vnb_digital: VNB Digital GraphQL API client for DNO lookup (address/coordinates → DNO)
-- dno_resolver: Address → DNO caching layer (check/save mappings)
-- web_crawler: BFS web crawler for discovering data sources on DNO websites
-- pattern_learner: Cross-DNO URL pattern learning and application
-- url_utils: SSRF-safe URL probing, robots.txt compliance, URL normalization
-- content_verifier: Pre-download content verification (sniff + keyword analysis)
+MODULES:
+- vnb/: VNB Digital API client + skeleton service
+- discovery/: Data discovery (sitemap + BFS strategies)
+- extraction/: Data extraction (PDF, HTML, AI)
+
+STANDALONE SERVICES:
+- web_crawler: BFS web crawler for discovering data sources
+- robots_parser: Robots.txt parsing and crawlability detection
+- html_content_detector: HTML embedded data detection
+- url_utils: URL normalization and validation
+- content_verifier: Pre-download content verification
 - pdf_downloader: PDF download and validation
-- extraction/pdf_extractor: Regex-based PDF data extraction
-- extraction/html_extractor: HTML table parsing for website data
-- extraction/ai_extractor: AI-based extraction using OpenAI-compatible APIs
+- impressum_extractor: Impressum page parsing
 
 ARCHITECTURE:
-1. DNO Resolution: VNBDigitalClient → address/coords → DNO name
-2. Data Discovery: WebCrawler (BFS) + PatternLearner → find Netzentgelte/HLZF files
-3. PDF Processing: PDFDownloader → pdf_extractor (regex) + llm_extractor (AI fallback)
-4. Website Scraping: html_extractor for tables when PDFs unavailable
+1. DNO Resolution: vnb.VNBDigitalClient → address/coords → DNO name
+2. Skeleton Creation: vnb.skeleton_service → DNO + crawlability info
+3. Data Discovery: discovery.DiscoveryManager → sitemap-first + BFS fallback
+4. Data Extraction: extraction/pdf_extractor + ai_extractor
 """
-
