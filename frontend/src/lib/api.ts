@@ -69,6 +69,10 @@ export interface DNO {
   phone?: string;
   email?: string;
   contact_address?: string;
+  // Crawlability info
+  crawlable?: boolean;
+  crawl_blocked_reason?: string;
+  // Stats
   data_points_count?: number;
   netzentgelte_count?: number;
   hlzf_count?: number;
