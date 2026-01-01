@@ -222,7 +222,12 @@ class AIExtractor:
             logger.error("ai_extract_json_error", error=str(e))
             raise ValueError(f"AI returned invalid JSON: {e}")
         except Exception as e:
-            logger.error("ai_extract_vision_error", error=str(e))
+            # Try to extract more details if it's an API error
+            error_details = str(e)
+            if hasattr(e, 'response') and hasattr(e.response, 'text'):
+                error_details += f" | Response: {e.response.text}"
+                
+            logger.error("ai_extract_vision_error", error=error_details)
             raise
 
     async def _call_vision_api(self, prompt: str, base64_data: str, mime_type: str) -> dict[str, Any]:
@@ -286,9 +291,13 @@ class AIExtractor:
             
             # Determine keywords based on prompt
             keywords = []
+            exclude_keywords = []
             prompt_lower = prompt.lower()
             if "netzentgelte" in prompt_lower:
-                keywords = ["netzentgelte", "entgelte", "preise", "preisblatt", "netz", "strom", "leistungs", "arbeit"]
+                # Use stricter keywords to avoid keeping pages with just generic terms like "Strom" or "Netz"
+                # "KA-Sätze" (Konzessionsabgaben) pages often get kept because of generic terms.
+                keywords = ["preisblatt", "leistungspreis", "arbeitspreis", "netzentgelte", "entnahme", "ebenenspezifisch"]
+                exclude_keywords = ["konzession", "ka-sätze"]
             elif "hlzf" in prompt_lower or "hochlast" in prompt_lower:
                 keywords = ["hochlast", "zeitfenster", "hlzf", "zeitscheiben", "lastgang"]
             
@@ -308,6 +317,10 @@ class AIExtractor:
                 if len(text.strip()) > 50:
                     has_text_content = True
                 
+                # Check for exclude keywords
+                if exclude_keywords and any(k in text for k in exclude_keywords):
+                    continue
+
                 # Check for keywords
                 if any(k in text for k in keywords):
                     relevant_pages.append(page_num)
