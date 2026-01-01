@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { VerificationBadge } from "@/components/verification-badge";
+import { SmartDropdown } from "@/components/SmartDropdown";
 
 // Crawl configuration - matching SearchPage defaults
 const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -1093,7 +1094,7 @@ export function DNODetailPage() {
             </Card>
 
             {/* Netzentgelte Data */}
-            <Card className="p-6">
+            <Card className="p-6 min-h-[320px]">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Zap className="h-5 w-5 text-blue-500" />
                     Netzentgelte
@@ -1154,35 +1155,39 @@ export function DNODetailPage() {
                                         </td>
                                         {isAdmin() && (
                                             <td className="py-2 px-3 text-right">
-                                                <div className="relative inline-block" ref={openMenuId === `netz-${item.id}` ? menuRef : undefined}>
-                                                    <Button
-                                                        variant="ghost"
-                                                        size="sm"
-                                                        className="h-7 w-7 p-0"
-                                                        onClick={() => setOpenMenuId(openMenuId === `netz-${item.id}` ? null : `netz-${item.id}`)}
+                                                <SmartDropdown
+                                                    trigger={
+                                                        <Button
+                                                            variant="ghost"
+                                                            size="sm"
+                                                            className="h-7 w-7 p-0"
+                                                        >
+                                                            <MoreVertical className="h-4 w-4" />
+                                                        </Button>
+                                                    }
+                                                    isOpen={openMenuId === `netz-${item.id}`}
+                                                    onOpenChange={(isOpen) => setOpenMenuId(isOpen ? `netz-${item.id}` : null)}
+                                                    className="bg-popover border rounded-md shadow-md py-1"
+                                                >
+                                                    <button
+                                                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
+                                                        onClick={() => {
+                                                            setOpenMenuId(null);
+                                                            handleEditNetzentgelte(item);
+                                                        }}
                                                     >
-                                                        <MoreVertical className="h-4 w-4" />
-                                                    </Button>
-                                                    {openMenuId === `netz-${item.id}` && (
-                                                        <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-md py-1 min-w-[100px]">
-                                                            <button
-                                                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                                                                onClick={() => handleEditNetzentgelte(item)}
-                                                            >
-                                                                <Pencil className="h-3.5 w-3.5" /> Edit
-                                                            </button>
-                                                            <button
-                                                                className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
-                                                                onClick={() => {
-                                                                    setOpenMenuId(null);
-                                                                    handleDeleteNetzentgelte(item.id);
-                                                                }}
-                                                            >
-                                                                <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                            </button>
-                                                        </div>
-                                                    )}
-                                                </div>
+                                                        <Pencil className="h-3.5 w-3.5" /> Edit
+                                                    </button>
+                                                    <button
+                                                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
+                                                        onClick={() => {
+                                                            setOpenMenuId(null);
+                                                            handleDeleteNetzentgelte(item.id);
+                                                        }}
+                                                    >
+                                                        <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                    </button>
+                                                </SmartDropdown>
                                             </td>
                                         )}
                                     </tr>
@@ -1196,7 +1201,7 @@ export function DNODetailPage() {
             </Card>
 
             {/* HLZF Data */}
-            <Card className="p-6">
+            <Card className="p-6 min-h-[320px]">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <Clock className="h-5 w-5 text-purple-500" />
                     HLZF (Hochlastzeitfenster)
@@ -1284,35 +1289,39 @@ export function DNODetailPage() {
                                             </td>
                                             {isAdmin() && (
                                                 <td className="py-2 px-3 text-right">
-                                                    <div className="relative inline-block" ref={openMenuId === `hlzf-${item.id}` ? menuRef : undefined}>
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 w-7 p-0"
-                                                            onClick={() => setOpenMenuId(openMenuId === `hlzf-${item.id}` ? null : `hlzf-${item.id}`)}
+                                                    <SmartDropdown
+                                                        trigger={
+                                                            <Button
+                                                                variant="ghost"
+                                                                size="sm"
+                                                                className="h-7 w-7 p-0"
+                                                            >
+                                                                <MoreVertical className="h-4 w-4" />
+                                                            </Button>
+                                                        }
+                                                        isOpen={openMenuId === `hlzf-${item.id}`}
+                                                        onOpenChange={(isOpen) => setOpenMenuId(isOpen ? `hlzf-${item.id}` : null)}
+                                                        className="bg-popover border rounded-md shadow-md py-1"
+                                                    >
+                                                        <button
+                                                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
+                                                            onClick={() => {
+                                                                setOpenMenuId(null);
+                                                                handleEditHLZF(item);
+                                                            }}
                                                         >
-                                                            <MoreVertical className="h-4 w-4" />
-                                                        </Button>
-                                                        {openMenuId === `hlzf-${item.id}` && (
-                                                            <div className="absolute right-0 top-7 z-50 bg-popover border rounded-md shadow-md py-1 min-w-[100px]">
-                                                                <button
-                                                                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                                                                    onClick={() => handleEditHLZF(item)}
-                                                                >
-                                                                    <Pencil className="h-3.5 w-3.5" /> Edit
-                                                                </button>
-                                                                <button
-                                                                    className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
-                                                                    onClick={() => {
-                                                                        setOpenMenuId(null);
-                                                                        handleDeleteHLZF(item.id);
-                                                                    }}
-                                                                >
-                                                                    <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                                </button>
-                                                            </div>
-                                                        )}
-                                                    </div>
+                                                            <Pencil className="h-3.5 w-3.5" /> Edit
+                                                        </button>
+                                                        <button
+                                                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
+                                                            onClick={() => {
+                                                                setOpenMenuId(null);
+                                                                handleDeleteHLZF(item.id);
+                                                            }}
+                                                        >
+                                                            <Trash2 className="h-3.5 w-3.5" /> Delete
+                                                        </button>
+                                                    </SmartDropdown>
                                                 </td>
                                             )}
                                         </tr>
