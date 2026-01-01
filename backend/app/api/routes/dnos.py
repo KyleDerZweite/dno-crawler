@@ -4,7 +4,7 @@ DNO management routes (authenticated).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -352,6 +352,13 @@ async def get_dno_details(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="DNO not found",
         )
+    
+    # Check if local files exist for this DNO
+    import os
+    from pathlib import Path
+    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    dno_dir = Path(storage_path) / "downloads" / dno.slug
+    has_local_files = dno_dir.exists() and any(dno_dir.iterdir())
         
     return APIResponse(
         success=True,
@@ -371,6 +378,7 @@ async def get_dno_details(
             # Crawlability info
             "crawlable": getattr(dno, 'crawlable', True),
             "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
+            "has_local_files": has_local_files,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },
@@ -957,4 +965,94 @@ async def list_dno_files(
     return APIResponse(
         success=True,
         data=files,
+    )
+
+
+@router.post("/{dno_id}/upload")
+async def upload_file(
+    dno_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    file: UploadFile = File(...),
+) -> APIResponse:
+    """
+    Upload a file for a DNO.
+    
+    Automatically detects data type and year from filename using weighted
+    keyword scoring, then renames to canonical format: {data_type}-{year}.{ext}
+    
+    This enables extraction for protected DNOs where automated crawling fails.
+    """
+    import aiofiles
+    import os
+    from pathlib import Path
+    import structlog
+    
+    from app.services.file_analyzer import file_analyzer
+    
+    logger = structlog.get_logger()
+    
+    # Find DNO by ID or slug
+    dno = None
+    if isinstance(dno_id, int) or str(dno_id).isdigit():
+        query = select(DNOModel).where(DNOModel.id == int(dno_id))
+        result = await db.execute(query)
+        dno = result.scalar_one_or_none()
+    
+    if not dno:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="DNO not found",
+        )
+    
+    # Analyze filename
+    original_filename = file.filename or "unknown.pdf"
+    data_type, year = file_analyzer.analyze(original_filename)
+    
+    if not data_type or not year:
+        return APIResponse(
+            success=False,
+            message="Could not detect data type or year from filename",
+            data={
+                "detected_type": data_type,
+                "detected_year": year,
+                "filename": original_filename,
+                "hint": "Rename file to include type keywords and year (e.g., preisblaetter-2025.pdf or zeitfenster-2025.pdf)",
+            },
+        )
+    
+    # Construct canonical filename (matches existing cache discovery pattern)
+    extension = Path(original_filename).suffix.lower() or ".pdf"
+    target_filename = f"{dno.slug}-{data_type}-{year}{extension}"
+    
+    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    target_dir = Path(storage_path) / "downloads" / dno.slug
+    target_dir.mkdir(parents=True, exist_ok=True)
+    target_path = target_dir / target_filename
+    
+    # Save file (overwrites existing - user intent takes precedence)
+    async with aiofiles.open(target_path, "wb") as f:
+        content = await file.read()
+        await f.write(content)
+    
+    logger.info(
+        "File uploaded",
+        original=original_filename,
+        target=target_filename,
+        detected_type=data_type,
+        detected_year=year,
+        dno=dno.slug,
+        user=current_user.email,
+    )
+    
+    return APIResponse(
+        success=True,
+        message=f"File saved as {target_filename}",
+        data={
+            "filename": target_filename,
+            "path": f"/files/downloads/{dno.slug}/{target_filename}",
+            "detected_type": data_type,
+            "detected_year": year,
+            "original_filename": original_filename,
+        },
     )

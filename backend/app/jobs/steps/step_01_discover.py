@@ -76,6 +76,18 @@ class DiscoverStep(BaseStep):
             log.info("Using cached file", path=ctx["cached_file"])
             return f"Strategy: USE_CACHE → {ctx['cached_file']}"
         
+        # =========================================================================
+        # Check: If DNO is protected and no cached file, cancel gracefully
+        # =========================================================================
+        dno_crawlable = ctx.get("dno_crawlable", True)
+        if not dno_crawlable:
+            blocked_reason = ctx.get("crawl_blocked_reason", "unknown protection")
+            from app.jobs.steps.base import StepError
+            raise StepError(
+                f"Cancelled: Site is protected ({blocked_reason}) and no local file found "
+                f"for {job.data_type} {job.year}. Please upload the file manually."
+            )
+        
         # Need HTTP client for remaining strategies
         async with httpx.AsyncClient(
             timeout=15.0,

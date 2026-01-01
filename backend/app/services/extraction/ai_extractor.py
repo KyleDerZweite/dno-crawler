@@ -47,7 +47,12 @@ class AIExtractor:
         
         self.client = AsyncOpenAI(
             base_url=settings.ai_api_url,
-            api_key=settings.ai_api_key or "ollama"  # Ollama needs non-empty string
+            api_key=settings.ai_api_key or "ollama",  # Ollama needs non-empty string
+            default_headers={
+                # OpenRouter app identification - shows in dashboard activity
+                "HTTP-Referer": "https://github.com/KyleDerZweite/dno-crawler",
+                "X-Title": "DNO Crawler",
+            }
         )
         self.model = settings.ai_model
     

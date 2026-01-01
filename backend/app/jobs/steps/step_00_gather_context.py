@@ -46,11 +46,14 @@ class GatherContextStep(BaseStep):
         
         # 3. Check for cached files
         cache_dir = Path(settings.downloads_path) / dno.slug
-        pattern = f"{dno.slug}-{job.data_type}-{job.year}.*"
-        cached_files = list(cache_dir.glob(pattern)) if cache_dir.exists() else []
-        cached_file = str(cached_files[0]) if cached_files else None
+        cached_file = None
+        if cache_dir.exists():
+            # Check canonical format: {slug}-{data_type}-{year}.{ext}
+            pattern = f"{dno.slug}-{job.data_type}-{job.year}.*"
+            cached_files = list(cache_dir.glob(pattern))
+            cached_file = str(cached_files[0]) if cached_files else None
         
-        # 4. Build context
+        # 4. Build context with crawlability info
         job.context = {
             "dno_id": dno.id,
             "dno_slug": dno.slug,
@@ -60,12 +63,19 @@ class GatherContextStep(BaseStep):
             "profile_url_pattern": profile.url_pattern if profile else None,
             "profile_source_format": profile.source_format if profile else None,
             "cached_file": cached_file,
+            # Crawlability info (for protected site handling)
+            "dno_crawlable": getattr(dno, 'crawlable', True),
+            "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
         }
         
         # Return summary based on what we found
         if cached_file:
             return f"Found cached file: {Path(cached_file).name}"
+        elif not getattr(dno, 'crawlable', True):
+            reason = getattr(dno, 'crawl_blocked_reason', 'unknown')
+            return f"Site is protected ({reason}) - will check for local files"
         elif profile:
             return f"Has source profile (format: {profile.source_format}, domain: {profile.source_domain})"
         else:
             return f"No prior knowledge for {dno.name} - will search from scratch"
+

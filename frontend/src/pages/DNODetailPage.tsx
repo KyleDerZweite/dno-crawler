@@ -32,6 +32,7 @@ import {
     Check,
     ChevronDown,
     ChevronUp,
+    Upload,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -91,6 +92,18 @@ export function DNODetailPage() {
 
     // Delete DNO dialog state
     const [deleteDNOOpen, setDeleteDNOOpen] = useState(false);
+
+    // Upload dialog state
+    const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+    const [uploadResults, setUploadResults] = useState<Array<{
+        filename: string;
+        success: boolean;
+        message: string;
+        detected_type?: string | null;
+        detected_year?: number | null;
+    }>>([]);
+    const [isUploading, setIsUploading] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     // Close menu when clicking outside
     useEffect(() => {
@@ -207,6 +220,59 @@ export function DNODetailPage() {
             }
             return [...prev, year].sort((a, b) => b - a);
         });
+    };
+
+    // Handle file upload
+    const handleFileUpload = async (files: FileList | null) => {
+        if (!files || files.length === 0 || !id) return;
+
+        setIsUploading(true);
+        setUploadResults([]);
+
+        const results: typeof uploadResults = [];
+
+        for (const file of Array.from(files)) {
+            try {
+                const response = await api.dnos.uploadFile(id, file);
+                if (response.success) {
+                    results.push({
+                        filename: file.name,
+                        success: true,
+                        message: `Saved as ${response.data.filename}`,
+                        detected_type: response.data.detected_type,
+                        detected_year: response.data.detected_year,
+                    });
+                } else {
+                    results.push({
+                        filename: file.name,
+                        success: false,
+                        message: response.message || response.data?.hint || 'Detection failed',
+                    });
+                }
+            } catch {
+                results.push({
+                    filename: file.name,
+                    success: false,
+                    message: 'Upload failed',
+                });
+            }
+        }
+
+        setUploadResults(results);
+        setIsUploading(false);
+
+        // Refresh files list
+        queryClient.invalidateQueries({ queryKey: ["dno-files", id] });
+        queryClient.invalidateQueries({ queryKey: ["dno", id] });
+
+        // Show toast for results
+        const successCount = results.filter(r => r.success).length;
+        if (successCount > 0) {
+            toast({
+                title: "Files Uploaded",
+                description: `${successCount} of ${results.length} file(s) uploaded successfully`,
+            });
+        }
     };
 
     const dno = dnoResponse?.data;
@@ -594,7 +660,7 @@ export function DNODetailPage() {
                     )}
                     <Dialog open={crawlDialogOpen} onOpenChange={setCrawlDialogOpen}>
                         <DialogTrigger asChild>
-                            <Button disabled={dno.crawlable === false}>
+                            <Button disabled={dno.crawlable === false && !dno.has_local_files}>
                                 <RefreshCw className="mr-2 h-4 w-4" />
                                 Trigger Crawl
                             </Button>
@@ -711,6 +777,7 @@ export function DNODetailPage() {
                             {dno.crawl_blocked_reason === 'cloudflare' ? 'Cloudflare Protected' :
                                 dno.crawl_blocked_reason === 'robots_disallow_all' ? 'Blocked by robots.txt' :
                                     dno.crawl_blocked_reason || 'Not Crawlable'}
+                            {dno.has_local_files && ' (Local files available)'}
                         </Badge>
                     )}
 
@@ -1261,10 +1328,20 @@ export function DNODetailPage() {
 
             {/* Source Files */}
             <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <FileDown className="h-5 w-5 text-orange-500" />
-                    Source Files
-                </h2>
+                <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-lg font-semibold flex items-center gap-2">
+                        <FileDown className="h-5 w-5 text-orange-500" />
+                        Source Files
+                    </h2>
+                    <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setUploadDialogOpen(true)}
+                    >
+                        <Upload className="mr-2 h-4 w-4" />
+                        Upload Files
+                    </Button>
+                </div>
                 {files.length > 0 ? (
                     <div className="space-y-2">
                         {files.map((file, index) => (
@@ -1300,6 +1377,88 @@ export function DNODetailPage() {
                     <p className="text-muted-foreground text-center py-8">No source files available</p>
                 )}
             </Card>
+
+            {/* Upload Dialog */}
+            <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Upload Files for {dno.name}</DialogTitle>
+                        <DialogDescription>
+                            Drop files here. The system will automatically detect the data type and year from the filename.
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {/* File Input */}
+                    <div
+                        className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                        <input
+                            type="file"
+                            multiple
+                            accept=".pdf,.xlsx,.html,.csv"
+                            onChange={(e) => handleFileUpload(e.target.files)}
+                            className="hidden"
+                            ref={fileInputRef}
+                        />
+                        <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
+                        <p className="text-sm font-medium">Click to choose files</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                            Supports PDF, XLSX, HTML, CSV
+                        </p>
+                    </div>
+
+                    {/* Upload Progress */}
+                    {isUploading && (
+                        <div className="flex items-center justify-center gap-2 py-4">
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm">Uploading...</span>
+                        </div>
+                    )}
+
+                    {/* Upload Results */}
+                    {uploadResults.length > 0 && (
+                        <div className="space-y-2 max-h-48 overflow-y-auto">
+                            {uploadResults.map((result, idx) => (
+                                <div
+                                    key={idx}
+                                    className={cn(
+                                        "flex items-start gap-2 p-2 rounded text-sm",
+                                        result.success ? "bg-green-500/10" : "bg-red-500/10"
+                                    )}
+                                >
+                                    {result.success ? (
+                                        <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
+                                    ) : (
+                                        <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
+                                    )}
+                                    <div className="min-w-0">
+                                        <p className="font-medium truncate">{result.filename}</p>
+                                        <p className="text-xs text-muted-foreground">{result.message}</p>
+                                        {result.success && result.detected_type && (
+                                            <p className="text-xs text-muted-foreground">
+                                                Detected: {result.detected_type} {result.detected_year}
+                                            </p>
+                                        )}
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setUploadDialogOpen(false);
+                                setUploadResults([]);
+                            }}
+                        >
+                            Close
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
 
             {/* Recent Crawl Jobs */}
             <Card className="p-6">

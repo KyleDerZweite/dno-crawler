@@ -202,17 +202,26 @@ class ExtractStep(BaseStep):
 DNO: {dno_name}
 Year: {year}
 
+CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any!
+
+Map these voltage level names to standardized abbreviations:
+- Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
+- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" → output as "NS"
+
+SKIP any "ausHÖS" or "HÖS" entries (these are from upstream TSO, not this DNO).
+
+NOTE: The document may have ONE combined table OR SEPARATE tables per voltage level.
+Voltage level names may be split across multiple lines in PDFs.
+
 German electricity tariffs often have TWO sets of prices based on annual usage:
 - "< 2.500 h/a" or "unter 2500h" (under 2500 hours/year usage)
 - "≥ 2.500 h/a" or "über 2500h" (2500+ hours/year usage)
 
-For each voltage level (Spannungsebene), extract:
-- voltage_level: Standardized abbreviation MUST be used:
-  - "HS" for Hochspannung
-  - "HS/MS" for Umspannung Hoch-/Mittelspannung
-  - "MS" for Mittelspannung
-  - "MS/NS" for Umspannung Mittel-/Niederspannung
-  - "NS" for Niederspannung
+For EACH of the 5 voltage levels, extract:
+- voltage_level: Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS)
 - leistung_unter_2500h: Capacity price (Leistungspreis) for < 2500h in €/kW/a
 - arbeit_unter_2500h: Work price (Arbeitspreis) for < 2500h in ct/kWh
 - leistung: Capacity price (Leistungspreis) for ≥ 2500h in €/kW/a  
@@ -220,14 +229,18 @@ For each voltage level (Spannungsebene), extract:
 
 If only one set of prices exists (no usage distinction), use leistung and arbeit fields only.
 
-Return valid JSON:
+YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
 {{
   "success": true,
   "data_type": "netzentgelte",
   "source_page": <page number>,
-  "notes": "<any observations about the data>",
+  "notes": "<any observations about the table format>",
   "data": [
-    {{"voltage_level": "HS", "leistung_unter_2500h": ..., "arbeit_unter_2500h": ..., "leistung": ..., "arbeit": ...}}
+    {{"voltage_level": "HS", "leistung_unter_2500h": ..., "arbeit_unter_2500h": ..., "leistung": ..., "arbeit": ...}},
+    {{"voltage_level": "HS/MS", ...}},
+    {{"voltage_level": "MS", ...}},
+    {{"voltage_level": "MS/NS", ...}},
+    {{"voltage_level": "NS", ...}}
   ]
 }}
 """
@@ -237,28 +250,27 @@ Return valid JSON:
 DNO: {dno_name}
 Year: {year}
 
-CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any rows!
+CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any!
 
-The 5 voltage levels (Entnahmeebene/Spannungsebene) are:
-1. Hochspannungsnetz / Hochspannung → output as "HS"
-2. Umspannung zur Mittelspannung / Umspann. z. MS / HS/MS-Umspannung → output as "HS/MS"
-3. Mittelspannungsnetz / Mittelspannung → output as "MS"
-4. Umspannung zur Niederspannung / Umspann. z. NS / MS/NS-Umspannung → output as "MS/NS"  
-5. Niederspannungsnetz / Niederspannung → output as "NS"
+Map these voltage level names to standardized abbreviations:
+- Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
+- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" → output as "NS"
 
-NOTE: In PDF tables, voltage level names may be split across multiple lines (e.g., "Umspannung zur" on one line and "Mittelspannung" on the next). These should be treated as a single voltage level.
+SKIP any "ausHÖS" or "HÖS" entries (these are from upstream TSO, not this DNO).
 
-TABLE STRUCTURE - columns ordered left-to-right:
-- Column 1 (Winter): months Jan., Feb., Dez. / Januar, Februar, Dezember
-- Column 2 (Frühling): months Mrz. – Mai / März bis Mai
-- Column 3 (Sommer): months Jun. – Aug. / Juni bis August
-- Column 4 (Herbst): months Sept. – Nov. / September bis November
+NOTE: In PDF tables, voltage level names may be split across multiple lines.
+The document may have ONE combined table OR SEPARATE tables per voltage level.
+Season columns may appear in any order (Frühling, Sommer, Herbst, Winter).
+Time columns may use "von/bis" format or direct time ranges.
 
 For EACH of the 5 voltage levels, extract:
-- winter: Time window(s) from first column, or null if "entfällt"
-- fruehling: Time window(s) from second column, or null if "entfällt"
-- sommer: Time window(s) from third column, or null if "entfällt"
-- herbst: Time window(s) from fourth column, or null if "entfällt"
+- winter: Time window(s) for Dec-Feb, or null if empty/"entfällt"
+- fruehling: Time window(s) for Mar-May, or null if empty/"entfällt"
+- sommer: Time window(s) for Jun-Aug, or null if empty/"entfällt"
+- herbst: Time window(s) for Sep-Nov, or null if empty/"entfällt"
 
 Time format: "HH:MM-HH:MM" (e.g., "07:30-15:30"). Multiple windows separated by "\\n".
 
@@ -267,7 +279,7 @@ YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
   "success": true,
   "data_type": "hlzf",
   "source_page": <page number where table was found>,
-  "notes": "<any observations>",
+  "notes": "<any observations about the table format>",
   "data": [
     {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": null, "sommer": null, "herbst": "11:15-14:00"}},
     {{"voltage_level": "HS/MS", "winter": "07:30-15:45\\n16:30-18:15", "fruehling": null, "sommer": null, "herbst": "16:45-17:30"}},

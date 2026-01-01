@@ -27,6 +27,7 @@ bcrypt==4.0.1
 python-dotenv>=1.0.0
 structlog>=24.1.0
 tenacity>=8.2.3
+aiofiles>=23.0.0
 python-dateutil>=2.8.2
 pytest>=7.4.4
 pytest-asyncio>=0.23.3

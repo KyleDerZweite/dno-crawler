@@ -72,6 +72,7 @@ export interface DNO {
   // Crawlability info
   crawlable?: boolean;
   crawl_blocked_reason?: string;
+  has_local_files?: boolean;
   // Stats
   data_points_count?: number;
   netzentgelte_count?: number;
@@ -510,6 +511,29 @@ export const api = {
       dno_id: string
     ): Promise<ApiResponse<{ name: string; size: number; path: string }[]>> {
       const { data } = await apiClient.get(`/dnos/${dno_id}/files`);
+      return data;
+    },
+
+    async uploadFile(
+      dno_id: string,
+      file: File
+    ): Promise<
+      ApiResponse<{
+        filename: string;
+        path: string;
+        detected_type: string | null;
+        detected_year: number | null;
+        original_filename: string;
+        hint?: string;
+      }>
+    > {
+      const formData = new FormData();
+      formData.append("file", file);
+      const { data } = await apiClient.post(`/dnos/${dno_id}/upload`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+      });
       return data;
     },
   },

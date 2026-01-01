@@ -49,9 +49,9 @@ interface VerificationBadgeProps {
  */
 export function VerificationBadge({
     status,
-    verifiedBy,
+    verifiedBy: _verifiedBy,
     verifiedAt,
-    flaggedBy,
+    flaggedBy: _flaggedBy,
     flaggedAt,
     flagReason,
     recordId,
