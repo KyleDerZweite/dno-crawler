@@ -21,12 +21,51 @@ from pathlib import Path
 from typing import Any
 
 import structlog
-from openai import AsyncOpenAI
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from openai import AsyncOpenAI, RateLimitError
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, wait_base
 
 from app.core.config import settings
 
 logger = structlog.get_logger()
+
+
+class WaitRateLimit(wait_base):
+    """
+    Custom wait strategy that honors 'Retry-After' or 'x-ratelimit-reset' headers.
+    Falls back to a secondary wait strategy if headers are missing.
+    """
+    def __init__(self, fallback: wait_base):
+        self.fallback = fallback
+
+    def __call__(self, retry_state) -> float:
+        exc = retry_state.outcome.exception()
+        
+        # We only look for headers if it's a RateLimitError
+        if isinstance(exc, RateLimitError):
+            # headers is an httpx.Headers object or dict
+            headers = getattr(exc, "headers", {})
+            
+            # 1. Standard Retry-After (seconds)
+            retry_after = headers.get("retry-after")
+            if retry_after:
+                try:
+                    return float(retry_after) + 1.0  # 1s safety buffer
+                except (ValueError, TypeError):
+                    pass
+            
+            # 2. OpenAI specific: x-ratelimit-reset-requests (e.g. "6s", "20s", or "60ms")
+            # This is "the time until the rate limit resets"
+            reset_requests = headers.get("x-ratelimit-reset-requests")
+            if reset_requests:
+                try:
+                    if isinstance(reset_requests, str) and reset_requests.endswith('s'):
+                        return float(reset_requests[:-1]) + 1.0
+                    return float(reset_requests) + 1.0
+                except (ValueError, TypeError):
+                    pass
+
+        # Fallback to exponential backoff if no specific header found
+        return self.fallback(retry_state)
 
 
 class AIExtractor:
@@ -58,11 +97,14 @@ class AIExtractor:
     
     @retry(
         stop=stop_after_attempt(settings.ai_rate_limit_retries),
-        wait=wait_exponential(
-            multiplier=settings.ai_rate_limit_backoff // 2,
-            min=settings.ai_rate_limit_backoff // 2,
-            max=settings.ai_rate_limit_backoff * 2
+        wait=WaitRateLimit(
+            fallback=wait_exponential(
+                multiplier=settings.ai_rate_limit_backoff // 2,
+                min=settings.ai_rate_limit_backoff // 2,
+                max=settings.ai_rate_limit_backoff * 2
+            )
         ),
+        retry=retry_if_exception_type((RateLimitError, Exception)),
         reraise=True
     )
     async def extract(self, file_path: Path, prompt: str) -> dict[str, Any]:
