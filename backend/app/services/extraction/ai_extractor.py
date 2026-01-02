@@ -32,41 +32,68 @@ logger = structlog.get_logger()
 
 class WaitRateLimit(wait_base):
     """
-    Custom wait strategy that honors 'Retry-After' or 'x-ratelimit-reset' headers.
-    Falls back to a secondary wait strategy if headers are missing.
+    Custom wait strategy that honors rate limit info from:
+    1. HTTP headers (Retry-After, x-ratelimit-reset-requests)
+    2. Error response body (Google's retryDelay in JSON, or "retry in Xs" in message)
+    Falls back to exponential backoff if none found.
     """
     def __init__(self, fallback: wait_base):
         self.fallback = fallback
 
     def __call__(self, retry_state) -> float:
+        import re
+        
         exc = retry_state.outcome.exception()
         
         # We only look for headers if it's a RateLimitError
         if isinstance(exc, RateLimitError):
-            # headers is an httpx.Headers object or dict
+            # 1. Check HTTP headers first
             headers = getattr(exc, "headers", {})
             
-            # 1. Standard Retry-After (seconds)
+            # Standard Retry-After (seconds)
             retry_after = headers.get("retry-after")
             if retry_after:
                 try:
-                    return float(retry_after) + 1.0  # 1s safety buffer
+                    wait_time = float(retry_after) + 1.0
+                    logger.info("rate_limit_wait", source="header", seconds=wait_time)
+                    return wait_time
                 except (ValueError, TypeError):
                     pass
             
-            # 2. OpenAI specific: x-ratelimit-reset-requests (e.g. "6s", "20s", or "60ms")
-            # This is "the time until the rate limit resets"
+            # OpenAI specific: x-ratelimit-reset-requests
             reset_requests = headers.get("x-ratelimit-reset-requests")
             if reset_requests:
                 try:
                     if isinstance(reset_requests, str) and reset_requests.endswith('s'):
-                        return float(reset_requests[:-1]) + 1.0
-                    return float(reset_requests) + 1.0
+                        wait_time = float(reset_requests[:-1]) + 1.0
+                    else:
+                        wait_time = float(reset_requests) + 1.0
+                    logger.info("rate_limit_wait", source="x-ratelimit-header", seconds=wait_time)
+                    return wait_time
                 except (ValueError, TypeError):
                     pass
+            
+            # 2. Parse from error message/body (Google AI Studio / OpenRouter style)
+            error_str = str(exc)
+            
+            # Look for "retryDelay": "45s" in JSON response
+            retry_delay_match = re.search(r'"retryDelay":\s*"(\d+(?:\.\d+)?)s?"', error_str)
+            if retry_delay_match:
+                wait_time = float(retry_delay_match.group(1)) + 2.0  # 2s buffer for Google
+                logger.info("rate_limit_wait", source="retryDelay_json", seconds=wait_time)
+                return wait_time
+            
+            # Look for "Please retry in 45.5s" or "retry in 45 seconds" patterns
+            retry_in_match = re.search(r'retry in (\d+(?:\.\d+)?)\s*s', error_str, re.IGNORECASE)
+            if retry_in_match:
+                wait_time = float(retry_in_match.group(1)) + 2.0
+                logger.info("rate_limit_wait", source="retry_in_message", seconds=wait_time)
+                return wait_time
 
-        # Fallback to exponential backoff if no specific header found
-        return self.fallback(retry_state)
+        # Fallback to exponential backoff if no specific info found
+        fallback_time = self.fallback(retry_state)
+        logger.info("rate_limit_wait", source="exponential_fallback", seconds=fallback_time)
+        return fallback_time
 
 
 class AIExtractor:

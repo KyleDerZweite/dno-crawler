@@ -11,7 +11,9 @@ Features:
 - JS/SPA detection fallback
 """
 
+import random
 import asyncio
+import re
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
 from urllib.parse import urljoin, urlparse
@@ -239,7 +241,10 @@ class WebCrawler:
             
             # Politeness delay
             if pages_crawled > 0:
-                await asyncio.sleep(self.request_delay)
+                # Jitter should be proportional, not absolute
+                jitter = random.uniform(0.5, 1.5)  # 50% to 150% of base delay
+                delay = max(0.5, self.request_delay * jitter)
+                await asyncio.sleep(delay)
             
             # Probe URL with HEAD first
             is_valid, content_type, final_url, content_length = await self.prober.probe(
@@ -361,18 +366,31 @@ class WebCrawler:
         
         return False
     
+    def _is_token_url(self, url: str) -> bool:
+        """Detect URLs that look like tokenized download links.
+        
+        Many CMS platforms (TYPO3, etc.) use opaque token URLs for downloads
+        like /media_token/abc123 or /get_file/xyz without file extensions.
+        """
+        return bool(re.search(r'/(media_token|get_file|download_id|fileadmin)/[\w-]+$', url))
+    
     def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
         """Score URL based on relevance.
         
         Higher score = more likely to contain target data.
         """
         from app.services.content_verifier import score_for_data_type
+        from datetime import datetime
         
         score = 0.0
         url_lower = url.lower()
         
         # Depth penalty (prefer shallower)
         score -= depth * 2
+        
+        # Boost token URLs significantly - these are likely document downloads
+        if self._is_token_url(url):
+            score += 40
         
         # Document type bonus
         if any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
@@ -386,10 +404,10 @@ class WebCrawler:
                 score += 15
         
         # Year in URL bonus (current/recent years)
-        import re
         years = re.findall(r'/(\d{4})/', url_lower)
         for year in years:
-            if 2020 <= int(year) <= 2026:
+            current_year = datetime.now().year
+            if current_year - 6 <= int(year) <= current_year:
                 score += 10
         
         # Irrelevant path penalty

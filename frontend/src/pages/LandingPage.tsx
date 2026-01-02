@@ -11,6 +11,7 @@ import {
     Check,
     Filter,
     LogIn,
+    Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -32,7 +33,7 @@ const DEFAULT_YEARS = [2025, 2024];
  * LandingPage: Public landing page with simplified search
  * 
  * - No authentication required
- * - Search for DNO data by address or coordinates
+ * - Search for DNO data by address, coordinates, or DNO name
  * - Login section below search to access full dashboard
  */
 export default function LandingPage() {
@@ -40,7 +41,7 @@ export default function LandingPage() {
     const navigate = useNavigate();
 
     // Search mode
-    const [searchMode, setSearchMode] = useState<"address" | "coordinates">("address");
+    const [searchMode, setSearchMode] = useState<"address" | "coordinates" | "dno">("address");
 
     // Address inputs
     const [street, setStreet] = useState("");
@@ -50,6 +51,9 @@ export default function LandingPage() {
     // Coordinate inputs
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
+
+    // DNO name input
+    const [dnoName, setDnoName] = useState("");
 
     // Filter state
     const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -90,9 +94,12 @@ export default function LandingPage() {
         );
     };
 
+    const isDnoNameValid = dnoName.trim().length >= 2;
+
     const canSearch =
         (searchMode === "address" && isAddressValid) ||
-        (searchMode === "coordinates" && isCoordinatesValid());
+        (searchMode === "coordinates" && isCoordinatesValid()) ||
+        (searchMode === "dno" && isDnoNameValid);
 
     // Search handler
     const handleSearch = async () => {
@@ -111,10 +118,14 @@ export default function LandingPage() {
                     zip_code: zipCode.trim(),
                     city: city.trim(),
                 };
-            } else {
+            } else if (searchMode === "coordinates") {
                 request.coordinates = {
                     latitude: parseFloat(latitude.replace(",", ".")),
                     longitude: parseFloat(longitude.replace(",", ".")),
+                };
+            } else if (searchMode === "dno") {
+                request.dno = {
+                    dno_name: dnoName.trim(),
                 };
             }
 
@@ -218,6 +229,15 @@ export default function LandingPage() {
                                     <Navigation className="w-4 h-4" />
                                     Coordinates
                                 </Button>
+                                <Button
+                                    variant={searchMode === "dno" ? "default" : "ghost"}
+                                    size="sm"
+                                    onClick={() => setSearchMode("dno")}
+                                    className="gap-2"
+                                >
+                                    <Building2 className="w-4 h-4" />
+                                    DNO Name
+                                </Button>
                             </div>
 
                             {/* Address Input */}
@@ -267,6 +287,22 @@ export default function LandingPage() {
                                         onKeyDown={handleKeyDown}
                                         disabled={isSearching}
                                     />
+                                </div>
+                            )}
+
+                            {/* DNO Name Input */}
+                            {searchMode === "dno" && (
+                                <div className="space-y-2">
+                                    <Input
+                                        placeholder="DNO Name (e.g. Netze BW, RheinEnergie, Westnetz)"
+                                        value={dnoName}
+                                        onChange={(e) => setDnoName(e.target.value)}
+                                        onKeyDown={handleKeyDown}
+                                        disabled={isSearching}
+                                    />
+                                    <p className="text-xs text-muted-foreground">
+                                        Fuzzy search - partial names work (e.g. "Netze" will match "Netze BW GmbH")
+                                    </p>
                                 </div>
                             )}
 

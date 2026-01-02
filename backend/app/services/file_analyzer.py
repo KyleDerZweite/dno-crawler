@@ -23,6 +23,8 @@ class FileAnalyzer:
             "preisblatt": 5,
             "preisblaetter": 5,
             "netzentgelt": 5,
+            "netzentgelte": 5,  # Plural form for exact token matching
+            "preise": 5,        # Price sheets are netzentgelte
             "netznutzung": 3,
             "entgelt": 3,
             "strom": 1,  # Low weight, just a modifier
@@ -33,6 +35,8 @@ class FileAnalyzer:
             "atypisch": 5,
             "hochlast": 5,
             "benutzungsstunden": 3,
+            "regelung": 5,   # Regulatory documents often contain HLZF
+            "regelungen": 5, # Plural form
         }
     }
     
@@ -81,9 +85,10 @@ class FileAnalyzer:
             detected_type = "hlzf"
         
         # Extract year (matches 2014, 2025, etc.)
-        # Take the first year found in the filename
-        year_match = re.search(r"(20\d{2})", fn)
-        detected_year = int(year_match.group(1)) if year_match else None
+        # Take the LAST year found to handle date-prefixed filenames
+        # e.g., "20201026_NetzeBW_2021" should detect 2021, not 2020
+        year_matches = re.findall(r"(20\d{2})", fn)
+        detected_year = int(year_matches[-1]) if year_matches else None
         
         logger.debug(
             "Filename analysis",

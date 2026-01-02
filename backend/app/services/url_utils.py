@@ -322,8 +322,22 @@ class UrlProber:
             redirect_count = 0
             
             while redirect_count < self.MAX_REDIRECTS:
-                # Try HEAD first
+                # Try HEAD first (fast path)
                 response = await self.client.head(current_url, follow_redirects=False)
+                
+                # Some servers (cheap IIS setups) block HEAD with 404/405 but allow GET
+                # Fall back to streaming GET "peek" if HEAD fails
+                head_failed = response.status_code in (404, 405, 501)
+                
+                if head_failed:
+                    self.log.debug(
+                        "HEAD blocked, falling back to GET peek",
+                        url=current_url[:80],
+                        status=response.status_code
+                    )
+                    response = await self._peek_with_get(current_url)
+                    if response is None:
+                        return False, None, None, None
                 
                 # Handle redirects manually (SSRF protection)
                 if response.is_redirect:
@@ -354,15 +368,6 @@ class UrlProber:
                     
                     current_url = next_url
                     continue
-                
-                # Handle 405 Method Not Allowed (HEAD not supported)
-                if response.status_code == 405 and not head_only:
-                    # Fall back to bounded GET
-                    response = await self.client.get(
-                        current_url,
-                        headers={"Range": "bytes=0-4095"},
-                        follow_redirects=False
-                    )
                 
                 # Check final status
                 if response.status_code not in (200, 206):
@@ -397,3 +402,67 @@ class UrlProber:
         except Exception as e:
             self.log.debug("Probe failed", url=url[:80], error=str(e))
             return False, None, None, None
+    
+    async def _peek_with_get(self, url: str) -> httpx.Response | None:
+        """Fallback probe using streaming GET when HEAD is blocked.
+        
+        Opens a streaming GET connection, reads just enough to get headers,
+        then aborts. This works around servers that block HEAD requests.
+        
+        Args:
+            url: URL to probe
+            
+        Returns:
+            Response object with headers populated, or None on failure
+        """
+        try:
+            # Use streaming to avoid downloading the whole response
+            async with self.client.stream(
+                "GET",
+                url,
+                follow_redirects=False,
+                timeout=10.0,
+            ) as response:
+                # Read minimal bytes to ensure headers are received
+                # We just need status + headers, not the body
+                try:
+                    await response.aread()  # Read a tiny bit to finalize headers
+                except Exception:
+                    pass  # Ignore read errors, we have the headers
+                
+                # Return a "snapshot" of the response info we need
+                # We can't return the streaming response directly since context exits
+                return _PeekResponse(
+                    status_code=response.status_code,
+                    headers=response.headers,
+                    url=response.url,
+                    is_redirect=response.is_redirect,
+                )
+        except httpx.TimeoutException:
+            self.log.debug("GET peek timeout", url=url[:80])
+            return None
+        except httpx.RequestError as e:
+            self.log.debug("GET peek request error", url=url[:80], error=str(e))
+            return None
+        except Exception as e:
+            self.log.debug("GET peek failed", url=url[:80], error=str(e))
+            return None
+
+
+class _PeekResponse:
+    """Minimal response object for GET peek fallback.
+    
+    Mimics the httpx.Response interface for the fields we need.
+    """
+    
+    def __init__(
+        self,
+        status_code: int,
+        headers: httpx.Headers,
+        url: httpx.URL,
+        is_redirect: bool,
+    ):
+        self.status_code = status_code
+        self.headers = headers
+        self.url = url
+        self.is_redirect = is_redirect

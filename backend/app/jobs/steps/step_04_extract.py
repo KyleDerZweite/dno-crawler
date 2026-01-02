@@ -3,32 +3,40 @@ Step 04: Extract Data
 
 Extracts structured data from downloaded files.
 
-Strategy:
-1. If AI is configured, use AI extraction (text mode for HTML, vision for PDF)
-2. Otherwise, fall back to:
-   - HTML files: BeautifulSoup-based extraction (html_extractor.py)
-   - PDF files: Regex-based extraction (pdf_extractor.py)
+Strategy (Regex-First with AI Fallback):
+1. Try regex/HTML extraction first (cheaper, works for most documents)
+2. Run sanity check on extracted data:
+   - Netzentgelte: ≥3 records with at least leistung OR arbeit non-null
+   - HLZF: ≥1 record with winter non-null
+3. If sanity check passes → use regex result
+4. If sanity check fails AND AI configured → try AI extraction
+5. If AI not configured or fails → use regex result but auto-flag as potentially wrong
 
 What it does:
 - Load the file from local storage
-- Extract using configured method (AI or fallback)
+- Extract using regex/HTML first, validate, then AI fallback if needed
 - Parse into structured data format
 
 Output stored in job.context:
 - extracted_data: list of records from extraction
 - extraction_notes: any notes about the extraction
-- extraction_method: "ai", "html_parser", or "pdf_regex"
+- extraction_method: "regex", "html_parser", "ai", or "regex_ai_fallback"
+- auto_flagged: True if extraction failed sanity and needs review
+- auto_flag_reason: Reason for auto-flagging
 """
 
 import asyncio
 from pathlib import Path
 
+import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
+
+logger = structlog.get_logger()
 
 
 class ExtractStep(BaseStep):
@@ -50,43 +58,161 @@ class ExtractStep(BaseStep):
         if not file_format:
             file_format = path.suffix.lstrip(".").lower()
         
-        # Try AI extraction if configured
+        # Get file metadata
+        file_metadata = self._get_file_metadata(path)
+        
+        # ===== STEP 1: Try regex/HTML extraction first =====
+        logger.info(
+            "extraction_starting",
+            method="regex",
+            dno=dno_name,
+            year=job.year,
+            data_type=job.data_type,
+            file_format=file_format,
+        )
+        
+        records, method = await self._extract_fallback(path, file_format, job.data_type, job.year)
+        passed, reason = self._validate_extraction(records, job.data_type)
+        
+        if passed:
+            # ===== Regex passed sanity check - use it! =====
+            logger.info(
+                "regex_extraction_passed",
+                method=method,
+                records=len(records),
+                dno=dno_name,
+                year=job.year,
+                data_type=job.data_type,
+            )
+            
+            ctx["extracted_data"] = records
+            ctx["extraction_notes"] = f"{method} extraction (regex-first)"
+            ctx["extraction_method"] = method
+            
+            # Extraction source metadata for persist step
+            ctx["extraction_source_meta"] = {
+                "source": method,
+                "model": None,
+                "source_format": file_format,
+            }
+            
+            # Store extraction log
+            ctx["extraction_log"] = {
+                "prompt": f"File: {path.name}",
+                "response": records,
+                "file_metadata": file_metadata,
+                "model": None,
+                "mode": "regex_first",
+                "usage": None,
+            }
+            
+            job.context = ctx
+            flag_modified(job, 'context')
+            await db.commit()
+            
+            return f"Extracted {len(records)} records using {method} (regex-first)"
+        
+        # ===== STEP 2: Regex failed sanity check =====
+        logger.warning(
+            "regex_extraction_failed_sanity",
+            reason=reason,
+            records=len(records),
+            dno=dno_name,
+            year=job.year,
+            data_type=job.data_type,
+            method=method,
+        )
+        
+        # ===== STEP 3: Try AI if configured =====
+        ai_result = None
         if settings.ai_enabled:
+            logger.info(
+                "trying_ai_fallback",
+                dno=dno_name,
+                year=job.year,
+                data_type=job.data_type,
+                model=settings.ai_model,
+            )
+            
             prompt = self._build_prompt(dno_name, job.year, job.data_type)
-            result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt)
-            if result:
-                extracted_data = result.get("data", [])
-                extraction_meta = result.get("_extraction_meta", {})
+            ai_result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt)
+            
+            if ai_result:
+                extracted_data = ai_result.get("data", [])
+                extraction_meta = ai_result.get("_extraction_meta", {})
                 
-                # Validate HLZF extraction - should have exactly 5 voltage levels
-                if job.data_type == "hlzf" and len(extracted_data) != 5:
-                    import structlog
-                    structlog.get_logger().warning(
-                        "hlzf_extraction_incomplete",
-                        expected=5,
-                        actual=len(extracted_data),
-                        voltage_levels=[r.get("voltage_level") for r in extracted_data],
+                # ===== VALIDATE AI RESULT (same sanity check as regex) =====
+                ai_passed, ai_reason = self._validate_extraction(extracted_data, job.data_type)
+                
+                if not ai_passed:
+                    # AI also failed sanity check - log warning and auto-flag
+                    logger.warning(
+                        "ai_extraction_failed_sanity",
+                        reason=ai_reason,
+                        records=len(extracted_data),
                         dno=dno_name,
                         year=job.year,
-                        msg="AI did not extract all 5 voltage levels"
+                        data_type=job.data_type,
+                        model=settings.ai_model,
                     )
+                    
+                    # Still use AI result (may have partial data) but flag for review
+                    ctx["extracted_data"] = extracted_data
+                    ctx["extraction_notes"] = f"AI extraction - FLAGGED: {ai_reason}"
+                    ctx["extraction_method"] = "ai"
+                    ctx["extraction_model"] = settings.ai_model
+                    ctx["auto_flagged"] = True
+                    ctx["auto_flag_reason"] = f"AI extraction sanity check failed: {ai_reason}"
+                    
+                    ctx["extraction_source_meta"] = {
+                        "source": "ai",
+                        "model": settings.ai_model,
+                        "source_format": file_format,
+                        "fallback_reason": reason,
+                        "flagged": True,
+                        "flag_reason": ai_reason,
+                    }
+                    
+                    ctx["extraction_log"] = {
+                        "prompt": prompt,
+                        "response": extraction_meta.get("raw_response"),
+                        "file_metadata": file_metadata,
+                        "model": extraction_meta.get("model"),
+                        "mode": extraction_meta.get("mode"),
+                        "usage": extraction_meta.get("usage"),
+                        "regex_fallback_reason": reason,
+                        "ai_sanity_check_failed": ai_reason,
+                    }
+                    
+                    job.context = ctx
+                    flag_modified(job, 'context')
+                    await db.commit()
+                    
+                    return f"Extracted {len(extracted_data)} records using AI - FLAGGED: {ai_reason}"
                 
-                # Get file metadata
-                file_metadata = self._get_file_metadata(path)
+                # AI passed sanity check - use it!
+                logger.info(
+                    "ai_extraction_success",
+                    records=len(extracted_data),
+                    dno=dno_name,
+                    year=job.year,
+                    data_type=job.data_type,
+                    model=settings.ai_model,
+                )
                 
                 ctx["extracted_data"] = extracted_data
-                ctx["extraction_notes"] = result.get("notes", "")
+                ctx["extraction_notes"] = ai_result.get("notes", "")
                 ctx["extraction_method"] = "ai"
                 ctx["extraction_model"] = settings.ai_model
                 
-                # Extraction source metadata for persist step
+                # Mark this as AI fallback (regex failed first)
                 ctx["extraction_source_meta"] = {
                     "source": "ai",
                     "model": settings.ai_model,
                     "source_format": file_format,
+                    "fallback_reason": reason,  # Why regex failed
                 }
                 
-                # Store extraction log for debugging/transparency
                 ctx["extraction_log"] = {
                     "prompt": prompt,
                     "response": extraction_meta.get("raw_response"),
@@ -94,45 +220,117 @@ class ExtractStep(BaseStep):
                     "model": extraction_meta.get("model"),
                     "mode": extraction_meta.get("mode"),
                     "usage": extraction_meta.get("usage"),
+                    "regex_fallback_reason": reason,
                 }
                 
                 job.context = ctx
                 flag_modified(job, 'context')
                 await db.commit()
-                return f"Extracted {len(extracted_data)} records using AI ({settings.ai_model})"
+                
+                return f"Extracted {len(extracted_data)} records using AI fallback ({settings.ai_model}) - regex failed: {reason}"
         
-        # Fallback extraction based on file format
-        records, method = await self._extract_fallback(path, file_format, job.data_type, job.year)
-        
-        # Get file metadata for fallback too
-        file_metadata = self._get_file_metadata(path)
+        # ===== STEP 4: Both failed or AI not configured - use regex but flag =====
+        logger.warning(
+            "extraction_potentially_wrong",
+            reason=reason,
+            records=len(records),
+            dno=dno_name,
+            year=job.year,
+            data_type=job.data_type,
+            ai_enabled=settings.ai_enabled,
+            ai_attempted=ai_result is not None if settings.ai_enabled else False,
+        )
         
         ctx["extracted_data"] = records
-        ctx["extraction_notes"] = f"Fallback {method} extraction"
+        ctx["extraction_notes"] = f"{method} extraction - FLAGGED: {reason}"
         ctx["extraction_method"] = method
         
-        # Extraction source metadata for persist step
+        # Auto-flag for review
+        ctx["auto_flagged"] = True
+        ctx["auto_flag_reason"] = f"Extraction sanity check failed: {reason}"
+        
         ctx["extraction_source_meta"] = {
-            "source": method,  # "html_parser" or "pdf_regex"
+            "source": method,
             "model": None,
-            "source_format": file_format,  # "html" or "pdf"
+            "source_format": file_format,
+            "flagged": True,
+            "flag_reason": reason,
         }
         
-        # Store extraction log for fallback
         ctx["extraction_log"] = {
-            "prompt": f"File: {path.name}",  # Reference to file, not content
-            "response": records,  # The extraction result
+            "prompt": f"File: {path.name}",
+            "response": records,
             "file_metadata": file_metadata,
             "model": None,
-            "mode": "fallback",
+            "mode": "regex_flagged",
             "usage": None,
+            "sanity_check_failed": reason,
         }
         
         job.context = ctx
         flag_modified(job, 'context')
         await db.commit()
         
-        return f"Extracted {len(records)} records using {method}"
+        return f"Extracted {len(records)} records using {method} - FLAGGED: {reason}"
+
+    def _validate_extraction(self, records: list, data_type: str) -> tuple[bool, str]:
+        """
+        Validate extracted data passes sanity checks.
+        
+        Returns:
+            Tuple of (passed: bool, reason: str)
+        """
+        if data_type == "netzentgelte":
+            return self._validate_netzentgelte(records)
+        else:  # hlzf
+            return self._validate_hlzf(records)
+
+    def _validate_netzentgelte(self, records: list) -> tuple[bool, str]:
+        """
+        Check netzentgelte has ≥3 records with price values.
+        
+        Rules:
+        - At least 3 records (some DNOs only operate at certain voltage levels)
+        - Each record must have at least leistung OR arbeit non-null
+        """
+        if len(records) < 3:
+            return False, f"Too few records: {len(records)} (minimum 3 required)"
+        
+        # Check each record has at least one price value
+        valid_records = 0
+        for record in records:
+            leistung = record.get("leistung")
+            arbeit = record.get("arbeit")
+            leistung_unter = record.get("leistung_unter_2500h")
+            arbeit_unter = record.get("arbeit_unter_2500h")
+            
+            # At least one price must be non-null
+            if any(v is not None for v in [leistung, arbeit, leistung_unter, arbeit_unter]):
+                valid_records += 1
+        
+        if valid_records < 3:
+            return False, f"Too few valid records with prices: {valid_records} (minimum 3 required)"
+        
+        return True, "OK"
+
+    def _validate_hlzf(self, records: list) -> tuple[bool, str]:
+        """
+        Check HLZF has ≥1 record with winter non-null.
+        
+        Rules:
+        - At least 1 record exists
+        - At least one record has winter time window (peak load almost always has winter data)
+        """
+        if len(records) < 1:
+            return False, "No HLZF records extracted"
+        
+        # Check at least one record has winter data
+        has_winter = any(record.get("winter") is not None for record in records)
+        
+        if not has_winter:
+            return False, "No records with winter time window (all records have null winter)"
+        
+        return True, "OK"
 
     async def _extract_with_ai(
         self, 
@@ -148,8 +346,7 @@ class ExtractStep(BaseStep):
             
             return await extract_with_ai(file_path, prompt)
         except Exception as e:
-            import structlog
-            structlog.get_logger().warning("ai_extraction_failed", error=str(e))
+            logger.warning("ai_extraction_failed", error=str(e))
             return None
 
     def _get_file_metadata(self, file_path: Path) -> dict:
@@ -180,7 +377,7 @@ class ExtractStep(BaseStep):
         data_type: str,
         year: int
     ) -> tuple[list, str]:
-        """Fallback extraction when AI is not available."""
+        """Extract using regex/HTML parser (primary extraction method)."""
         
         # HTML files: use BeautifulSoup parser
         if file_format in ("html", "htm"):

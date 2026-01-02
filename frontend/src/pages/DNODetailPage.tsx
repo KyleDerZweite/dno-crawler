@@ -118,7 +118,7 @@ export function DNODetailPage() {
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
-    // Fetch DNO details
+    // Fetch DNO details first (works with both slug and numeric ID)
     const { data: dnoResponse, isLoading: dnoLoading, error: dnoError } = useQuery({
         queryKey: ["dno", id],
         queryFn: () => api.dnos.get(id!),
@@ -127,11 +127,22 @@ export function DNODetailPage() {
         refetchOnMount: 'always', // Always refetch when component mounts
     });
 
-    // Fetch DNO crawl jobs (poll when active)
+    // Get the numeric ID from the response (handles both slug and ID access)
+    const numericId = dnoResponse?.data?.id;
+
+    // Redirect slug URLs to numeric ID URLs for consistency
+    useEffect(() => {
+        if (numericId && id && !id.match(/^\d+$/) && numericId !== id) {
+            // User accessed via slug, redirect to numeric ID
+            navigate(`/dnos/${numericId}`, { replace: true });
+        }
+    }, [numericId, id, navigate]);
+
+    // Fetch DNO crawl jobs (poll when active) - use numeric ID
     const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
-        queryKey: ["dno-jobs", id],
-        queryFn: () => api.dnos.getJobs(id!, 20),
-        enabled: !!id,
+        queryKey: ["dno-jobs", numericId],
+        queryFn: () => api.dnos.getJobs(numericId!, 20),
+        enabled: !!numericId,
         staleTime: 0,
         refetchOnMount: 'always',
         refetchInterval: (query) => {
@@ -152,21 +163,21 @@ export function DNODetailPage() {
         );
     }, [jobsResponse?.data]);
 
-    // Fetch DNO data (netzentgelte, hlzf) - refetch when jobs change
+    // Fetch DNO data (netzentgelte, hlzf) - use numeric ID
     const { data: dataResponse, isLoading: dataLoading, refetch: refetchData } = useQuery({
-        queryKey: ["dno-data", id],
-        queryFn: () => api.dnos.getData(id!),
-        enabled: !!id,
+        queryKey: ["dno-data", numericId],
+        queryFn: () => api.dnos.getData(numericId!),
+        enabled: !!numericId,
         staleTime: 0,
         refetchOnMount: 'always',
         refetchInterval: hasActiveJobs ? 5000 : false, // Poll every 5s while jobs are active
     });
 
-    // Fetch available files - also refresh when jobs are active
+    // Fetch available files - also refresh when jobs are active - use numeric ID
     const { data: filesResponse } = useQuery({
-        queryKey: ["dno-files", id],
-        queryFn: () => api.dnos.getFiles(id!),
-        enabled: !!id,
+        queryKey: ["dno-files", numericId],
+        queryFn: () => api.dnos.getFiles(numericId!),
+        enabled: !!numericId,
         staleTime: 0,
         refetchOnMount: 'always',
         refetchInterval: hasActiveJobs ? 5000 : false,
