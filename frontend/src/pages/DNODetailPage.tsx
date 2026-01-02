@@ -40,6 +40,7 @@ import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import { useState, useMemo, useRef, useEffect } from "react";
 import { VerificationBadge } from "@/components/verification-badge";
+import { ExtractionSourceBadge } from "@/components/extraction-source-badge";
 import { SmartDropdown } from "@/components/SmartDropdown";
 
 // Crawl configuration - matching SearchPage defaults
@@ -1140,18 +1141,28 @@ export function DNODetailPage() {
                                             <span className="select-all">{item.arbeit_unter_2500h?.toFixed(3) || item.arbeit?.toFixed(3) || "-"}</span>
                                         </td>
                                         <td className="py-2 px-3 text-center">
-                                            <VerificationBadge
-                                                status={item.verification_status || "unverified"}
-                                                verifiedBy={item.verified_by}
-                                                verifiedAt={item.verified_at}
-                                                flaggedBy={item.flagged_by}
-                                                flaggedAt={item.flagged_at}
-                                                flagReason={item.flag_reason}
-                                                recordId={item.id}
-                                                recordType="netzentgelte"
-                                                dnoId={id!}
-                                                compact
-                                            />
+                                            <div className="flex items-center justify-center gap-1">
+                                                <ExtractionSourceBadge
+                                                    source={item.extraction_source}
+                                                    model={item.extraction_model}
+                                                    sourceFormat={item.extraction_source_format}
+                                                    lastEditedBy={item.last_edited_by}
+                                                    lastEditedAt={item.last_edited_at}
+                                                    compact
+                                                />
+                                                <VerificationBadge
+                                                    status={item.verification_status || "unverified"}
+                                                    verifiedBy={item.verified_by}
+                                                    verifiedAt={item.verified_at}
+                                                    flaggedBy={item.flagged_by}
+                                                    flaggedAt={item.flagged_at}
+                                                    flagReason={item.flag_reason}
+                                                    recordId={item.id}
+                                                    recordType="netzentgelte"
+                                                    dnoId={id!}
+                                                    compact
+                                                />
+                                            </div>
                                         </td>
                                         {isAdmin() && (
                                             <td className="py-2 px-3 text-right">
@@ -1274,18 +1285,28 @@ export function DNODetailPage() {
                                             <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.sommer)}</td>
                                             <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.herbst)}</td>
                                             <td className="py-2 px-3 text-center">
-                                                <VerificationBadge
-                                                    status={item.verification_status || "unverified"}
-                                                    verifiedBy={item.verified_by}
-                                                    verifiedAt={item.verified_at}
-                                                    flaggedBy={item.flagged_by}
-                                                    flaggedAt={item.flagged_at}
-                                                    flagReason={item.flag_reason}
-                                                    recordId={item.id}
-                                                    recordType="hlzf"
-                                                    dnoId={id!}
-                                                    compact
-                                                />
+                                                <div className="flex items-center justify-center gap-1">
+                                                    <ExtractionSourceBadge
+                                                        source={item.extraction_source}
+                                                        model={item.extraction_model}
+                                                        sourceFormat={item.extraction_source_format}
+                                                        lastEditedBy={item.last_edited_by}
+                                                        lastEditedAt={item.last_edited_at}
+                                                        compact
+                                                    />
+                                                    <VerificationBadge
+                                                        status={item.verification_status || "unverified"}
+                                                        verifiedBy={item.verified_by}
+                                                        verifiedAt={item.verified_at}
+                                                        flaggedBy={item.flagged_by}
+                                                        flaggedAt={item.flagged_at}
+                                                        flagReason={item.flag_reason}
+                                                        recordId={item.id}
+                                                        recordType="hlzf"
+                                                        dnoId={id!}
+                                                        compact
+                                                    />
+                                                </div>
                                             </td>
                                             {isAdmin() && (
                                                 <td className="py-2 px-3 text-right">

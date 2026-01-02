@@ -98,6 +98,12 @@ export interface Netzentgelte {
   flagged_by?: string;
   flagged_at?: string;
   flag_reason?: string;
+  // Extraction source tracking
+  extraction_source?: "ai" | "html_parser" | "pdf_regex" | "manual" | null;
+  extraction_model?: string | null;
+  extraction_source_format?: "html" | "pdf" | null;
+  last_edited_by?: string | null;
+  last_edited_at?: string | null;
 }
 
 export interface HLZF {
@@ -116,6 +122,12 @@ export interface HLZF {
   flagged_by?: string;
   flagged_at?: string;
   flag_reason?: string;
+  // Extraction source tracking
+  extraction_source?: "ai" | "html_parser" | "pdf_regex" | "manual" | null;
+  extraction_model?: string | null;
+  extraction_source_format?: "html" | "pdf" | null;
+  last_edited_by?: string | null;
+  last_edited_at?: string | null;
 }
 
 // Verification response from API

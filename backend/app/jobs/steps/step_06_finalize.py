@@ -61,10 +61,13 @@ class FinalizeStep(BaseStep):
         # =========================================================================
         saved_count = 0
         
+        # Get extraction source metadata
+        source_meta = ctx.get("extraction_source_meta", {})
+        
         if job.data_type == "hlzf":
-            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data)
+            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta)
         elif job.data_type == "netzentgelte":
-            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data)
+            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta)
         else:
             logger.warning("unknown_data_type", data_type=job.data_type)
         
@@ -168,9 +171,11 @@ class FinalizeStep(BaseStep):
         dno_id: int,
         year: int,
         records: list[dict],
+        source_meta: dict | None = None,
     ) -> int:
         """Save HLZF records with upsert logic."""
         saved = 0
+        source_meta = source_meta or {}
         
         for record in records:
             raw_voltage = record.get("voltage_level", "").strip()
@@ -201,9 +206,13 @@ class FinalizeStep(BaseStep):
                     existing.sommer = record.get("sommer")
                 if "herbst" in record:
                     existing.herbst = record.get("herbst")
+                # Update extraction source (overwrite with new extraction)
+                existing.extraction_source = source_meta.get("source")
+                existing.extraction_model = source_meta.get("model")
+                existing.extraction_source_format = source_meta.get("source_format")
                 logger.debug("hlzf_updated", voltage_level=voltage_level, year=year)
             else:
-                # Insert new record
+                # Insert new record with extraction source
                 new_record = HLZFModel(
                     dno_id=dno_id,
                     year=year,
@@ -212,6 +221,9 @@ class FinalizeStep(BaseStep):
                     fruehling=record.get("fruehling"),
                     sommer=record.get("sommer"),
                     herbst=record.get("herbst"),
+                    extraction_source=source_meta.get("source"),
+                    extraction_model=source_meta.get("model"),
+                    extraction_source_format=source_meta.get("source_format"),
                 )
                 db.add(new_record)
                 logger.debug("hlzf_inserted", voltage_level=voltage_level, year=year)
@@ -227,9 +239,11 @@ class FinalizeStep(BaseStep):
         dno_id: int,
         year: int,
         records: list[dict],
+        source_meta: dict | None = None,
     ) -> int:
         """Save Netzentgelte records with upsert logic."""
         saved = 0
+        source_meta = source_meta or {}
         
         for record in records:
             raw_voltage = record.get("voltage_level", "").strip()
@@ -266,9 +280,13 @@ class FinalizeStep(BaseStep):
                     existing.arbeit_unter_2500h = float(arbeit_u2500)
                 if leistung_u2500 is not None:
                     existing.leistung_unter_2500h = float(leistung_u2500)
+                # Update extraction source (overwrite with new extraction)
+                existing.extraction_source = source_meta.get("source")
+                existing.extraction_model = source_meta.get("model")
+                existing.extraction_source_format = source_meta.get("source_format")
                 logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year)
             else:
-                # Insert new record
+                # Insert new record with extraction source
                 new_record = NetzentgelteModel(
                     dno_id=dno_id,
                     year=year,
@@ -277,6 +295,9 @@ class FinalizeStep(BaseStep):
                     leistung=float(leistung) if leistung else None,
                     arbeit_unter_2500h=float(arbeit_u2500) if arbeit_u2500 else None,
                     leistung_unter_2500h=float(leistung_u2500) if leistung_u2500 else None,
+                    extraction_source=source_meta.get("source"),
+                    extraction_model=source_meta.get("model"),
+                    extraction_source_format=source_meta.get("source_format"),
                 )
                 db.add(new_record)
                 logger.debug("netzentgelte_inserted", voltage_level=voltage_level, year=year)

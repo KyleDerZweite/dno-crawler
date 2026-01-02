@@ -204,6 +204,30 @@ async def create_dno(
             elif not contact_address:
                 contact_address = vnb_details.address
     
+    # Check robots.txt for Cloudflare/JS protection if we have a website
+    crawlable = True
+    crawl_blocked_reason = None
+    robots_txt = None
+    sitemap_urls = None
+    disallow_paths = None
+    
+    if website:
+        from app.services.robots_parser import fetch_robots_txt
+        import httpx
+        
+        async with httpx.AsyncClient(
+            headers={"User-Agent": "DNO-Crawler/1.0"},
+            follow_redirects=True,
+            timeout=10.0,
+        ) as http_client:
+            robots_result = await fetch_robots_txt(http_client, website)
+            if robots_result:
+                crawlable = robots_result.crawlable
+                crawl_blocked_reason = robots_result.blocked_reason
+                robots_txt = robots_result.raw_content
+                sitemap_urls = robots_result.sitemap_urls
+                disallow_paths = robots_result.disallow_paths
+    
     # Create DNO
     dno = DNOModel(
         name=request.name,
@@ -216,6 +240,12 @@ async def create_dno(
         phone=phone,
         email=email,
         contact_address=contact_address,
+        # Crawlability info from robots.txt check
+        crawlable=crawlable,
+        crawl_blocked_reason=crawl_blocked_reason,
+        robots_txt=robots_txt,
+        sitemap_urls=sitemap_urls,
+        disallow_paths=disallow_paths,
     )
     db.add(dno)
     await db.commit()
@@ -236,6 +266,8 @@ async def create_dno(
             "phone": dno.phone,
             "email": dno.email,
             "contact_address": dno.contact_address,
+            "crawlable": dno.crawlable,
+            "crawl_blocked_reason": dno.crawl_blocked_reason,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
         },
     )
@@ -622,7 +654,9 @@ async def get_dno_data(
     
     # Query netzentgelte data
     netzentgelte_query = text("""
-        SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, verification_status
+        SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, 
+               verification_status, extraction_source, extraction_model, extraction_source_format,
+               last_edited_by, last_edited_at
         FROM netzentgelte
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
@@ -641,11 +675,19 @@ async def get_dno_data(
             "leistung_unter_2500h": row[5],  # T < 2500 h/a
             "arbeit_unter_2500h": row[6],
             "verification_status": row[7],
+            # Extraction source fields
+            "extraction_source": row[8],
+            "extraction_model": row[9],
+            "extraction_source_format": row[10],
+            "last_edited_by": row[11],
+            "last_edited_at": row[12].isoformat() if row[12] else None,
         })
     
     # Query HLZF data
     hlzf_query = text("""
-        SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, verification_status
+        SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, 
+               verification_status, extraction_source, extraction_model, extraction_source_format,
+               last_edited_by, last_edited_at
         FROM hlzf
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
@@ -664,6 +706,12 @@ async def get_dno_data(
             "sommer": row[5],
             "herbst": row[6],
             "verification_status": row[7],
+            # Extraction source fields
+            "extraction_source": row[8],
+            "extraction_model": row[9],
+            "extraction_source_format": row[10],
+            "last_edited_by": row[11],
+            "last_edited_at": row[12].isoformat() if row[12] else None,
         })
     
     return APIResponse(
@@ -764,6 +812,12 @@ async def update_netzentgelte(
     if request.arbeit_unter_2500h is not None:
         record.arbeit_unter_2500h = request.arbeit_unter_2500h
     
+    # Track manual edit
+    from datetime import datetime, timezone
+    record.extraction_source = "manual"
+    record.last_edited_by = current_user.sub or current_user.email
+    record.last_edited_at = datetime.now(timezone.utc)
+    
     await db.commit()
     
     return APIResponse(
@@ -858,6 +912,12 @@ async def update_hlzf(
         record.sommer = request.sommer if request.sommer != "" else None
     if request.herbst is not None:
         record.herbst = request.herbst if request.herbst != "" else None
+    
+    # Track manual edit
+    from datetime import datetime, timezone
+    record.extraction_source = "manual"
+    record.last_edited_by = current_user.sub or current_user.email
+    record.last_edited_at = datetime.now(timezone.utc)
     
     await db.commit()
     

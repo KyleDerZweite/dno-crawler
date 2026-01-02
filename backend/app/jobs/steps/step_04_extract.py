@@ -79,6 +79,13 @@ class ExtractStep(BaseStep):
                 ctx["extraction_method"] = "ai"
                 ctx["extraction_model"] = settings.ai_model
                 
+                # Extraction source metadata for persist step
+                ctx["extraction_source_meta"] = {
+                    "source": "ai",
+                    "model": settings.ai_model,
+                    "source_format": file_format,
+                }
+                
                 # Store extraction log for debugging/transparency
                 ctx["extraction_log"] = {
                     "prompt": prompt,
@@ -103,6 +110,13 @@ class ExtractStep(BaseStep):
         ctx["extracted_data"] = records
         ctx["extraction_notes"] = f"Fallback {method} extraction"
         ctx["extraction_method"] = method
+        
+        # Extraction source metadata for persist step
+        ctx["extraction_source_meta"] = {
+            "source": method,  # "html_parser" or "pdf_regex"
+            "model": None,
+            "source_format": file_format,  # "html" or "pdf"
+        }
         
         # Store extraction log for fallback
         ctx["extraction_log"] = {

@@ -153,6 +153,15 @@ class NetzentgelteModel(Base, TimestampMixin):
     arbeit_unter_2500h: Mapped[float | None] = mapped_column(Float)
     leistung_unter_2500h: Mapped[float | None] = mapped_column(Float)
 
+    # Extraction source tracking
+    extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
+    extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
+    extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
+    
+    # Manual edit tracking
+    last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
+    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
     # Verification
     verification_status: Mapped[str] = mapped_column(
         String(20), default=VerificationStatus.UNVERIFIED.value
@@ -192,6 +201,15 @@ class HLZFModel(Base, TimestampMixin):
     fruehling: Mapped[str | None] = mapped_column(Text)
     sommer: Mapped[str | None] = mapped_column(Text)
     herbst: Mapped[str | None] = mapped_column(Text)
+
+    # Extraction source tracking
+    extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
+    extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
+    extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
+    
+    # Manual edit tracking
+    last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
+    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # Verification
     verification_status: Mapped[str] = mapped_column(

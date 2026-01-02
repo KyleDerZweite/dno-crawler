@@ -22,7 +22,8 @@ from typing import Any
 
 import structlog
 from openai import AsyncOpenAI, RateLimitError
-from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type, wait_base
+from tenacity import retry, stop_after_attempt, wait_exponential, retry_if_exception_type
+from tenacity.wait import wait_base
 
 from app.core.config import settings
 
