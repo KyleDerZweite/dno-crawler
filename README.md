@@ -100,6 +100,34 @@ cd backend
 pytest
 ```
 
+## Production Readiness
+
+For production deployments, ensure the following standards are met:
+
+- **Security**: Strict OIDC configuration with Zitadel. Mock auth must be disabled.
+- **Reliability**: Use the provided `docker-compose.yml` for containerized orchestration with health checks.
+- **Observability**: Monitor logs via `structlog` and use the `/api/v1/health` endpoint for uptime tracking.
+- **Backup**: Regularly backup the PostgreSQL volume managed by the `db` service.
+
+Consult [PRODUCTION_REPORT.md](PRODUCTION_REPORT.md) for a detailed checklist of remaining production gaps.
+
+---
+
+## Maintenance
+
+### Background Jobs
+Async jobs are managed via **arq**. If the worker crashes, the `crawl_recovery` service will automatically reset stuck jobs on the next backend startup.
+
+### Database Migrations
+When updating the schema, generate and apply migrations via Alembic:
+```bash
+cd backend
+alembic revision --autogenerate -m "description"
+alembic upgrade head
+```
+
+---
+
 ## License
 
 MIT License. See [LICENSE](LICENSE) for details.

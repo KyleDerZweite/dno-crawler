@@ -695,16 +695,29 @@ async def get_dno_data(
     result = await db.execute(hlzf_query, {"dno_id": dno_id})
     hlzf_rows = result.fetchall()
     
+    # Import time parsing function from search module
+    from app.api.routes.search import _parse_hlzf_times
+    
     hlzf = []
     for row in hlzf_rows:
+        winter_val = row[3]
+        fruehling_val = row[4]
+        sommer_val = row[5]
+        herbst_val = row[6]
+        
         hlzf.append({
             "id": row[0],
             "voltage_level": row[1],
             "year": row[2],
-            "winter": row[3],
-            "fruehling": row[4],
-            "sommer": row[5],
-            "herbst": row[6],
+            "winter": winter_val,
+            "fruehling": fruehling_val,
+            "sommer": sommer_val,
+            "herbst": herbst_val,
+            # Parsed time ranges
+            "winter_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(winter_val) or [])],
+            "fruehling_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(fruehling_val) or [])],
+            "sommer_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(sommer_val) or [])],
+            "herbst_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(herbst_val) or [])],
             "verification_status": row[7],
             # Extraction source fields
             "extraction_source": row[8],

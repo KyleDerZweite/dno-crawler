@@ -106,6 +106,11 @@ export interface Netzentgelte {
   last_edited_at?: string | null;
 }
 
+export interface HLZFTimeRange {
+  start: string;  // e.g., "12:15:00"
+  end: string;    // e.g., "13:15:00"
+}
+
 export interface HLZF {
   id: number;
   type: "hlzf";
@@ -116,6 +121,11 @@ export interface HLZF {
   fruehling?: string | null;
   sommer?: string | null;
   herbst?: string | null;
+  // Parsed time ranges
+  winter_ranges?: HLZFTimeRange[];
+  fruehling_ranges?: HLZFTimeRange[];
+  sommer_ranges?: HLZFTimeRange[];
+  herbst_ranges?: HLZFTimeRange[];
   verification_status?: string;
   verified_by?: string;
   verified_at?: string;
@@ -188,11 +198,6 @@ export interface PublicSearchNetzentgelte {
   voltage_level: string;
   leistung?: number;
   arbeit?: number;
-}
-
-export interface HLZFTimeRange {
-  start: string;  // e.g., "12:15:00"
-  end: string;    // e.g., "13:15:00"
 }
 
 export interface PublicSearchHLZF {

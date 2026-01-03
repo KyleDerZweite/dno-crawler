@@ -1249,14 +1249,9 @@ export function DNODetailPage() {
                             </thead>
                             <tbody>
                                 {filteredHLZF.map((item) => {
-                                    // Helper to format time periods - split by comma and show each on its own line
-                                    const formatTimePeriods = (value: string | null | undefined): React.ReactNode => {
-                                        if (!value || value === "-" || value.toLowerCase() === "entfällt") {
-                                            return <span className="text-muted-foreground">-</span>;
-                                        }
-
-                                        // Click handler to select just the clicked element's text
-                                        const handleSelectClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+                                    // Selectable time component
+                                    const SelectableTime = ({ value }: { value: string }) => {
+                                        const handleClick = (e: React.MouseEvent<HTMLSpanElement>) => {
                                             e.stopPropagation();
                                             e.preventDefault();
                                             const selection = window.getSelection();
@@ -1265,69 +1260,54 @@ export function DNODetailPage() {
                                             selection?.removeAllRanges();
                                             selection?.addRange(range);
                                         };
+                                        return (
+                                            <span
+                                                className="cursor-text hover:bg-primary/20 rounded px-0.5"
+                                                onClick={handleClick}
+                                                onMouseDown={(e) => e.stopPropagation()}
+                                                style={{ userSelect: 'text' }}
+                                            >
+                                                {value}
+                                            </span>
+                                        );
+                                    };
 
-                                        // Helper to add seconds to time values (12:00 -> 12:00:00)
-                                        const addSeconds = (timeStr: string): string => {
-                                            return timeStr.replace(/\b(\d{1,2}:\d{2})\b(?!:\d{2})/g, '$1:00');
-                                        };
-
-                                        // Helper to render a time range - each timestamp is independently selectable via JS
-                                        const renderTimeRange = (period: string, idx: number) => {
-                                            // Match pattern like "10:00:00 - 11:30:00"
-                                            const rangeMatch = period.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–]\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
-                                            if (rangeMatch) {
-                                                return (
-                                                    <div key={idx} className="text-sm py-0.5 whitespace-nowrap flex items-center">
-                                                        <span
-                                                            className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
-                                                            onClick={handleSelectClick}
-                                                            onMouseDown={(e) => e.stopPropagation()}
-                                                        >
-                                                            {rangeMatch[1]}
-                                                        </span>
-                                                        <span className="text-muted-foreground select-none px-1">–</span>
-                                                        <span
-                                                            className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
-                                                            onClick={handleSelectClick}
-                                                            onMouseDown={(e) => e.stopPropagation()}
-                                                        >
-                                                            {rangeMatch[2]}
-                                                        </span>
-                                                    </div>
-                                                );
-                                            }
-                                            // Not a range, just a single value
+                                    // Render time ranges from parsed backend array
+                                    const renderTimeRanges = (
+                                        ranges: { start: string; end: string }[] | null | undefined,
+                                        rawValue: string | null | undefined
+                                    ): React.ReactNode => {
+                                        // Use parsed ranges if available
+                                        if (ranges && ranges.length > 0) {
                                             return (
-                                                <div key={idx} className="text-sm py-0.5">
-                                                    <span
-                                                        className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
-                                                        onClick={handleSelectClick}
-                                                        onMouseDown={(e) => e.stopPropagation()}
-                                                    >
-                                                        {period}
-                                                    </span>
+                                                <div className="space-y-0.5" style={{ userSelect: 'none' }}>
+                                                    {ranges.map((range, idx) => (
+                                                        <div key={idx} className="text-sm whitespace-nowrap flex items-center">
+                                                            <SelectableTime value={range.start} />
+                                                            <span className="text-muted-foreground px-1" style={{ userSelect: 'none' }}>–</span>
+                                                            <SelectableTime value={range.end} />
+                                                        </div>
+                                                    ))}
                                                 </div>
                                             );
-                                        };
+                                        }
 
-                                        // Split by comma and trim whitespace
-                                        const periods = value.split(',').map(p => addSeconds(p.trim())).filter(p => p);
-                                        if (periods.length === 0) return <span className="text-muted-foreground">-</span>;
-                                        return (
-                                            <div className="space-y-1">
-                                                {periods.map((period, idx) => renderTimeRange(period, idx))}
-                                            </div>
-                                        );
+                                        // Fallback: show raw value or dash
+                                        if (!rawValue || rawValue === "-" || rawValue.toLowerCase() === "entfällt") {
+                                            return <span className="text-muted-foreground">-</span>;
+                                        }
+
+                                        return <span className="text-sm">{rawValue}</span>;
                                     };
 
                                     return (
                                         <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
                                             <td className="py-2 px-3">{item.year}</td>
                                             <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.winter)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.fruehling)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.sommer)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{formatTimePeriods(item.herbst)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.winter_ranges, item.winter)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.fruehling_ranges, item.fruehling)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.sommer_ranges, item.sommer)}</td>
+                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.herbst_ranges, item.herbst)}</td>
                                             <td className="py-2 px-3 text-center">
                                                 <div className="flex items-center justify-center gap-1">
                                                     <ExtractionSourceBadge

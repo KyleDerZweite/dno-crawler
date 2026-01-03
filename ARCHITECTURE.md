@@ -272,3 +272,33 @@ erDiagram
 - **LocationModel (`locations`)**: Maps addresses and coordinates to DNOs. Uses `address_hash` for efficient lookup and caching of VNB Digital results.
 - **Data Tables (`netzentgelte`, `hlzf`)**: Store the extracted pricing and time-window data, linked to DNOs and specific years.
 - **Job Tracking (`crawl_jobs`)**: Manages the state of background tasks, providing visibility into the long-running extraction process.
+
+---
+
+## 4. Security Architecture
+
+- **Authentication**: OIDC-based via Zitadel. The frontend handles the redirect flow and attaches Bearer tokens to API requests.
+- **Authorization**: Role-based access control (RBAC) implemented in the backend via `Depends(get_current_user)`.
+- **Secret Management**: All sensitive credentials (API keys, DB passwords) are managed via environment variables and `.env` files.
+- **Data Protection**: PostgreSQL connections use SSL in production environments. Rate limiting is enforced at the IP and API quota levels.
+
+---
+
+## 5. Observability
+
+- **Logging**: Structured JSON logging using `structlog`. Logs include correlation IDs for tracing requests across the API and async workers.
+- **Monitoring**: Health endpoints provided at `/api/v1/health`.
+- **Job Tracking**: Real-time visibility into background worker tasks via the `crawl_jobs` and `crawl_job_steps` tables.
+
+---
+
+## 6. Production Maintenance
+
+### Database Migrations
+The system uses Alembic for database migrations. All schema changes must be versioned and applied using:
+```bash
+alembic upgrade head
+```
+
+### Crawl Job Recovery
+The system features a startup recovery service that resets jobs stuck in 'running' or 'crawling' state due to unexpected server restarts or crashes.

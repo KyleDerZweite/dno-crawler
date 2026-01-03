@@ -119,6 +119,7 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
     
     Handles various formats:
     - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
+    - "12:15-13:15\n16:45-19:45" (newline-separated)
     - "08:00 – 12:00" (en-dash with spaces)
     - "entfällt" or "-" (no data)
     
@@ -131,8 +132,11 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
     
     ranges = []
     
-    # Split by comma to get individual periods
-    for period in value.split(","):
+    # Split by comma OR newline to get individual periods
+    # This handles both "12:15-13:15, 16:45-19:45" and "12:15-13:15\n16:45-19:45"
+    periods = re.split(r'[,\n]', value)
+    
+    for period in periods:
         period = period.strip()
         if not period:
             continue
