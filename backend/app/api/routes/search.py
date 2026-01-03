@@ -107,14 +107,72 @@ class NetzentgelteData(BaseModel):
     arbeit_unter_2500h: Optional[float] = None
 
 
+class HLZFTimeRange(BaseModel):
+    """Parsed time range with start and end times."""
+    start: str  # e.g., "12:15:00"
+    end: str    # e.g., "13:15:00"
+
+
+def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
+    """
+    Parse HLZF time string into structured time ranges.
+    
+    Handles various formats:
+    - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
+    - "08:00 – 12:00" (en-dash with spaces)
+    - "entfällt" or "-" (no data)
+    
+    Returns list of HLZFTimeRange or None if no valid ranges.
+    """
+    import re
+    
+    if not value or value.strip() == "-" or value.strip().lower() == "entfällt":
+        return None
+    
+    ranges = []
+    
+    # Split by comma to get individual periods
+    for period in value.split(","):
+        period = period.strip()
+        if not period:
+            continue
+        
+        # Match any dash type: hyphen (-), en-dash (–), em-dash (—)
+        # Allow optional spaces around the dash
+        match = re.match(
+            r'^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$',
+            period
+        )
+        
+        if match:
+            start_time = match.group(1)
+            end_time = match.group(2)
+            
+            # Add :00 seconds if missing (12:15 -> 12:15:00)
+            if len(start_time) == 5:
+                start_time += ":00"
+            if len(end_time) == 5:
+                end_time += ":00"
+            
+            ranges.append(HLZFTimeRange(start=start_time, end=end_time))
+    
+    return ranges if ranges else None
+
+
 class HLZFData(BaseModel):
-    """HLZF data."""
+    """HLZF data with both raw strings and parsed time ranges."""
     year: int
     voltage_level: str
+    # Raw string values (for display fallback)
     winter: Optional[str] = None
     fruehling: Optional[str] = None
     sommer: Optional[str] = None
     herbst: Optional[str] = None
+    # Parsed time ranges (for structured display)
+    winter_ranges: Optional[list[HLZFTimeRange]] = None
+    fruehling_ranges: Optional[list[HLZFTimeRange]] = None
+    sommer_ranges: Optional[list[HLZFTimeRange]] = None
+    herbst_ranges: Optional[list[HLZFTimeRange]] = None
 
 
 class PublicSearchResponse(BaseModel):
@@ -553,6 +611,10 @@ async def _build_response(
             fruehling=h.fruehling,
             sommer=h.sommer,
             herbst=h.herbst,
+            winter_ranges=_parse_hlzf_times(h.winter),
+            fruehling_ranges=_parse_hlzf_times(h.fruehling),
+            sommer_ranges=_parse_hlzf_times(h.sommer),
+            herbst_ranges=_parse_hlzf_times(h.herbst),
         )
         for h in hlzf_result.scalars().all()
     ]

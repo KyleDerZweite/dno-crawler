@@ -190,13 +190,24 @@ export interface PublicSearchNetzentgelte {
   arbeit?: number;
 }
 
+export interface HLZFTimeRange {
+  start: string;  // e.g., "12:15:00"
+  end: string;    // e.g., "13:15:00"
+}
+
 export interface PublicSearchHLZF {
   year: number;
   voltage_level: string;
+  // Raw string values (for display fallback)
   winter?: string;
   fruehling?: string;
   sommer?: string;
   herbst?: string;
+  // Parsed time ranges (for structured display)
+  winter_ranges?: HLZFTimeRange[];
+  fruehling_ranges?: HLZFTimeRange[];
+  sommer_ranges?: HLZFTimeRange[];
+  herbst_ranges?: HLZFTimeRange[];
 }
 
 export interface PublicSearchResponse {

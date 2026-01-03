@@ -191,7 +191,7 @@ export function DNODetailPage() {
 
             for (const year of years) {
                 for (const type of typesToCrawl) {
-                    const result = await api.dnos.triggerCrawl(id!, { year, data_type: type });
+                    const result = await api.dnos.triggerCrawl(numericId!, { year, data_type: type });
                     results.push(result);
                 }
             }
@@ -203,7 +203,7 @@ export function DNODetailPage() {
                 title: "Crawl triggered",
                 description: `${jobCount} job${jobCount > 1 ? 's' : ''} queued for years: ${variables.years.join(', ')}`,
             });
-            queryClient.invalidateQueries({ queryKey: ["dno-jobs", id] });
+            queryClient.invalidateQueries({ queryKey: ["dno-jobs", numericId] });
             setCrawlDialogOpen(false);
         },
         onError: (error: unknown) => {
@@ -237,7 +237,7 @@ export function DNODetailPage() {
 
     // Handle file upload
     const handleFileUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0 || !id) return;
+        if (!files || files.length === 0 || !numericId) return;
 
         setIsUploading(true);
         setUploadResults([]);
@@ -246,7 +246,7 @@ export function DNODetailPage() {
 
         for (const file of Array.from(files)) {
             try {
-                const response = await api.dnos.uploadFile(id, file);
+                const response = await api.dnos.uploadFile(numericId, file);
                 if (response.success) {
                     results.push({
                         filename: file.name,
@@ -275,8 +275,8 @@ export function DNODetailPage() {
         setIsUploading(false);
 
         // Refresh files list
-        queryClient.invalidateQueries({ queryKey: ["dno-files", id] });
-        queryClient.invalidateQueries({ queryKey: ["dno", id] });
+        queryClient.invalidateQueries({ queryKey: ["dno-files", numericId] });
+        queryClient.invalidateQueries({ queryKey: ["dno", numericId] });
 
         // Show toast for results
         const successCount = results.filter(r => r.success).length;
@@ -361,7 +361,7 @@ export function DNODetailPage() {
 
     // Delete Netzentgelte mutation
     const deleteNetzentgelteMutation = useMutation({
-        mutationFn: (recordId: number) => api.dnos.deleteNetzentgelte(id!, recordId),
+        mutationFn: (recordId: number) => api.dnos.deleteNetzentgelte(numericId!, recordId),
         onSuccess: () => {
             toast({
                 title: "Record deleted",
@@ -386,7 +386,7 @@ export function DNODetailPage() {
 
     // Delete HLZF mutation
     const deleteHLZFMutation = useMutation({
-        mutationFn: (recordId: number) => api.dnos.deleteHLZF(id!, recordId),
+        mutationFn: (recordId: number) => api.dnos.deleteHLZF(numericId!, recordId),
         onSuccess: () => {
             toast({
                 title: "Record deleted",
@@ -424,7 +424,7 @@ export function DNODetailPage() {
     // Update Netzentgelte mutation
     const updateNetzentgelteMutation = useMutation({
         mutationFn: (data: { id: number; leistung?: number; arbeit?: number }) =>
-            api.dnos.updateNetzentgelte(id!, data.id, { leistung: data.leistung, arbeit: data.arbeit }),
+            api.dnos.updateNetzentgelte(numericId!, data.id, { leistung: data.leistung, arbeit: data.arbeit }),
         onSuccess: () => {
             toast({
                 title: "Record updated",
@@ -452,7 +452,7 @@ export function DNODetailPage() {
     // Update HLZF mutation
     const updateHLZFMutation = useMutation({
         mutationFn: (data: { id: number; winter?: string; fruehling?: string; sommer?: string; herbst?: string }) =>
-            api.dnos.updateHLZF(id!, data.id, { winter: data.winter, fruehling: data.fruehling, sommer: data.sommer, herbst: data.herbst }),
+            api.dnos.updateHLZF(numericId!, data.id, { winter: data.winter, fruehling: data.fruehling, sommer: data.sommer, herbst: data.herbst }),
         onSuccess: () => {
             toast({
                 title: "Record updated",
@@ -480,11 +480,11 @@ export function DNODetailPage() {
     // Update DNO metadata mutation
     const updateDNOMutation = useMutation({
         mutationFn: (data: { name?: string; region?: string; website?: string; description?: string }) =>
-            api.dnos.updateDNO(id!, data),
+            api.dnos.updateDNO(numericId!, data),
         onSuccess: () => {
             toast({ title: "DNO updated", description: "Metadata saved successfully" });
             setEditDNOOpen(false);
-            queryClient.invalidateQueries({ queryKey: ["dno", id] });
+            queryClient.invalidateQueries({ queryKey: ["dno", numericId] });
         },
         onError: (error: unknown) => {
             const message = error instanceof AxiosError
@@ -496,7 +496,7 @@ export function DNODetailPage() {
 
     // Delete DNO mutation
     const deleteDNOMutation = useMutation({
-        mutationFn: () => api.dnos.deleteDNO(id!),
+        mutationFn: () => api.dnos.deleteDNO(numericId!),
         onSuccess: () => {
             toast({ title: "DNO deleted", description: "DNO and all associated data have been permanently deleted" });
             setDeleteDNOOpen(false);
@@ -1170,7 +1170,7 @@ export function DNODetailPage() {
                                                     flagReason={item.flag_reason}
                                                     recordId={item.id}
                                                     recordType="netzentgelte"
-                                                    dnoId={id!}
+                                                    dnoId={numericId!}
                                                     compact
                                                 />
                                             </div>
@@ -1255,26 +1255,59 @@ export function DNODetailPage() {
                                             return <span className="text-muted-foreground">-</span>;
                                         }
 
+                                        // Click handler to select just the clicked element's text
+                                        const handleSelectClick = (e: React.MouseEvent<HTMLSpanElement>) => {
+                                            e.stopPropagation();
+                                            e.preventDefault();
+                                            const selection = window.getSelection();
+                                            const range = document.createRange();
+                                            range.selectNodeContents(e.currentTarget);
+                                            selection?.removeAllRanges();
+                                            selection?.addRange(range);
+                                        };
+
                                         // Helper to add seconds to time values (12:00 -> 12:00:00)
                                         const addSeconds = (timeStr: string): string => {
                                             return timeStr.replace(/\b(\d{1,2}:\d{2})\b(?!:\d{2})/g, '$1:00');
                                         };
 
-                                        // Helper to render a time range - keeps on same line if possible, wraps if needed
+                                        // Helper to render a time range - each timestamp is independently selectable via JS
                                         const renderTimeRange = (period: string, idx: number) => {
                                             // Match pattern like "10:00:00 - 11:30:00"
                                             const rangeMatch = period.match(/^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–]\s*(\d{1,2}:\d{2}(?::\d{2})?)$/);
                                             if (rangeMatch) {
                                                 return (
-                                                    <div key={idx} className="flex flex-wrap items-center gap-x-1 text-sm py-0.5">
-                                                        <span className="select-all whitespace-nowrap">{rangeMatch[1]}</span>
-                                                        <span className="text-muted-foreground select-none">–</span>
-                                                        <span className="select-all whitespace-nowrap">{rangeMatch[2]}</span>
+                                                    <div key={idx} className="text-sm py-0.5 whitespace-nowrap flex items-center">
+                                                        <span
+                                                            className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
+                                                            onClick={handleSelectClick}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            {rangeMatch[1]}
+                                                        </span>
+                                                        <span className="text-muted-foreground select-none px-1">–</span>
+                                                        <span
+                                                            className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
+                                                            onClick={handleSelectClick}
+                                                            onMouseDown={(e) => e.stopPropagation()}
+                                                        >
+                                                            {rangeMatch[2]}
+                                                        </span>
                                                     </div>
                                                 );
                                             }
                                             // Not a range, just a single value
-                                            return <span key={idx} className="text-sm select-all block py-0.5">{period}</span>;
+                                            return (
+                                                <div key={idx} className="text-sm py-0.5">
+                                                    <span
+                                                        className="cursor-text hover:bg-muted/50 rounded px-0.5 inline-block"
+                                                        onClick={handleSelectClick}
+                                                        onMouseDown={(e) => e.stopPropagation()}
+                                                    >
+                                                        {period}
+                                                    </span>
+                                                </div>
+                                            );
                                         };
 
                                         // Split by comma and trim whitespace
@@ -1314,7 +1347,7 @@ export function DNODetailPage() {
                                                         flagReason={item.flag_reason}
                                                         recordId={item.id}
                                                         recordType="hlzf"
-                                                        dnoId={id!}
+                                                        dnoId={numericId!}
                                                         compact
                                                     />
                                                 </div>

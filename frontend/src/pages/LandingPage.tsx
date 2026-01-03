@@ -24,6 +24,7 @@ import {
     type PublicSearchResponse,
 } from "@/lib/api";
 import { useAuth } from "@/lib";
+import { DataPreviewTables } from "@/components/DataPreviewTables";
 
 // Available years for filter (2026-2022)
 const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -174,7 +175,7 @@ export default function LandingPage() {
                 {/* Background gradient */}
                 <div className="absolute inset-0 bg-gradient-to-br from-primary/10 via-background to-background" />
 
-                <div className="relative max-w-4xl mx-auto px-4 pt-16 pb-8">
+                <div className="relative max-w-5xl mx-auto px-4 pt-16 pb-8">
                     {/* Branding */}
                     <div className="text-center mb-12">
                         <div className="flex items-center justify-center gap-3 mb-4">
@@ -420,33 +421,14 @@ export default function LandingPage() {
                                         )}
 
                                         {result.has_data ? (
-                                            /* Data Preview */
-                                            <div className="space-y-3">
-                                                {result.netzentgelte && result.netzentgelte.length > 0 && (
-                                                    <div className="p-3 rounded-lg bg-muted/50">
-                                                        <div className="text-sm font-medium mb-2">
-                                                            Netzentgelte ({result.netzentgelte.length} records)
-                                                        </div>
-                                                        <div className="text-xs text-muted-foreground">
-                                                            Years: {[...new Set(result.netzentgelte.map((n) => n.year))].join(", ")}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                {result.hlzf && result.hlzf.length > 0 && (
-                                                    <div className="p-3 rounded-lg bg-muted/50">
-                                                        <div className="text-sm font-medium mb-2">
-                                                            HLZF ({result.hlzf.length} records)
-                                                        </div>
-                                                        <div className="text-xs text-muted-foreground">
-                                                            Years: {[...new Set(result.hlzf.map((h) => h.year))].join(", ")}
-                                                        </div>
-                                                    </div>
-                                                )}
-                                                <div className="text-sm text-muted-foreground text-center pt-2">
-                                                    <LogIn className="w-4 h-4 inline mr-2" />
-                                                    Login to view full data and manage imports
-                                                </div>
-                                            </div>
+                                            /* Data Tables */
+                                            <DataPreviewTables
+                                                netzentgelte={result.netzentgelte}
+                                                hlzf={result.hlzf}
+                                                dnoId={result.dno.id}
+                                                dnoSlug={result.dno.slug}
+                                                showManageLink={true}
+                                            />
                                         ) : (
                                             /* Skeleton - No data yet */
                                             <Alert>

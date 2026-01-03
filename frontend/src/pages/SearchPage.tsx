@@ -11,6 +11,7 @@ import {
     ChevronUp,
     Check,
     Filter,
+    Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,6 +23,7 @@ import {
     type PublicSearchRequest,
     type PublicSearchResponse,
 } from "@/lib/api";
+import { DataPreviewTables } from "@/components/DataPreviewTables";
 
 // Available years for filter (2026-2022)
 const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
@@ -39,7 +41,7 @@ const DEFAULT_YEARS = [2025, 2024];
 export default function SearchPage() {
 
     // Search mode
-    const [searchMode, setSearchMode] = useState<"address" | "coordinates">("address");
+    const [searchMode, setSearchMode] = useState<"address" | "coordinates" | "dno">("address");
 
     // Address inputs
     const [street, setStreet] = useState("");
@@ -49,6 +51,9 @@ export default function SearchPage() {
     // Coordinate inputs
     const [latitude, setLatitude] = useState("");
     const [longitude, setLongitude] = useState("");
+
+    // DNO name input
+    const [dnoName, setDnoName] = useState("");
 
     // Filter state
     const [filtersExpanded, setFiltersExpanded] = useState(false);
@@ -90,9 +95,12 @@ export default function SearchPage() {
         );
     };
 
+    const isDnoNameValid = dnoName.trim().length >= 2;
+
     const canSearch =
         (searchMode === "address" && isAddressValid) ||
-        (searchMode === "coordinates" && isCoordinatesValid());
+        (searchMode === "coordinates" && isCoordinatesValid()) ||
+        (searchMode === "dno" && isDnoNameValid);
 
     // Search handler
     const handleSearch = async () => {
@@ -111,10 +119,14 @@ export default function SearchPage() {
                     zip_code: zipCode.trim(),
                     city: city.trim(),
                 };
-            } else {
+            } else if (searchMode === "coordinates") {
                 request.coordinates = {
                     latitude: parseFloat(latitude.replace(",", ".")),
                     longitude: parseFloat(longitude.replace(",", ".")),
+                };
+            } else if (searchMode === "dno") {
+                request.dno = {
+                    dno_name: dnoName.trim(),
                 };
             }
 
@@ -150,7 +162,7 @@ export default function SearchPage() {
     };
 
     return (
-        <div className="space-y-8 max-w-3xl mx-auto">
+        <div className="space-y-8 max-w-5xl mx-auto">
             {/* Header */}
             <div className="text-center">
                 <h1 className="text-3xl font-bold text-foreground">Search DNO Data</h1>
@@ -181,6 +193,15 @@ export default function SearchPage() {
                         >
                             <Navigation className="w-4 h-4" />
                             Coordinates
+                        </Button>
+                        <Button
+                            variant={searchMode === "dno" ? "default" : "ghost"}
+                            size="sm"
+                            onClick={() => setSearchMode("dno")}
+                            className="gap-2"
+                        >
+                            <Building2 className="w-4 h-4" />
+                            DNO Name
                         </Button>
                     </div>
 
@@ -231,6 +252,22 @@ export default function SearchPage() {
                                 onKeyDown={handleKeyDown}
                                 disabled={isSearching}
                             />
+                        </div>
+                    )}
+
+                    {/* DNO Name Input */}
+                    {searchMode === "dno" && (
+                        <div className="space-y-2">
+                            <Input
+                                placeholder="DNO Name (e.g. Netze BW, RheinEnergie, Westnetz)"
+                                value={dnoName}
+                                onChange={(e) => setDnoName(e.target.value)}
+                                onKeyDown={handleKeyDown}
+                                disabled={isSearching}
+                            />
+                            <p className="text-xs text-muted-foreground">
+                                Fuzzy search - partial names work (e.g. "Netze" will match "Netze BW GmbH")
+                            </p>
                         </div>
                     )}
 
@@ -349,35 +386,14 @@ export default function SearchPage() {
                                 )}
 
                                 {result.has_data ? (
-                                    /* Data Preview */
-                                    <div className="space-y-3">
-                                        {result.netzentgelte && result.netzentgelte.length > 0 && (
-                                            <div className="p-3 rounded-lg bg-muted/50">
-                                                <div className="text-sm font-medium mb-2">
-                                                    Netzentgelte ({result.netzentgelte.length} records)
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    Years: {[...new Set(result.netzentgelte.map((n) => n.year))].join(", ")}
-                                                </div>
-                                            </div>
-                                        )}
-                                        {result.hlzf && result.hlzf.length > 0 && (
-                                            <div className="p-3 rounded-lg bg-muted/50">
-                                                <div className="text-sm font-medium mb-2">
-                                                    HLZF ({result.hlzf.length} records)
-                                                </div>
-                                                <div className="text-xs text-muted-foreground">
-                                                    Years: {[...new Set(result.hlzf.map((h) => h.year))].join(", ")}
-                                                </div>
-                                            </div>
-                                        )}
-                                        <Button asChild className="w-full gap-2">
-                                            <Link to={`/dnos/${result.dno.slug}`}>
-                                                View Full Data
-                                                <ArrowRight className="w-4 h-4" />
-                                            </Link>
-                                        </Button>
-                                    </div>
+                                    /* Data Tables */
+                                    <DataPreviewTables
+                                        netzentgelte={result.netzentgelte}
+                                        hlzf={result.hlzf}
+                                        dnoId={result.dno.id}
+                                        dnoSlug={result.dno.slug}
+                                        showManageLink={true}
+                                    />
                                 ) : (
                                     /* Skeleton - Import CTA */
                                     <div className="space-y-4">
@@ -389,7 +405,7 @@ export default function SearchPage() {
                                             </AlertDescription>
                                         </Alert>
                                         <Button asChild className="w-full gap-2">
-                                            <Link to={`/dnos/${result.dno.slug}`}>
+                                            <Link to={`/dnos/${result.dno.id || result.dno.slug}`}>
                                                 Import Data
                                                 <ArrowRight className="w-4 h-4" />
                                             </Link>
