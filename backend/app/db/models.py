@@ -58,6 +58,11 @@ class DNOModel(Base, TimestampMixin):
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     official_name: Mapped[str | None] = mapped_column(String(255))
     
+    # MaStR (Marktstammdatenregister) identification
+    mastr_nr: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)  # e.g., SNB982046657236
+    acer_code: Mapped[str | None] = mapped_column(String(50))  # e.g., A00014369.DE
+    bdew_code: Mapped[str | None] = mapped_column(String(20))  # 13-digit BDEW code (fetched separately)
+    
     # VNB Digital integration
     vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
     
@@ -65,15 +70,32 @@ class DNOModel(Base, TimestampMixin):
     status: Mapped[str] = mapped_column(String(20), default="uncrawled", index=True)
     crawl_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     
+    # Enrichment tracking
+    enrichment_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | processing | completed | failed
+    last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    source: Mapped[str] = mapped_column(String(20), default="seed")  # seed | user_discovery
+    
     # Basic info
     description: Mapped[str | None] = mapped_column(Text)
     region: Mapped[str | None] = mapped_column(String(255), index=True)
     website: Mapped[str | None] = mapped_column(String(500))
     
-    # Contact info (from VNBdigital)
+    # Address components (structured storage from seed data)
+    address_components: Mapped[dict | None] = mapped_column(JSON)  # {street, house_number, zip_code, city, country}
+    
+    # Contact info (from VNBdigital or enrichment)
     phone: Mapped[str | None] = mapped_column(String(100))
     email: Mapped[str | None] = mapped_column(String(255))
-    contact_address: Mapped[str | None] = mapped_column(String(500))
+    contact_address: Mapped[str | None] = mapped_column(String(500))  # Formatted display string
+    
+    # Market roles from MaStR (e.g., ["Anschlussnetzbetreiber", "Messstellenbetreiber"])
+    marktrollen: Mapped[dict | None] = mapped_column(JSON)
+    
+    # MaStR metadata
+    registration_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    mastr_last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    closed_network: Mapped[bool] = mapped_column(Boolean, default=False)  # Geschlossenes Verteilernetz
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # Tätigkeitsstatus
     
     # Crawlability info (from skeleton creation)
     robots_txt: Mapped[str | None] = mapped_column(Text)  # Full robots.txt content

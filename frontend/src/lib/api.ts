@@ -55,20 +55,48 @@ apiClient.interceptors.response.use(
 
 // Types
 
+export interface AddressComponents {
+  street?: string;
+  house_number?: string;
+  zip_code?: string;
+  city?: string;
+  country?: string;
+}
+
 export interface DNO {
   id: string;
   slug: string;
   name: string;
   official_name?: string;
   vnb_id?: string;
+  // MaStR identification
+  mastr_nr?: string;
+  acer_code?: string;
+  bdew_code?: string;
+  // Status tracking
   status?: "uncrawled" | "pending" | "running" | "crawled" | "failed";
   crawl_locked_at?: string;
+  // Enrichment tracking
+  enrichment_status?: "pending" | "processing" | "completed" | "failed";
+  last_enriched_at?: string;
+  source?: "seed" | "user_discovery";
+  // Basic info
   description?: string;
   region?: string;
   website?: string;
+  // Address
+  address_components?: AddressComponents;
+  contact_address?: string;
+  // Contact info
   phone?: string;
   email?: string;
-  contact_address?: string;
+  // Market roles
+  marktrollen?: string[];
+  // MaStR metadata
+  registration_date?: string;
+  mastr_last_updated?: string;
+  closed_network?: boolean;
+  is_active?: boolean;
   // Crawlability info
   crawlable?: boolean;
   crawl_blocked_reason?: string;

@@ -67,6 +67,20 @@ class DNOStatus(str, Enum):
     FAILED = "failed"
 
 
+class EnrichmentStatus(str, Enum):
+    """DNO enrichment status (for background data enrichment)."""
+    PENDING = "pending"
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class DNOSource(str, Enum):
+    """How the DNO record was created."""
+    SEED = "seed"              # From MaStR seed data
+    USER_DISCOVERY = "user_discovery"  # Created via user search/skeleton service
+
+
 class SourceFormat(str, Enum):
     """Source document formats."""
     PDF = "pdf"
