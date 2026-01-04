@@ -67,6 +67,14 @@ class Settings(BaseSettings):
         """Check if AI extraction is configured."""
         return bool(self.ai_api_url and self.ai_model)
 
+    # Crawler Politeness
+    contact_email: str = Field(default="", validation_alias="CONTACT_EMAIL")
+    
+    @property
+    def has_contact_email(self) -> bool:
+        """Check if a valid contact email is configured (not the hardcoded default)."""
+        return bool(self.contact_email) and "@kylehub.dev" not in self.contact_email
+
     # Crawler
     crawler_max_concurrent: int = 5
     crawler_request_delay: float = 1.0  # seconds between requests

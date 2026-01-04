@@ -46,6 +46,21 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         init_rate_limiter(redis)
         logger.info("Rate limiter initialized")
         
+        # Warn if CONTACT_EMAIL not configured (important for crawler politeness)
+        if not settings.has_contact_email:
+            if settings.is_auth_enabled:
+                logger.warning(
+                    "⚠️  CONTACT_EMAIL not configured! "
+                    "BFS crawling will FAIL in production mode. "
+                    "Set CONTACT_EMAIL in .env to enable full crawling."
+                )
+            else:
+                logger.warning(
+                    "⚠️  CONTACT_EMAIL not configured. "
+                    "BFS crawling will use initiator IP as fallback. "
+                    "Set CONTACT_EMAIL in .env for production use."
+                )
+        
         # Recover stuck crawl jobs
         async with get_db_session() as db:
             recovered = await recover_stuck_crawl_jobs(db)

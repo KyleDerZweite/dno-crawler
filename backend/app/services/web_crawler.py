@@ -133,11 +133,10 @@ class WebCrawler:
     target data based on keyword matching and learned patterns.
     """
     
-    USER_AGENT = "DNO-Data-Crawler/1.0 (Data Research Project; contact: abuse@kylehub.dev)"
-    
     def __init__(
         self,
         client: httpx.AsyncClient,
+        user_agent: str,
         max_depth: int = 3,
         max_pages: int = 50,
         request_delay: float = 0.5,
@@ -147,12 +146,14 @@ class WebCrawler:
         
         Args:
             client: httpx AsyncClient for requests
+            user_agent: User-Agent string for crawl requests
             max_depth: Maximum crawl depth from start URL
             max_pages: Maximum pages to crawl per session
             request_delay: Delay between requests (politeness)
             timeout: Request timeout in seconds
         """
         self.client = client
+        self.user_agent = user_agent
         self.max_depth = max_depth
         self.max_pages = max_pages
         self.request_delay = request_delay

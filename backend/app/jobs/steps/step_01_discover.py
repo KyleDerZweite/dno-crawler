@@ -34,12 +34,10 @@ from app.services.content_verifier import ContentVerifier
 from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
 from app.services.url_utils import UrlProber
+from app.services.user_agent import build_user_agent, require_contact_for_bfs
 from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 
 logger = structlog.get_logger()
-
-# User agent for HTTP requests
-USER_AGENT = "DNO-Data-Crawler/1.0 (Data Research Project; contact: abuse@kylehub.dev)"
 
 # Maximum candidates to try before giving up
 MAX_CANDIDATES_TO_TRY = 5
@@ -88,10 +86,14 @@ class DiscoverStep(BaseStep):
                 f"for {job.data_type} {job.year}. Please upload the file manually."
             )
         
+        # Build User-Agent for non-BFS strategies (sitemap, pattern match)
+        initiator_ip = ctx.get("initiator_ip")
+        user_agent = build_user_agent(initiator_ip)
+        
         # Need HTTP client for remaining strategies
         async with httpx.AsyncClient(
             timeout=15.0,
-            headers={"User-Agent": USER_AGENT},
+            headers={"User-Agent": user_agent},
             follow_redirects=True,
             trust_env=False,
         ) as client:
@@ -262,8 +264,13 @@ class DiscoverStep(BaseStep):
             
             log.info("Starting full BFS crawl", website=dno_website)
             
+            # BFS crawling requires contact email in production
+            # This will raise ValueError if in production without CONTACT_EMAIL
+            bfs_user_agent = require_contact_for_bfs(initiator_ip)
+            
             crawler = WebCrawler(
                 client=client,
+                user_agent=bfs_user_agent,
                 max_depth=3,
                 max_pages=getattr(settings, "crawler_max_pages", 50),
                 request_delay=getattr(settings, "crawler_delay", 0.5),

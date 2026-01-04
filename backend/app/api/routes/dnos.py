@@ -4,7 +4,7 @@ DNO management routes (authenticated).
 
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, User as AuthUser
 from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
+from app.core.rate_limiter import get_client_ip
 from app.db import CrawlJobModel, DNOModel, get_db
 from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
 
@@ -622,6 +623,7 @@ async def delete_dno(
 async def trigger_crawl(
     dno_id: str,
     request: TriggerCrawlRequest,
+    http_request: Request,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
@@ -690,7 +692,8 @@ async def trigger_crawl(
     dno.status = "crawling"
     dno.crawl_locked_at = datetime.utcnow()
     
-    # Create crawl job in database
+    # Create crawl job in database with initiator IP for User-Agent
+    initiator_ip = get_client_ip(http_request)
     job = CrawlJobModel(
         dno_id=dno.id,
         year=request.year,
@@ -698,6 +701,7 @@ async def trigger_crawl(
         priority=request.priority,
         current_step=f"Triggered by {current_user.email}",
         triggered_by=current_user.email,
+        context={"initiator_ip": initiator_ip},
     )
     db.add(job)
     await db.commit()
