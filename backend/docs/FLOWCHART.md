@@ -1,6 +1,6 @@
-# DNO Crawler - Complete Pipeline Flowchart
+# DNO Crawler - Pipeline Flowchart
 
-This document describes the complete flow of the DNO data crawler, from user input to extracted data.
+This document describes the complete extraction pipeline from user input to structured data.
 
 ---
 
@@ -8,135 +8,128 @@ This document describes the complete flow of the DNO data crawler, from user inp
 
 ```mermaid
 flowchart TB
-    subgraph Input["1️⃣ User Input"]
-        A1[Address] --> VNB
-        A2[Coordinates] --> VNB
-        A3[DNO Name] --> VNB
+    subgraph Input["1. User Input"]
+        A1[Address] --> SEARCH
+        A2[Coordinates] --> SEARCH
+        A3[DNO Name] --> SEARCH
     end
     
-    subgraph Skeleton["2️⃣ DNO Skeleton Creation"]
-        VNB[VNB Digital API Lookup] --> DNO[DNO Record]
-        DNO --> IMP[Fetch Impressum]
-        DNO --> ROB[Fetch robots.txt]
-        IMP --> |"Extract Address"| ADDR[Enhanced Address]
-        ROB --> |"Store Full"| ROBOTS[Stored robots.txt]
-        ROB --> |"Check Response"| CRAWL{Crawlable?}
+    SEARCH[POST /api/v1/search] --> VNB[VNB Digital GraphQL]
+    
+    subgraph Skeleton["2. DNO Resolution"]
+        VNB --> DNO[DNO Record]
+        DNO --> ENRICH[Enrichment Job]
+        ENRICH --> ROB[Fetch robots.txt]
+        ENRICH --> IMP[Fetch Impressum]
+        ROB --> CRAWL{Crawlable?}
     end
     
-    subgraph Discovery["3️⃣ Data Discovery"]
-        CRAWL --> |"Yes"| SITEMAP[Parse Sitemap from robots.txt]
-        CRAWL --> |"No: JS Challenge"| MANUAL[Mark for Manual Review]
-        SITEMAP --> SCORE[Score & Filter URLs]
-        SCORE --> TOP[Get Top Candidates]
+    subgraph Discovery["3. Data Discovery"]
+        CRAWL --> |"Yes"| STRATEGY{Discovery Strategy}
+        CRAWL --> |"No: Cloudflare"| MANUAL[Manual File Upload]
+        STRATEGY --> |"Cached Pattern"| PATTERN[Try URL Pattern]
+        STRATEGY --> |"No Pattern"| BFS[BFS Crawl]
+        PATTERN --> VERIFY[Verify Content]
+        BFS --> VERIFY
     end
     
-    subgraph Download["4️⃣ Smart Download"]
-        TOP --> TYPE{File Type?}
-        TYPE --> |"PDF/Excel"| DL_FILE[Download File Directly]
-        TYPE --> |"HTML Page"| CHECK_HTML[Check for Embedded Data]
-        CHECK_HTML --> |"Has Tables"| STRIP[Strip & Save HTML]
-        CHECK_HTML --> |"No Data"| NEXT[Try Next Candidate]
+    subgraph Download["4. Download"]
+        VERIFY --> TYPE{File Type?}
+        MANUAL --> TYPE
+        TYPE --> |"PDF"| DL_PDF[Download PDF]
+        TYPE --> |"HTML"| DL_HTML[Strip & Save HTML]
+        TYPE --> |"Excel"| DL_EXCEL[Download Excel]
     end
     
-    subgraph Extract["5️⃣ Data Extraction"]
-        DL_FILE --> AI{AI Configured?}
-        STRIP --> AI
-        AI --> |"Yes"| AI_EXT[AI Vision Extraction]
-        AI --> |"No"| REGEX[Regex Fallback Extraction]
-        AI_EXT --> |"Failed"| REGEX
-        REGEX --> DATA[Structured Data]
+    subgraph Extract["5. Extraction"]
+        DL_PDF --> REGEX[Regex Extraction]
+        DL_HTML --> REGEX
+        DL_EXCEL --> PANDAS[Pandas Extraction]
+        REGEX --> SANITY{Sanity Check}
+        PANDAS --> SANITY
+        SANITY --> |"Pass"| DATA[Structured Data]
+        SANITY --> |"Fail"| AI{AI Configured?}
+        AI --> |"Yes"| AI_EXT[AI Vision/Text]
+        AI --> |"No"| FAIL[Mark Failed]
+        AI_EXT --> DATA
     end
     
-    DATA --> DB[(Database)]
+    DATA --> DB[(PostgreSQL)]
+    DATA --> PROFILE[Update Source Profile]
 ```
 
 ---
 
-## Phase 1: User Input & DNO Lookup
+## Phase 1: Search & DNO Resolution
 
 ```mermaid
 flowchart LR
-    subgraph Input["User Provides"]
+    subgraph Input["User Input"]
         A[Address] 
         B[Coordinates]
         C[DNO Name]
     end
     
-    Input --> VNB[VNB Digital API]
+    Input --> API[POST /api/v1/search]
     
-    VNB --> R1{Found?}
-    R1 --> |"Yes"| INFO[/"DNO Info:
-    - Official Name
-    - BDEW Code  
-    - Website URL
-    - Contact Details"/]
-    R1 --> |"No"| ERR[Error: DNO Not Found]
+    API --> CACHE{Location Cache Hit?}
+    CACHE --> |"Yes"| EXISTING[Return Cached DNO]
+    CACHE --> |"No"| VNB[Query VNB Digital API]
     
-    INFO --> CHECK{DNO Exists in DB?}
-    CHECK --> |"Yes"| EXISTING[Use Existing DNO]
-    CHECK --> |"No"| CREATE[Create DNO Skeleton]
+    VNB --> FOUND{DNO Found?}
+    FOUND --> |"Yes"| CHECK{DNO in DB?}
+    FOUND --> |"No"| ERR[Error: Not Found]
+    
+    CHECK --> |"Yes"| UPDATE[Update Existing]
+    CHECK --> |"No"| CREATE[Create Skeleton]
+    
+    UPDATE --> ENRICH[Queue Enrichment Job]
+    CREATE --> ENRICH
 ```
 
-**VNB API Response Contains:**
-- `strasse`, `ort`, `plz` → Address
-- `homepage` → Website URL for crawling
+**VNB Digital Response:**
+- `kurzbezeichnung` → Display name
+- `vnb_id` → External identifier
+- `homepage` → Website URL
 - `telefon`, `email` → Contact info
-- `kurzbezeichnung` → Short name/slug
+- Address components for location caching
 
 ---
 
-## Phase 2: DNO Skeleton Creation
+## Phase 2: DNO Enrichment
 
 ```mermaid
 flowchart TD
-    START[Create DNO Skeleton] --> VNB[VNB Data]
+    START[Enrichment Job] --> VNB[Fetch VNB Details]
+    VNB --> ROBOTS[Fetch robots.txt]
     
-    VNB --> P1[Fetch Impressum Page]
-    VNB --> P2[Fetch robots.txt]
-    
-    subgraph Impressum["Impressum Extraction"]
-        P1 --> IMP1{Response OK?}
-        IMP1 --> |"200"| PARSE[Parse HTML]
-        IMP1 --> |"JS Challenge"| IMP_FAIL[Mark: JS Protected]
-        IMP1 --> |"404/Error"| IMP_NONE[No Impressum]
+    subgraph RobotsCheck["robots.txt Analysis"]
+        ROBOTS --> RESP{Response Type?}
+        RESP --> |"200 OK"| PARSE[Parse Content]
+        RESP --> |"403 + JS"| CF[Cloudflare Detected]
+        RESP --> |"404"| NONE[No robots.txt]
         
-        PARSE --> ADDR[/"Extract:
-        - PLZ
-        - City
-        - Street"/]
+        PARSE --> SITEMAP[Extract Sitemap URLs]
+        PARSE --> DISALLOW[Extract Disallow Paths]
+        
+        CF --> FLAG["crawlable = false<br/>reason = 'cloudflare'"]
+        NONE --> CRAWLABLE["crawlable = true"]
+        SITEMAP --> CRAWLABLE
     end
     
-    subgraph Robots["robots.txt Handling"]
-        P2 --> ROB1{Response OK?}
-        ROB1 --> |"200 + Valid"| STORE[Store Full Content]
-        ROB1 --> |"JS Challenge"| JS_FLAG[/"Set Flag:
-        crawlable = false
-        reason = 'cloudflare'"/]
-        ROB1 --> |"404"| NO_ROBOTS[No robots.txt - Still Crawlable]
-        
-        STORE --> SITEMAP_URL[Extract Sitemap URLs]
-        STORE --> DISALLOW[Parse Disallow Rules]
+    subgraph ImpressumCheck["Impressum Extraction"]
+        CRAWLABLE --> IMP[Fetch /impressum]
+        IMP --> IMP_OK{Success?}
+        IMP_OK --> |"Yes"| ADDR[Extract Address]
+        IMP_OK --> |"No"| SKIP[Skip]
     end
     
-    ADDR --> SKELETON
-    IMP_FAIL --> SKELETON
-    JS_FLAG --> SKELETON
-    SITEMAP_URL --> SKELETON
-    DISALLOW --> SKELETON
+    FLAG --> SAVE
+    ADDR --> SAVE
+    SKIP --> SAVE
     
-    SKELETON[/"DNO Skeleton:
-    - name, slug, website
-    - address (enhanced)
-    - robots_txt (full)
-    - sitemap_urls[]
-    - disallow_paths[]
-    - crawlable: bool
-    - crawl_blocked_reason"/]
-    
-    SKELETON --> DB[(Save to Database)]
+    SAVE[/"Update DNO:<br/>- robots_txt (full text)<br/>- sitemap_urls[]<br/>- disallow_paths[]<br/>- crawlable: bool<br/>- contact_address"/]
 ```
-
-**Key Insight:** We determine crawlability during skeleton creation by checking if we can fetch robots.txt. If Cloudflare blocks us, we know before any crawl attempt.
 
 ---
 
@@ -144,21 +137,23 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    USER[User Clicks "Crawl"] --> CHECK{DNO Crawlable?}
+    USER[User Clicks Crawl] --> CHECK{DNO Crawlable?}
     
-    CHECK --> |"No"| BLOCKED[/"Show Error:
-    'Site uses JavaScript protection.
-    Manual data entry required.'"/]
+    CHECK --> |"No"| HAS_LOCAL{Has Local Files?}
+    HAS_LOCAL --> |"Yes"| USE_LOCAL[Use Uploaded Files]
+    HAS_LOCAL --> |"No"| BLOCKED["Show: Site protected<br/>Upload files manually"]
     
-    CHECK --> |"Yes"| CACHE{Cached Data Exists?}
+    CHECK --> |"Yes"| PROFILE{Has Source Profile?}
     
-    CACHE --> |"Yes + Fresh"| USE_CACHE[Use Cached Files]
-    CACHE --> |"No or Stale"| START_JOB[Start Crawl Job]
+    PROFILE --> |"Yes + Recent"| PATTERN[Try Cached URL Pattern]
+    PROFILE --> |"No or Stale"| FULL_CRAWL[Full Discovery]
     
-    USE_CACHE --> EXTRACT[Go to Extraction]
-    START_JOB --> QUEUE[Add to Job Queue]
+    PATTERN --> JOB[Create CrawlJob]
+    FULL_CRAWL --> JOB
+    USE_LOCAL --> JOB
     
-    QUEUE --> WORKER[Background Worker Picks Up]
+    JOB --> QUEUE[Enqueue to Redis]
+    QUEUE --> WORKER[arq Worker Picks Up]
 ```
 
 ---
@@ -167,307 +162,232 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    START[Crawl Job Starts] --> DB_READ[Load DNO from DB]
+    START[Step 01: Discover] --> CTX[Load DNO Context]
     
-    DB_READ --> HAS_ROBOTS{Has robots.txt?}
+    CTX --> LOCAL{Local File Exists?}
+    LOCAL --> |"Yes"| USE_FILE[Skip Discovery]
+    LOCAL --> |"No"| PROFILE{Has Source Profile?}
     
-    HAS_ROBOTS --> |"Yes"| SITEMAP[Get Sitemap URL from robots.txt]
-    HAS_ROBOTS --> |"No"| TRY_COMMON[Try Common Sitemap Paths]
+    PROFILE --> |"Yes"| TRY_PATTERN[Try URL Pattern with Year]
+    PROFILE --> |"No"| SITEMAP{Has Sitemap URLs?}
     
-    SITEMAP --> FETCH[Fetch Sitemap XML]
-    TRY_COMMON --> FETCH
+    TRY_PATTERN --> VERIFY{Content Valid?}
+    VERIFY --> |"Yes"| FOUND[Source Found]
+    VERIFY --> |"No"| SITEMAP
     
-    FETCH --> FOUND{Sitemap Found?}
+    SITEMAP --> |"Yes"| PARSE_SM[Parse Sitemap XML]
+    SITEMAP --> |"No"| BFS[BFS Crawl from Homepage]
     
-    FOUND --> |"Yes"| PARSE[Parse All URLs from Sitemap]
-    FOUND --> |"No"| BFS[Fallback: BFS Crawl]
+    PARSE_SM --> SCORE[Score URLs by Keywords]
+    BFS --> SCORE
     
-    PARSE --> FILTER[Filter: Remove Disallowed Paths]
-    
-    FILTER --> SCORE[/"Score Each URL:
-    + Keywords (netzentgelte, strom, hlzf...)
-    + File Type Bonus (PDF: +20, Excel: +15)
-    + Target Year Bonus (+25)
-    - Negative Keywords (gas, vermiedene...)"/]
-    
-    SCORE --> SORT[Sort by Score DESC]
-    SORT --> TOP[Take Top 20 Candidates]
-    
-    subgraph Special["HLZF Special Handling"]
-        TOP --> HLZF{Data Type = HLZF?}
-        HLZF --> |"Yes"| CHECK_SPECIFIC{Any HLZF-Specific URLs?}
-        CHECK_SPECIFIC --> |"No"| SCAN_HTML[Scan HTML Pages for Embedded Tables]
-        SCAN_HTML --> MERGE[Merge Results]
-    end
-    
-    TOP --> CANDIDATES[Final Candidate List]
-    MERGE --> CANDIDATES
-    BFS --> CANDIDATES
+    SCORE --> TOP[Take Top Candidates]
+    TOP --> PROBE[HEAD Request Each]
+    PROBE --> CONTENT{Content-Type OK?}
+    CONTENT --> |"Yes"| FOUND
+    CONTENT --> |"No"| NEXT[Try Next Candidate]
+    NEXT --> |"More"| PROBE
+    NEXT --> |"None Left"| FAIL[Discovery Failed]
 ```
 
 **URL Scoring Algorithm:**
+
 | Factor | Score |
 |--------|-------|
-| PDF file | +20 |
-| Excel file | +15 |
-| Keyword match (each) | +15 |
+| PDF file extension | +20 |
+| Excel file extension | +15 |
 | Target year in URL | +25 |
-| Negative keyword (each) | -15 to -30 |
+| Keyword match (netzentgelte, strom, hlzf) | +15 each |
+| Negative keyword (gas, vermiedene) | -15 to -30 |
+| Shallow depth (≤2) | +10 |
 
 ---
 
-## Phase 5: Smart Download
+## Phase 5: Download
 
 ```mermaid
 flowchart TD
-    CAND[Candidate URLs] --> LOOP[For Each Candidate]
+    SOURCE[Discovered Source URL] --> TYPE{Content Type?}
     
-    LOOP --> TYPE{URL Type?}
+    TYPE --> |"application/pdf"| DL_PDF[Download PDF]
+    TYPE --> |"text/html"| CHECK_HTML[Check for Embedded Data]
+    TYPE --> |"application/xlsx"| DL_XLS[Download Excel]
     
-    TYPE --> |"PDF"| HEAD[HEAD Request]
-    TYPE --> |"Excel"| HEAD
-    TYPE --> |"HTML Page"| GET_HTML[GET Request]
+    CHECK_HTML --> TABLES{Has Data Tables?}
+    TABLES --> |"Yes"| STRIP[Strip HTML - Keep Tables]
+    TABLES --> |"No"| NEXT[Try Next Candidate]
     
-    HEAD --> VERIFY{Content-Type OK?}
-    VERIFY --> |"Yes"| DOWNLOAD[Download Full File]
-    VERIFY --> |"No"| SKIP[Skip, Try Next]
-    
-    GET_HTML --> DETECT[Detect Embedded Data Tables]
-    DETECT --> HAS_DATA{Has Relevant Tables?}
-    HAS_DATA --> |"Yes"| STRIP[Strip HTML - Keep Tables Only]
-    HAS_DATA --> |"No"| SKIP
-    
-    DOWNLOAD --> SAVE[/"Save to:
-    data/downloads/{dno_slug}/{dno_slug}-{type}-{year}.{ext}"/]
+    DL_PDF --> SAVE
     STRIP --> SAVE
+    DL_XLS --> SAVE
     
-    SAVE --> RECORD[Record Source URL + File Path]
-    RECORD --> NEXT{More Candidates?}
+    SAVE[/"Save to:<br/>data/downloads/{slug}/{slug}-{type}-{year}.{ext}"/]
     
-    NEXT --> |"Yes, Need More"| LOOP
-    NEXT --> |"Have Enough"| DONE[Files Ready for Extraction]
-    
-    SKIP --> NEXT
+    SAVE --> RECORD[Record DataSource]
 ```
 
-**HTML Embedded Data Detection:**
+**HTML Table Detection:**
 - Look for `<table>` elements
-- Check for keywords: "hochlast", "zeitfenster", "uhr", "winter", "sommer"
+- Check for keywords: "hochlast", "zeitfenster", "netzentgelt"
 - Check for voltage levels: "HS", "MS", "NS", "Umspannung"
 - Check for year patterns: "gültig ab 01.01.2025"
 
 ---
 
-## Phase 6: Data Extraction
+## Phase 6: Extraction
 
 ```mermaid
 flowchart TD
-    FILES[Downloaded Files] --> LOOP[For Each File]
+    FILE[Downloaded File] --> FORMAT{File Format?}
     
-    LOOP --> EXT{File Extension?}
+    FORMAT --> |"PDF"| PDF[PDFExtractor<br/>pdfplumber + regex]
+    FORMAT --> |"HTML"| HTML[HTMLExtractor<br/>BeautifulSoup]
+    FORMAT --> |"Excel"| EXCEL[pandas/openpyxl]
     
-    EXT --> |"PDF"| AI_CHECK{AI Configured?}
-    EXT --> |"HTML"| AI_CHECK
-    EXT --> |"Excel"| EXCEL[Pandas/OpenPyXL Extraction]
+    PDF --> DATA[Extracted Records]
+    HTML --> DATA
+    EXCEL --> DATA
     
-    AI_CHECK --> |"Yes"| AI_PREP[Prepare for AI]
-    AI_CHECK --> |"No"| REGEX[Regex Extraction]
+    DATA --> SANITY{Sanity Check}
     
-    subgraph AI_Flow["AI Vision Extraction"]
-        AI_PREP --> OPTIMIZE[Optimize PDF - Filter Relevant Pages]
-        OPTIMIZE --> SEND[Send to Vision Model]
-        SEND --> AI_RESULT{Success?}
-        AI_RESULT --> |"Yes"| PARSE_JSON[Parse Structured JSON]
-        AI_RESULT --> |"No Data"| RETRY{Retry with Full PDF?}
-        RETRY --> |"Yes"| SEND_FULL[Send Unoptimized PDF]
-        RETRY --> |"Already Tried"| REGEX
-        SEND_FULL --> AI_RESULT
-    end
+    SANITY --> |"Pass"| SAVE[Save to Database]
+    SANITY --> |"Fail"| AI_CHECK{AI Configured?}
     
-    subgraph Regex_Flow["Regex Fallback"]
-        REGEX --> PATTERNS[/"Apply Patterns:
-        - Voltage Levels
-        - Price Values
-        - Date Ranges"/]
-        PATTERNS --> STRUCTURED[Build Structured Output]
-    end
+    AI_CHECK --> |"No"| LOG_FAIL[Log Failure]
+    AI_CHECK --> |"Yes"| OPTIMIZE[Pre-filter PDF Pages]
     
-    PARSE_JSON --> VALIDATE[Validate Extracted Data]
-    STRUCTURED --> VALIDATE
-    EXCEL --> VALIDATE
+    OPTIMIZE --> AI[AIExtractor<br/>OpenAI Vision API]
+    AI --> AI_DATA[AI Extracted Records]
+    AI_DATA --> AI_SANITY{Sanity Check}
     
-    VALIDATE --> STORE[Store in Database]
-    STORE --> LOG[Log Extraction Results]
+    AI_SANITY --> |"Pass"| SAVE
+    AI_SANITY --> |"Fail"| LOG_FAIL
+    
+    SAVE --> PROFILE[Update Source Profile]
+    SAVE --> PATTERN[Record Path Pattern]
 ```
 
-**AI Optimization Strategy:**
-1. Extract text from each PDF page
+**Sanity Check Rules:**
+
+| Data Type | Validation |
+|-----------|------------|
+| Netzentgelte | ≥3 voltage levels, each with arbeit OR leistung non-null |
+| HLZF | ≥1 record with winter time window present |
+
+**AI PDF Optimization:**
+1. Extract text from each page
 2. Filter pages containing target keywords
-3. Create optimized PDF with only relevant pages
-4. Send to AI (reduces tokens by 60-80%)
-5. If no data found, retry with full PDF
+3. Create optimized PDF (60-80% smaller)
+4. Send to vision model
+5. If empty result, retry with full PDF
 
 ---
 
-## Fallback Strategy Summary
+## Phase 7: Finalization
+
+```mermaid
+flowchart TD
+    DATA[Validated Data] --> SAVE_NE[Save Netzentgelte Records]
+    DATA --> SAVE_HLZF[Save HLZF Records]
+    
+    SAVE_NE --> META[Record Extraction Metadata]
+    SAVE_HLZF --> META
+    
+    META --> |"extraction_source"| SRC["ai | pdf_regex | html_parser"]
+    META --> |"extraction_model"| MODEL["gemini-2.0-flash | etc"]
+    
+    SRC --> PROFILE[Update DNO Source Profile]
+    PROFILE --> |"url_pattern"| PATTERN["Store URL with {year} placeholder"]
+    PROFILE --> |"discovery_method"| METHOD["pattern_match | bfs_crawl"]
+    
+    PATTERN --> GLOBAL[Update Global Path Patterns]
+    GLOBAL --> |"success_count++"| STATS[Track Success Rate]
+    
+    STATS --> JOB[Mark Job Completed]
+```
+
+---
+
+## Error Handling & Fallbacks
 
 ```mermaid
 flowchart LR
     subgraph Discovery
-        D1[Sitemap] --> |"Failed"| D2[BFS Crawl]
-        D2 --> |"Failed"| D3[Manual Entry Required]
-    end
-    
-    subgraph Download
-        DL1[PDF Direct] --> |"Wrong Content"| DL2[Try Next Candidate]
-        DL2 --> |"All Failed"| DL3[Mark Job Failed]
+        D1[Cached Pattern] --> |"Failed"| D2[Sitemap Parse]
+        D2 --> |"Failed"| D3[BFS Crawl]
+        D3 --> |"Failed"| D4[Manual Upload Required]
     end
     
     subgraph Extraction
-        E1[AI Vision] --> |"No Data"| E2[Retry Full PDF]
-        E2 --> |"No Data"| E3[Regex Fallback]
-        E3 --> |"No Data"| E4[Manual Extraction]
+        E1[Regex/Parser] --> |"Sanity Fail"| E2[AI Fallback]
+        E2 --> |"Sanity Fail"| E3[Manual Edit Required]
+    end
+    
+    subgraph AI
+        A1[Optimized PDF] --> |"No Data"| A2[Full PDF Retry]
+        A2 --> |"No Data"| A3[Text Mode]
+        A3 --> |"No Data"| A4[Mark Failed]
     end
 ```
 
 ---
 
-## Database Schema Overview
+## Database Entities
 
 ```mermaid
 erDiagram
+    DNO ||--o{ CrawlJob : "has"
+    DNO ||--o{ DNOSourceProfile : "has"
+    DNO ||--o{ DataSource : "produces"
+    DNO ||--o{ Netzentgelte : "has"
+    DNO ||--o{ HLZF : "has"
+    
+    CrawlJob ||--o{ CrawlJobStep : "contains"
+    DataSource ||--o| Netzentgelte : "extracted"
+    DataSource ||--o| HLZF : "extracted"
+    
     DNO {
-        uuid id PK
-        string name
-        string slug UK
+        int id PK
+        string slug
         string website
-        string address
-        string phone
-        string email
-        text robots_txt
-        json sitemap_urls
-        json disallow_paths
         bool crawlable
-        string crawl_blocked_reason
+    }
+    
+    DNOSourceProfile {
+        int id PK
+        int dno_id FK
+        string data_type
+        string url_pattern
+        string discovery_method
     }
     
     CrawlJob {
-        uuid id PK
-        uuid dno_id FK
+        int id PK
+        int dno_id FK
         int year
         string data_type
         string status
         json context
-        timestamp started_at
-        timestamp completed_at
     }
     
     DataSource {
-        uuid id PK
-        uuid dno_id FK
-        int year
-        string data_type
+        int id PK
+        int dno_id FK
         string source_url
         string file_path
-        string content_hash
+        string extraction_method
     }
-    
-    ExtractedData {
-        uuid id PK
-        uuid dno_id FK
-        uuid source_id FK
-        int year
-        string data_type
-        json data
-        bool verified
-    }
-    
-    DNO ||--o{ CrawlJob : has
-    DNO ||--o{ DataSource : has
-    DNO ||--o{ ExtractedData : has
-    DataSource ||--o{ ExtractedData : produces
 ```
 
 ---
 
-## UI States & Error Handling
+## UI States
 
-| DNO State | UI Display | Action Available |
-|-----------|------------|------------------|
+| DNO State | UI Display | Available Actions |
+|-----------|------------|-------------------|
 | `crawlable=true, no_data` | "Ready to crawl" | Trigger Crawl |
-| `crawlable=true, has_data` | "Data available" | View Data / Re-crawl |
-| `crawlable=false, reason=cloudflare` | "⚠️ Site protected" | Manual Entry Only |
-| `crawlable=false, reason=robots_blocked` | "🚫 Crawling disallowed" | Manual Entry Only |
-| `job_status=running` | "⏳ Crawling..." | View Progress |
-| `job_status=failed` | "❌ Crawl failed" | Retry / Manual Entry |
-
----
-
-## Codebase Cleanup
-
-### Current Issues
-1. **Discovery logic split** across `web_crawler.py`, `sitemap_discovery.py`, `bfs_discovery_test.py`
-2. **Inconsistent scoring** between BFS and sitemap discovery
-3. **Skeleton creation** doesn't store robots.txt or crawlability flag
-4. **Missing crawlability check** in job trigger
-
-### Proposed Refactoring
-
-#### Step 1: Consolidate Discovery Service
-```
-app/services/discovery/
-├── __init__.py
-├── base.py            # DiscoveryResult, DiscoveredDocument
-├── sitemap.py         # SitemapDiscovery - sitemap-based
-├── bfs.py             # BFSDiscovery - fallback crawler  
-├── html_detector.py   # HTML embedded data detection
-├── scorer.py          # Unified scoring algorithm
-└── manager.py         # DiscoveryManager - orchestrates strategies
-```
-
-#### Step 2: Enhance DNO Model
-- Add `robots_txt` (text field)
-- Add `sitemap_urls` (JSON array)
-- Add `disallow_paths` (JSON array)
-- Add `crawlable` (boolean)
-- Add `crawl_blocked_reason` (string)
-
-#### Step 3: Update Skeleton Service
-- Fetch and store full robots.txt
-- Parse sitemap URLs
-- Parse disallow rules
-- Detect crawlability (Cloudflare, etc.)
-
-#### Step 4: Add Crawlability Check
-- API endpoint returns crawlability status
-- Frontend disables crawl button if not crawlable
-- Show reason to user
-
-#### Step 5: Unify Scoring
-- Single `score_url()` function used everywhere
-- Same keywords, penalties across all discovery methods
-- Configurable per data type
-
-### Files to Modify/Create
-
-| Action | File | Purpose |
-|--------|------|---------|
-| CREATE | `app/services/discovery/manager.py` | Unified discovery orchestration |
-| CREATE | `app/services/discovery/scorer.py` | Centralized scoring |
-| MODIFY | `app/models.py` | Add DNO crawlability fields |
-| MODIFY | `app/services/skeleton_service.py` | Store robots.txt, detect crawlability |
-| MODIFY | `app/api/routes/crawl.py` | Check crawlability before job creation |
-| ARCHIVE | `tests/manual/bfs_discovery_test.py` | Move to `archive/` - logic integrated into discovery module |
-| MODIFY | `app/jobs/steps/step_01_discover.py` | Use new DiscoveryManager |
-
----
-
-## Next Steps
-
-1. **Review this flowchart** - Ensure it matches your vision
-2. **Approve the cleanup plan** - Confirm the refactoring approach
-3. **Implement in phases:**
-   - Phase A: DNO model + skeleton enhancements
-   - Phase B: Consolidated discovery service
-   - Phase C: Frontend crawlability integration
-   - Phase D: Cleanup deprecated code
+| `crawlable=true, has_data` | Data tables shown | View/Edit Data, Re-crawl |
+| `crawlable=false, has_local_files` | "Files uploaded" | Extract from Files |
+| `crawlable=false, no_files` | "Site protected" | Upload Files |
+| `job_status=running` | Progress indicator | View Steps |
+| `job_status=failed` | Error message | Retry, Manual Edit |

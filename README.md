@@ -1,132 +1,207 @@
 # DNO Crawler
 
-## Overview
+## Project Description
 
-DNO Crawler is a full-stack application designed to extract, normalize, and serve data from German Distribution Network Operators (DNOs). The system automates the retrieval of Netzentgelte (network charges) and HLZF (high-load time windows) by combining intelligent web crawling with AI-powered document extraction. Users can resolve any German address or coordinate to its responsible DNO using the VNB Digital API, then trigger automated data extraction from the operator's website.
+DNO Crawler is a full-stack application for automated extraction of regulatory data from German Distribution Network Operators (DNOs). The system resolves geographic locations to their responsible electricity grid operator via the VNB Digital GraphQL API, then orchestrates a multi-step pipeline to discover, download, and parse pricing documents from operator websites. Extracted data includes **Netzentgelte** (network usage charges per voltage level) and **HLZF** (Hochlastzeitfenster, peak-load time windows).
 
-## Core Features
+## Key Features
 
-- **VNB Digital Resolution**: Resolves German addresses and coordinates to their responsible distribution network operator via the VNB Digital API.
-- **AI-Powered Extraction**: Supports OpenAI-compatible APIs (Gemini, OpenRouter, Ollama) for structured data extraction from PDFs and HTML documents, with regex-based fallback when AI is unavailable.
-- **BFS Web Crawler**: Implements breadth-first search discovery with robots.txt compliance, sitemap parsing, and adaptive URL scoring.
-- **OIDC Authentication**: Provides secure access control via Zitadel with a mock mode for local development.
-- **Async Job Processing**: Handles long-running extraction tasks through Redis and arq workers with real-time status tracking.
+- **Geographic DNO Resolution**: Maps any German address or coordinate pair to the responsible distribution network operator using the VNB Digital external API.
+- **Breadth-First Web Crawler**: Discovers data sources on DNO websites using BFS traversal with adaptive URL scoring, robots.txt compliance, and sitemap parsing.
+- **Regex-First Extraction with AI Fallback**: Prioritizes deterministic regex and HTML parsing for structured data extraction. When sanity checks fail (e.g., insufficient voltage levels), the system falls back to OpenAI-compatible vision/text models (Gemini, OpenRouter, Ollama).
+- **Pattern Learning System**: Records successful URL path patterns with year placeholders (e.g., `/downloads/{year}/netzentgelte.pdf`) in a cross-DNO database, enabling faster discovery on subsequent crawls.
+- **Async Job Queue**: Offloads long-running crawl and extraction tasks to Redis-backed arq workers, providing real-time progress tracking via a polling API.
+- **OIDC Authentication**: Secures protected endpoints via Zitadel-based OpenID Connect, with an automatic mock mode for local development.
+- **Data Provenance Tracking**: Stores extraction metadata (source URL, file hash, extraction method, AI model used) for auditability.
 
-## Architecture
+## Technical Architecture
 
-The backend is built with **FastAPI** (Python 3.11+) using **SQLAlchemy 2.0** for async PostgreSQL operations. Background jobs are processed via **arq** with Redis as the message broker. The frontend is a **React** single-page application built with **Vite**, **TypeScript**, and **TailwindCSS**, using **TanStack Query** for server-state management.
+### System Overview
+
+The application follows a layered architecture with clear separation between the HTTP API, background processing, and data persistence.
 
 ```
-dno-crawler/
-├── backend/
-│   ├── app/
-│   │   ├── api/          # REST endpoints and authentication
-│   │   ├── core/         # Configuration, models, exceptions
-│   │   ├── db/           # SQLAlchemy ORM models
-│   │   ├── jobs/         # Background job step definitions
-│   │   └── services/     # VNB client, extraction, crawling logic
-├── frontend/
-│   ├── src/
-│   │   ├── pages/        # React page components
-│   │   ├── components/   # Reusable UI components
-│   │   └── lib/          # API client and auth utilities
-└── data/                 # Persistent storage for downloads
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              Frontend (React SPA)                           │
+│   Vite + TypeScript + TailwindCSS + TanStack Query + react-oidc-context    │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+                                      │ REST API + JWT Bearer Token
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                           Backend (FastAPI)                                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
+│  │  Public Routes  │  │ Protected Routes│  │      Service Layer          │  │
+│  │  POST /search   │  │ POST /dnos/crawl│  │  VNBDigitalClient (GraphQL) │  │
+│  │  GET /health    │  │ GET /dnos/{id}  │  │  BDEWClient (JTables POST)  │  │
+│  │                 │  │ GET /jobs/{id}  │  │  MaStR Seed Import (Manual) │  │
+│  │                 │  │                 │  │  WebCrawler (BFS Engine)    │  │
+│  │                 │  │                 │  │  AIExtractor (OpenAI SDK)   │  │
+│  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────────────────────┘
+                                      │
+              ┌───────────────────────┼───────────────────────┐
+              │                       │                       │
+              ▼                       ▼                       ▼
+     ┌────────────────┐      ┌────────────────┐      ┌────────────────┐
+     │   PostgreSQL   │      │     Redis      │      │   arq Worker   │
+     │   (SQLAlchemy  │      │  (Job Queue +  │      │  (Background   │
+     │    Async ORM)  │      │     Cache)     │      │   Processing)  │
+     └────────────────┘      └────────────────┘      └────────────────┘
 ```
 
-## Installation
+### Data Flow: Address to Extracted Data
+
+1. **Search Request**: User submits an address via `POST /api/v1/search`. The backend queries the VNB Digital GraphQL API to resolve the address to coordinates, then looks up the responsible DNO.
+
+2. **Skeleton Creation**: If the DNO does not exist in the database, a skeleton record is created with the VNB-provided name, website, and contact information. The location is cached by address hash for future lookups.
+
+3. **Crawl Job Dispatch**: An authenticated user triggers `POST /api/v1/dnos/{id}/crawl`, which creates a `CrawlJob` entity and enqueues a task to Redis. The arq worker picks up the job asynchronously.
+
+4. **Pipeline Execution**: The worker executes a multi-step pipeline:
+   - **Step 00 (Gather Context)**: Loads DNO metadata, source profiles, and enrichment data.
+   - **Step 01 (Discover)**: Uses cached file paths, learned URL patterns, or BFS crawling to locate the data source. The `WebCrawler` class implements priority-queue BFS with keyword-based URL scoring.
+   - **Step 03 (Download)**: Fetches the discovered PDF or HTML document to local storage.
+   - **Step 04 (Extract)**: Applies regex extraction (`PDFExtractor`, `HTMLExtractor`) first. If validation fails (e.g., fewer than 3 voltage level records), falls back to `AIExtractor` which uses the OpenAI SDK with vision or text mode.
+   - **Step 05 (Validate)**: Runs sanity checks on extracted records.
+   - **Step 06 (Finalize)**: Persists Netzentgelte and HLZF records, updates source profiles with successful URL patterns for future crawls.
+
+5. **Result Retrieval**: Frontend polls `GET /api/v1/dnos/{id}/jobs` until status is `completed`, then fetches structured data via `GET /api/v1/dnos/{id}`.
+
+### External Data Sources
+
+The system aggregates DNO metadata from three authoritative sources:
+
+| Source | Integration Method | Data Provided |
+|--------|-------------------|---------------|
+| **VNB Digital** | GraphQL API queries | Address-to-DNO resolution, official names, homepage URLs, contact information |
+| **Marktstammdatenregister (MaStR)** | Manual XML/CSV export import | Market roles, ACER codes, legal names, registered addresses |
+| **BDEW Codes Registry** | JTables endpoint via POST request interception | BDEW identification codes, grid operator function codes |
+
+VNB Digital provides real-time lookups. MaStR data requires periodic manual export from the Bundesnetzagentur portal due to API access restrictions. BDEW codes are retrieved by reverse-engineering the JTables jQuery plugin requests used by the BDEW public registry interface.
+
+### Database Schema (Core Entities)
+
+| Table | Purpose |
+|-------|---------|
+| `dnos` | Hub entity for DNOs. Contains resolved display fields, external IDs (MaStR, VNB, BDEW), crawlability status, and robots.txt metadata. |
+| `locations` | Geographic lookups. Maps address hashes and coordinates to DNO IDs for O(1) cache hits. |
+| `netzentgelte` | Network tariffs by year and voltage level. Stores Arbeitspreis (ct/kWh) and Leistungspreis (€/kW). |
+| `hlzf` | Peak-load time windows by year, voltage level, and season (winter, spring, summer, autumn). |
+| `dno_source_profiles` | Learned discovery state per DNO and data type. Stores URL patterns with `{year}` placeholders. |
+| `crawl_path_patterns` | Cross-DNO learned URL path patterns with success/failure counts for prioritization. |
+| `crawl_jobs` | Job state machine tracking status, progress, current step, and error messages. |
+| `crawl_job_steps` | Individual step execution records with timestamps and structured details. |
+
+### Extraction Strategy
+
+The extraction layer implements a cost-aware, deterministic-first approach:
+
+1. **Regex/HTML Parsing**: `PDFExtractor` uses `pdfplumber` for tabular data extraction with regex post-processing. `HTMLExtractor` uses BeautifulSoup with CSS selectors.
+
+2. **Sanity Validation**: Extracted records must pass domain-specific checks:
+   - Netzentgelte: ≥3 voltage levels, each with at least one price value.
+   - HLZF: ≥1 record with a winter time window present.
+
+3. **AI Fallback**: If validation fails and AI is configured, the file is sent to an OpenAI-compatible endpoint. For PDFs, irrelevant pages are pre-filtered using keyword matching to reduce token costs. The response follows a structured JSON schema enforced via prompt engineering.
+
+## Getting Started
 
 ### Prerequisites
 
-- Podman and Podman Compose (or Docker equivalent)
-- A Zitadel instance for authentication, or use `auth.example.com` to enable mock mode
-- Optional: AI API credentials for extraction (Gemini, OpenRouter, or local Ollama)
+- **Container Runtime**: Podman with Podman Compose, or Docker with Docker Compose
+- **Authentication Provider**: Zitadel instance, or use mock mode for development
+- **AI Provider** (optional): API credentials for Gemini, OpenRouter, or local Ollama
 
-### Setup
+### Installation
 
-Clone the repository and configure environment variables:
+Clone the repository:
 
 ```bash
 git clone https://github.com/KyleDerZweite/dno-crawler.git
 cd dno-crawler
+```
+
+Copy and configure environment variables:
+
+```bash
 cp .env.example .env
 ```
 
-Edit .env to set your database URL, Zitadel credentials, and optional AI provider settings.
+### Environment Variables
 
-Start all services:
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB` | Yes | PostgreSQL credentials |
+| `REDIS_URL` | Yes | Redis connection string for job queue |
+| `ZITADEL_DOMAIN` | No | Zitadel domain. Set to `auth.example.com` to enable mock mode |
+| `AI_API_URL` | No | OpenAI-compatible endpoint URL |
+| `AI_API_KEY` | No | API key for AI provider (omit for local Ollama) |
+| `AI_MODEL` | No | Model identifier (e.g., `gemini-2.0-flash`, `gpt-4o`) |
+| `VITE_API_URL` | Yes | Backend API URL for frontend |
+
+### Build and Run
+
+Start all services with the container runtime:
 
 ```bash
 podman-compose up -d --build
+# or
+docker compose up -d --build
 ```
 
-### Configuration
+Access the application:
 
-| Variable | Description |
-|----------|-------------|
-| `DATABASE_URL` | PostgreSQL connection string |
-| `REDIS_URL` | Redis connection for job queue |
-| `ZITADEL_DOMAIN` | Zitadel domain (set to `auth.example.com` to disable auth) |
-| `AI_API_URL` | OpenAI-compatible API endpoint |
-| `AI_API_KEY` | API key for AI provider |
-| `AI_MODEL` | Model name (e.g., `gemini-2.0-flash`, `gpt-4o`) |
+- **Frontend**: http://localhost:5173
+- **API Documentation**: http://localhost:8000/docs
+- **Health Check**: http://localhost:8000/api/v1/health
 
-## Usage
+### Local Development (Without Containers)
 
-Access the application at the following endpoints:
-
-- **Frontend**: `http://localhost:5173`
-- **API Documentation**: `http://localhost:8000/docs`
-- **Health Check**: `http://localhost:8000/api/v1/health`
-
-To search for a DNO, submit an address or coordinates via the search interface. The system will resolve the operator and create a skeleton record. Authenticated users can then trigger a crawl job to extract pricing data from the operator's website.
-
-For local development without containers:
+Backend:
 
 ```bash
-# Backend
 cd backend
+uv sync  # or pip install -r requirements.txt
 uvicorn app.api.main:app --reload
+```
 
-# Frontend
+Frontend:
+
+```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-Run backend tests:
-
-```bash
-cd backend
-pytest
-```
-
-## Production Readiness
-
-For production deployments, ensure the following standards are met:
-
-- **Security**: Strict OIDC configuration with Zitadel. Mock auth must be disabled.
-- **Reliability**: Use the provided `docker-compose.yml` for containerized orchestration with health checks.
-- **Observability**: Monitor logs via `structlog` and use the `/api/v1/health` endpoint for uptime tracking.
-- **Backup**: Regularly backup the PostgreSQL volume managed by the `db` service.
-
-Consult [PRODUCTION_REPORT.md](PRODUCTION_REPORT.md) for a detailed checklist of remaining production gaps.
-
----
-
-## Maintenance
-
-### Background Jobs
-Async jobs are managed via **arq**. If the worker crashes, the `crawl_recovery` service will automatically reset stuck jobs on the next backend startup.
-
 ### Database Migrations
-When updating the schema, generate and apply migrations via Alembic:
+
+Schema changes are managed via Alembic:
+
 ```bash
 cd backend
 alembic revision --autogenerate -m "description"
 alembic upgrade head
 ```
 
----
+### Running Tests
+
+```bash
+cd backend
+pytest
+```
+
+## Maintenance
+
+### Job Recovery
+
+The `crawl_recovery` service automatically resets jobs stuck in `running` or `crawling` state on backend startup, handling cases where the worker was terminated mid-execution.
+
+### Observability
+
+- **Logging**: Structured JSON logging via `structlog` with correlation IDs
+- **Health Endpoint**: `GET /api/v1/health` for uptime monitoring
+- **Job Visibility**: Real-time step-by-step progress via `crawl_jobs` and `crawl_job_steps` tables
 
 ## License
 

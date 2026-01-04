@@ -1,73 +1,162 @@
-# React + TypeScript + Vite
+# DNO Crawler Frontend
 
-This template provides a minimal setup to get React working in Vite with HMR and some ESLint rules.
+React SPA for the DNO Crawler application.
 
-Currently, two official plugins are available:
+## Stack
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Babel](https://babeljs.io/) (or [oxc](https://oxc.rs) when used in [rolldown-vite](https://vite.dev/guide/rolldown)) for Fast Refresh
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/) for Fast Refresh
+- **React 18** with TypeScript
+- **Vite** for development and bundling
+- **TailwindCSS** for styling
+- **TanStack Query** for server state management
+- **react-oidc-context** for OIDC authentication
+- **Base UI** for accessible component primitives
+- **React Router** for client-side routing
 
-## React Compiler
+## Directory Structure
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the ESLint configuration
-
-If you are developing a production application, we recommend updating the configuration to enable type-aware lint rules:
-
-```js
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-
-      // Remove tseslint.configs.recommended and replace with this
-      tseslint.configs.recommendedTypeChecked,
-      // Alternatively, use this for stricter rules
-      tseslint.configs.strictTypeChecked,
-      // Optionally, add this for stylistic rules
-      tseslint.configs.stylisticTypeChecked,
-
-      // Other configs...
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+```
+src/
+├── pages/              # Page components (routes)
+│   ├── LandingPage.tsx
+│   ├── SearchPage.tsx
+│   ├── DNOsPage.tsx
+│   ├── DNODetailPage.tsx
+│   ├── JobsPage.tsx
+│   ├── JobDetailsPage.tsx
+│   ├── AdminPage.tsx
+│   └── SettingsPage.tsx
+├── components/         # Reusable UI components
+│   ├── Layout.tsx
+│   ├── DataPreviewTables.tsx
+│   ├── StatusBadge.tsx
+│   └── ...
+├── lib/                # Utilities and API client
+│   ├── api.ts          # Axios API client
+│   ├── api.types.ts    # TypeScript types for API
+│   ├── auth.tsx        # Auth context and hooks
+│   └── utils.ts
+├── hooks/              # Custom React hooks
+├── App.tsx             # Root component with routing
+├── main.tsx            # Entry point
+└── index.css           # Global styles and Tailwind
 ```
 
-You can also install [eslint-plugin-react-x](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-x) and [eslint-plugin-react-dom](https://github.com/Rel1cx/eslint-react/tree/main/packages/plugins/eslint-plugin-react-dom) for React-specific lint rules:
+## Development
 
-```js
-// eslint.config.js
-import reactX from 'eslint-plugin-react-x'
-import reactDom from 'eslint-plugin-react-dom'
+### Prerequisites
 
-export default defineConfig([
-  globalIgnores(['dist']),
-  {
-    files: ['**/*.{ts,tsx}'],
-    extends: [
-      // Other configs...
-      // Enable lint rules for React
-      reactX.configs['recommended-typescript'],
-      // Enable lint rules for React DOM
-      reactDom.configs.recommended,
-    ],
-    languageOptions: {
-      parserOptions: {
-        project: ['./tsconfig.node.json', './tsconfig.app.json'],
-        tsconfigRootDir: import.meta.dirname,
-      },
-      // other options...
-    },
-  },
-])
+- Node.js 18+
+- npm or pnpm
+
+### Setup
+
+```bash
+# Install dependencies
+npm install
+
+# Start development server
+npm run dev
 ```
+
+The app runs at `http://localhost:5173` by default.
+
+### Environment Variables
+
+Create a `.env` file or set these in the root `.env`:
+
+| Variable | Description |
+|----------|-------------|
+| `VITE_API_URL` | Backend API URL (default: `http://localhost:8000/api/v1`) |
+| `VITE_ZITADEL_AUTHORITY` | OIDC provider URL (use `https://auth.example.com` for mock mode) |
+| `VITE_ZITADEL_CLIENT_ID` | OIDC client ID |
+| `VITE_ZITADEL_REDIRECT_URI` | OAuth callback URL |
+| `VITE_ZITADEL_POST_LOGOUT_URI` | Post-logout redirect URL |
+
+### Mock Authentication
+
+When `VITE_ZITADEL_AUTHORITY` is set to `https://auth.example.com`, the app runs in mock mode with a pre-authenticated admin user. No real authentication flow is required.
+
+## Build
+
+```bash
+# Production build
+npm run build
+
+# Preview production build
+npm run preview
+```
+
+Output is generated in `dist/`.
+
+## Key Features
+
+### Authentication
+
+The app uses `react-oidc-context` for OIDC authentication:
+
+```tsx
+import { useAuth } from 'react-oidc-context';
+
+function MyComponent() {
+  const auth = useAuth();
+  
+  if (auth.isLoading) return <Spinner />;
+  if (!auth.isAuthenticated) return <LoginButton />;
+  
+  return <div>Welcome, {auth.user?.profile.email}</div>;
+}
+```
+
+### API Client
+
+TanStack Query handles data fetching with automatic caching:
+
+```tsx
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { api } from '@/lib/api';
+
+// Fetch DNOs
+const { data, isLoading } = useQuery({
+  queryKey: ['dnos'],
+  queryFn: () => api.get('/dnos').then(r => r.data)
+});
+
+// Trigger crawl
+const mutation = useMutation({
+  mutationFn: (dnoId: number) => api.post(`/dnos/${dnoId}/crawl`),
+  onSuccess: () => queryClient.invalidateQueries(['dnos'])
+});
+```
+
+### Routing
+
+React Router handles client-side navigation:
+
+| Route | Page | Auth |
+|-------|------|------|
+| `/` | LandingPage | Public |
+| `/search` | SearchPage | Public |
+| `/dnos` | DNOsPage | Protected |
+| `/dnos/:id` | DNODetailPage | Protected |
+| `/jobs` | JobsPage | Protected |
+| `/jobs/:id` | JobDetailsPage | Protected |
+| `/admin` | AdminPage | Admin |
+| `/settings` | SettingsPage | Protected |
+
+## Linting
+
+```bash
+# Run ESLint
+npm run lint
+```
+
+## Docker
+
+For containerized development:
+
+```bash
+# From project root
+podman-compose up frontend
+```
+
+The frontend container watches for file changes and hot-reloads automatically.
