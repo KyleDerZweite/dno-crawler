@@ -191,6 +191,7 @@ class SkeletonService:
             db.add(dno)
             await db.commit()
             await db.refresh(dno)
+
             log.info(
                 "Created DNO skeleton",
                 dno_id=dno.id,
@@ -198,6 +199,15 @@ class SkeletonService:
                 has_website=bool(website),
                 crawlable=crawlable,
             )
+
+            # Enqueue enrichment job for newly created skeletons if not already enriched
+            try:
+                if getattr(dno, 'enrichment_status', None) != 'completed':
+                    from app.jobs.enrichment_job import enqueue_enrichment_job
+                    await enqueue_enrichment_job(dno.id)
+            except Exception as e:
+                log.warning("Failed to enqueue enrichment job for skeleton", error=str(e))
+
             return dno, True
         except IntegrityError as e:
             # Race condition: another request created it first
@@ -216,7 +226,6 @@ class SkeletonService:
             
             # If still not found, re-raise the error
             raise
-    
     async def find_location_by_hash(
         self,
         db: AsyncSession,

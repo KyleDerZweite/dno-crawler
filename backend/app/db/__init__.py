@@ -15,6 +15,11 @@ from app.db.models import (
     QueryLogModel,
     SystemLogModel,
 )
+from app.db.source_models import (
+    DNOMastrData,
+    DNOVnbData,
+    DNOBdewData,
+)
 
 __all__ = [
     # Database
@@ -26,7 +31,7 @@ __all__ = [
     "init_db",
     "close_db",
     "DatabaseError",
-    # Models
+    # Models - Core
     "DNOModel",
     "LocationModel",
     "DNOSourceProfile",
@@ -37,4 +42,8 @@ __all__ = [
     "CrawlJobStepModel",
     "QueryLogModel",
     "SystemLogModel",
+    # Models - Source Data
+    "DNOMastrData",
+    "DNOVnbData",
+    "DNOBdewData",
 ]

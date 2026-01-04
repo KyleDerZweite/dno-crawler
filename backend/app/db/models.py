@@ -2,15 +2,23 @@
 SQLAlchemy ORM models for DNO Crawler.
 
 Organized into sections:
-- DNO & Location Tables
+- DNO (Core "Golden Record" Hub)
+- Location Tables
 - Data Tables (Netzentgelte, HLZF)
 - Source Profile (Discovery Learning)
 - Crawl Job Tables
 - Logging Tables
+
+Source data from external APIs is stored in separate models:
+- DNOMastrData (Marktstammdatenregister)
+- DNOVnbData (VNB Digital API)
+- DNOBdewData (BDEW Codes API)
+See: app/db/source_models.py
 """
 
 from datetime import datetime
 from decimal import Decimal
+from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
 
 from sqlalchemy import (
@@ -31,6 +39,9 @@ from sqlalchemy.sql import func
 from app.core.models import JobStatus, VerificationStatus
 from app.db.database import Base
 
+if TYPE_CHECKING:
+    from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
+
 
 class TimestampMixin:
     """Mixin for created_at and updated_at columns."""
@@ -44,71 +55,209 @@ class TimestampMixin:
 
 
 # ==============================================================================
-# DNO & Location Tables
+# DNO - Core "Golden Record" Hub
 # ==============================================================================
 
 
 class DNOModel(Base, TimestampMixin):
-    """Distribution Network Operator."""
+    """
+    Distribution Network Operator - The Core "Golden Record".
+    
+    This is the hub in a hub-and-spoke pattern. It contains:
+    - Internal identifiers (id, slug)
+    - Operational status (crawl status, locks)
+    - Resolved/display fields (best values from sources)
+    - Crawlability info
+    - Relationships to data tables and source data
+    
+    Source data is stored in separate tables:
+    - DNOMastrData: Marktstammdatenregister data
+    - DNOVnbData: VNB Digital API data  
+    - DNOBdewData: BDEW Codes data (one-to-many)
+    """
 
     __tablename__ = "dnos"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    name: Mapped[str] = mapped_column(String(255), nullable=False)
-    official_name: Mapped[str | None] = mapped_column(String(255))
     
-    # MaStR (Marktstammdatenregister) identification
-    mastr_nr: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)  # e.g., SNB982046657236
-    acer_code: Mapped[str | None] = mapped_column(String(50))  # e.g., A00014369.DE
-    bdew_code: Mapped[str | None] = mapped_column(String(20))  # 13-digit BDEW code (fetched separately)
+    # -------------------------------------------------------------------------
+    # Resolved/Display Fields (populated from source merge logic)
+    # -------------------------------------------------------------------------
+    name: Mapped[str] = mapped_column(String(255), nullable=False)  # Best available name
+    official_name: Mapped[str | None] = mapped_column(String(255))  # Full legal name
+    website: Mapped[str | None] = mapped_column(String(500))  # Resolved website
+    phone: Mapped[str | None] = mapped_column(String(100))  # Resolved phone
+    email: Mapped[str | None] = mapped_column(String(255))  # Resolved email
+    region: Mapped[str | None] = mapped_column(String(255), index=True)  # Bundesland
+    description: Mapped[str | None] = mapped_column(Text)
     
-    # VNB Digital integration
+    # -------------------------------------------------------------------------
+    # Quick-Access Keys (duplicated from source for fast lookups)
+    # -------------------------------------------------------------------------
+    mastr_nr: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
     vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
+    primary_bdew_code: Mapped[str | None] = mapped_column(String(20), index=True)  # Netzbetreiber code
     
-    # Status tracking
+    # -------------------------------------------------------------------------
+    # Operational Status
+    # -------------------------------------------------------------------------
     status: Mapped[str] = mapped_column(String(20), default="uncrawled", index=True)
     crawl_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    
-    # Enrichment tracking
-    enrichment_status: Mapped[str] = mapped_column(String(20), default="pending", index=True)  # pending | processing | completed | failed
-    last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(20), default="seed")  # seed | user_discovery
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     
-    # Basic info
-    description: Mapped[str | None] = mapped_column(Text)
-    region: Mapped[str | None] = mapped_column(String(255), index=True)
-    website: Mapped[str | None] = mapped_column(String(500))
+    # -------------------------------------------------------------------------
+    # Enrichment Status (VNB lookup, robots.txt analysis)
+    # -------------------------------------------------------------------------
+    enrichment_status: Mapped[str | None] = mapped_column(String(20), default="pending")  # pending | processing | completed | failed
+    last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    contact_address: Mapped[str | None] = mapped_column(Text)  # Resolved contact address
     
-    # Address components (structured storage from seed data)
-    address_components: Mapped[dict | None] = mapped_column(JSON)  # {street, house_number, zip_code, city, country}
-    
-    # Contact info (from VNBdigital or enrichment)
-    phone: Mapped[str | None] = mapped_column(String(100))
-    email: Mapped[str | None] = mapped_column(String(255))
-    contact_address: Mapped[str | None] = mapped_column(String(500))  # Formatted display string
-    
-    # Market roles from MaStR (e.g., ["Anschlussnetzbetreiber", "Messstellenbetreiber"])
-    marktrollen: Mapped[dict | None] = mapped_column(JSON)
-    
-    # MaStR metadata
-    registration_date: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    mastr_last_updated: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    closed_network: Mapped[bool] = mapped_column(Boolean, default=False)  # Geschlossenes Verteilernetz
-    is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # Tätigkeitsstatus
-    
-    # Crawlability info (from skeleton creation)
-    robots_txt: Mapped[str | None] = mapped_column(Text)  # Full robots.txt content
-    sitemap_urls: Mapped[dict | None] = mapped_column(JSON)  # URLs from robots.txt Sitemap: directives
-    disallow_paths: Mapped[dict | None] = mapped_column(JSON)  # Paths from robots.txt Disallow:
-    crawlable: Mapped[bool] = mapped_column(Boolean, default=True)  # False if Cloudflare/JS-protected
-    crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))  # "cloudflare", "robots_disallow", etc.
+    # -------------------------------------------------------------------------
+    # Crawlability Info (from skeleton creation/robots.txt analysis)
+    # -------------------------------------------------------------------------
+    robots_txt: Mapped[str | None] = mapped_column(Text)
+    sitemap_urls: Mapped[list | None] = mapped_column(JSON)
+    disallow_paths: Mapped[list | None] = mapped_column(JSON)
+    crawlable: Mapped[bool] = mapped_column(Boolean, default=True)
+    crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))
 
-    # Relationships
+    # -------------------------------------------------------------------------
+    # Source Data Relationships (One-to-One/Many)
+    # -------------------------------------------------------------------------
+    mastr_data: Mapped[Optional["DNOMastrData"]] = relationship(
+        "DNOMastrData",
+        back_populates="dno",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    vnb_data: Mapped[Optional["DNOVnbData"]] = relationship(
+        "DNOVnbData", 
+        back_populates="dno",
+        uselist=False,
+        cascade="all, delete-orphan",
+    )
+    bdew_data: Mapped[list["DNOBdewData"]] = relationship(
+        "DNOBdewData",
+        back_populates="dno",
+        cascade="all, delete-orphan",
+    )
+
+    # -------------------------------------------------------------------------
+    # Business Data Relationships
+    # -------------------------------------------------------------------------
     netzentgelte: Mapped[list["NetzentgelteModel"]] = relationship(back_populates="dno")
     hlzf: Mapped[list["HLZFModel"]] = relationship(back_populates="dno")
     source_profiles: Mapped[list["DNOSourceProfile"]] = relationship(back_populates="dno")
     locations: Mapped[list["LocationModel"]] = relationship(back_populates="dno")
+
+    # -------------------------------------------------------------------------
+    # Convenience Properties for Source Data Access
+    # -------------------------------------------------------------------------
+    
+    @property
+    def display_name(self) -> str:
+        """Get the best available name (prefers VNB official name)."""
+        if self.vnb_data and self.vnb_data.official_name:
+            return self.vnb_data.official_name
+        return self.official_name or self.name
+    
+    @property
+    def display_website(self) -> str | None:
+        """Get website (prefers VNB, falls back to BDEW)."""
+        if self.vnb_data and self.vnb_data.homepage_url:
+            return self.vnb_data.homepage_url
+        if self.bdew_data:
+            for bdew in self.bdew_data:
+                if bdew.website:
+                    return bdew.website
+        return self.website
+    
+    @property 
+    def display_phone(self) -> str | None:
+        """Get phone (prefers VNB)."""
+        if self.vnb_data and self.vnb_data.phone:
+            return self.vnb_data.phone
+        return self.phone
+    
+    @property
+    def display_email(self) -> str | None:
+        """Get email (prefers VNB)."""
+        if self.vnb_data and self.vnb_data.email:
+            return self.vnb_data.email
+        return self.email
+    
+    @property
+    def mastr_contact_address(self) -> str | None:
+        """Get formatted contact address from MaStR data (fallback)."""
+        if self.mastr_data:
+            return self.mastr_data.contact_address
+        return None
+    
+    @property
+    def address_components(self) -> dict | None:
+        """Get structured address from MaStR data."""
+        if self.mastr_data:
+            return self.mastr_data.address_components
+        return None
+    
+    @property
+    def marktrollen(self) -> list | None:
+        """Get market roles from MaStR data."""
+        if self.mastr_data:
+            return self.mastr_data.marktrollen
+        return None
+    
+    @property
+    def acer_code(self) -> str | None:
+        """Get ACER code from MaStR data."""
+        if self.mastr_data:
+            return self.mastr_data.acer_code
+        return None
+    
+    @property
+    def grid_operator_bdew_code(self) -> str | None:
+        """Get the primary BDEW code for grid operator function."""
+        if self.bdew_data:
+            for bdew in self.bdew_data:
+                if bdew.is_grid_operator:
+                    return bdew.bdew_code
+            # Fallback to first code if no grid operator code
+            return self.bdew_data[0].bdew_code if self.bdew_data else None
+        return self.primary_bdew_code
+    
+    @property
+    def has_mastr(self) -> bool:
+        """Check if MaStR data is available."""
+        return self.mastr_data is not None
+    
+    @property
+    def has_vnb(self) -> bool:
+        """Check if VNB Digital data is available."""
+        return self.vnb_data is not None
+    
+    @property
+    def has_bdew(self) -> bool:
+        """Check if BDEW data is available."""
+        return bool(self.bdew_data)
+    
+    @property
+    def enrichment_sources(self) -> list[str]:
+        """Get list of available enrichment sources."""
+        sources = []
+        if self.has_mastr:
+            sources.append("mastr")
+        if self.has_vnb:
+            sources.append("vnb")
+        if self.has_bdew:
+            sources.append("bdew")
+        return sources
+
+
+# ==============================================================================
+# Location Tables
+# ==============================================================================
 
 
 class LocationModel(Base, TimestampMixin):

@@ -8,10 +8,12 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from pydantic import BaseModel
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import get_current_user, User as AuthUser
 from app.core.models import APIResponse, CrawlJob, CrawlJobCreate, DataType
 from app.db import CrawlJobModel, DNOModel, get_db
+from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
 
 router = APIRouter()
 
@@ -368,14 +370,31 @@ async def get_dno_details(
 ) -> APIResponse:
     """Get detailed information about a specific DNO by ID or slug."""
     # Try to find by numeric ID first, then by slug
+    # Eagerly load source data
     dno = None
     if dno_id.isdigit():
-        query = select(DNOModel).where(DNOModel.id == int(dno_id))
+        query = (
+            select(DNOModel)
+            .options(
+                selectinload(DNOModel.mastr_data),
+                selectinload(DNOModel.vnb_data),
+                selectinload(DNOModel.bdew_data),
+            )
+            .where(DNOModel.id == int(dno_id))
+        )
         result = await db.execute(query)
         dno = result.scalar_one_or_none()
     
     if not dno:
-        query = select(DNOModel).where(DNOModel.slug == dno_id.lower())
+        query = (
+            select(DNOModel)
+            .options(
+                selectinload(DNOModel.mastr_data),
+                selectinload(DNOModel.vnb_data),
+                selectinload(DNOModel.bdew_data),
+            )
+            .where(DNOModel.slug == dno_id.lower())
+        )
         result = await db.execute(query)
         dno = result.scalar_one_or_none()
     
@@ -391,6 +410,67 @@ async def get_dno_details(
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     dno_dir = Path(storage_path) / "downloads" / dno.slug
     has_local_files = dno_dir.exists() and any(dno_dir.iterdir())
+    
+    # Build MaStR source data
+    mastr_data = None
+    if dno.mastr_data:
+        m = dno.mastr_data
+        mastr_data = {
+            "mastr_nr": m.mastr_nr,
+            "acer_code": m.acer_code,
+            "registered_name": m.registered_name,
+            "region": m.region,
+            "address_components": m.address_components,
+            "contact_address": m.contact_address,
+            "marktrollen": m.marktrollen,
+            "is_active": m.is_active,
+            "closed_network": m.closed_network,
+            "activity_start": m.activity_start.isoformat() if m.activity_start else None,
+            "activity_end": m.activity_end.isoformat() if m.activity_end else None,
+            "registration_date": m.registration_date.isoformat() if m.registration_date else None,
+            "mastr_last_updated": m.mastr_last_updated.isoformat() if m.mastr_last_updated else None,
+            "last_synced_at": m.last_synced_at.isoformat() if m.last_synced_at else None,
+        }
+    
+    # Build VNB source data
+    vnb_data = None
+    if dno.vnb_data:
+        v = dno.vnb_data
+        vnb_data = {
+            "vnb_id": v.vnb_id,
+            "name": v.name,
+            "official_name": v.official_name,
+            "homepage_url": v.homepage_url,
+            "phone": v.phone,
+            "email": v.email,
+            "address": v.address,
+            "types": v.types,
+            "voltage_types": v.voltage_types,
+            "logo_url": v.logo_url,
+            "is_electricity": v.is_electricity,
+            "last_synced_at": v.last_synced_at.isoformat() if v.last_synced_at else None,
+        }
+    
+    # Build BDEW source data (one-to-many)
+    bdew_data = []
+    if dno.bdew_data:
+        for b in dno.bdew_data:
+            bdew_data.append({
+                "bdew_code": b.bdew_code,
+                "bdew_internal_id": b.bdew_internal_id,
+                "bdew_company_uid": b.bdew_company_uid,
+                "company_name": b.company_name,
+                "market_function": b.market_function,
+                "contact_name": b.contact_name,
+                "contact_phone": b.contact_phone,
+                "contact_email": b.contact_email,
+                "street": b.street,
+                "zip_code": b.zip_code,
+                "city": b.city,
+                "website": b.website,
+                "is_grid_operator": b.is_grid_operator,
+                "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
+            })
         
     return APIResponse(
         success=True,
@@ -400,17 +480,37 @@ async def get_dno_details(
             "name": dno.name,
             "official_name": dno.official_name,
             "vnb_id": dno.vnb_id,
+            "mastr_nr": dno.mastr_nr,
+            "primary_bdew_code": dno.primary_bdew_code,
             "status": getattr(dno, 'status', 'uncrawled'),
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
             "phone": dno.phone,
             "email": dno.email,
+            # Computed display fields
+            "display_name": dno.display_name,
+            "display_website": dno.display_website,
+            "display_phone": dno.display_phone,
+            "display_email": dno.display_email,
             "contact_address": dno.contact_address,
+            "address_components": dno.address_components,
+            "marktrollen": dno.marktrollen,
+            "acer_code": dno.acer_code,
+            "grid_operator_bdew_code": dno.grid_operator_bdew_code,
             # Crawlability info
             "crawlable": getattr(dno, 'crawlable', True),
             "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
             "has_local_files": has_local_files,
+            # Source data availability
+            "has_mastr": dno.has_mastr,
+            "has_vnb": dno.has_vnb,
+            "has_bdew": dno.has_bdew,
+            "enrichment_sources": dno.enrichment_sources,
+            # Source data objects
+            "mastr_data": mastr_data,
+            "vnb_data": vnb_data,
+            "bdew_data": bdew_data,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },

@@ -15,8 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import {
     ArrowLeft,
+    Building,
     Database,
     ExternalLink,
+    Globe,
     RefreshCw,
     Loader2,
     Calendar,
@@ -1056,119 +1058,280 @@ export function DNODetailPage() {
 
                 {/* Collapsible More Details Section */}
                 {showMoreDetails && (
-                    <div className="mt-4 pt-4 border-t border-border">
-                        <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-3 text-sm">
-                            {/* MaStR & Codes */}
-                            {dno.mastr_nr && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">MaStR Nr.</dt>
-                                    <dd className="font-mono inline text-xs">{dno.mastr_nr}</dd>
-                                </div>
-                            )}
-                            {dno.acer_code && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">ACER Code</dt>
-                                    <dd className="font-mono inline text-xs">{dno.acer_code}</dd>
-                                </div>
-                            )}
-                            {dno.bdew_code && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">BDEW Code</dt>
-                                    <dd className="font-mono inline text-xs">{dno.bdew_code}</dd>
-                                </div>
-                            )}
-                            
-                            {/* Contact Info */}
-                            {dno.phone && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Phone</dt>
-                                    <dd className="inline">
-                                        <a href={`tel:${dno.phone}`} className="text-primary hover:underline">{dno.phone}</a>
-                                    </dd>
-                                </div>
-                            )}
-                            {dno.email && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Email</dt>
-                                    <dd className="inline">
-                                        <a href={`mailto:${dno.email}`} className="text-primary hover:underline">{dno.email}</a>
-                                    </dd>
-                                </div>
-                            )}
-                            
-                            {/* Market Roles */}
-                            {dno.marktrollen && dno.marktrollen.length > 0 && (
-                                <div className="flex justify-between sm:block sm:col-span-full">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Market Roles</dt>
-                                    <dd className="inline">
-                                        <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
-                                            {dno.marktrollen.map((role, idx) => (
-                                                <Badge key={idx} variant="outline" className="text-xs">{role}</Badge>
-                                            ))}
+                    <div className="mt-4 pt-4 border-t border-border space-y-4">
+                        {/* Source Availability Badges */}
+                        <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs text-muted-foreground">Data Sources:</span>
+                            <Badge variant={dno.has_mastr ? 'default' : 'outline'} className={cn("text-xs", dno.has_mastr && "bg-blue-500")}>
+                                MaStR {dno.has_mastr ? '✓' : '–'}
+                            </Badge>
+                            <Badge variant={dno.has_vnb ? 'default' : 'outline'} className={cn("text-xs", dno.has_vnb && "bg-green-500")}>
+                                VNB Digital {dno.has_vnb ? '✓' : '–'}
+                            </Badge>
+                            <Badge variant={dno.has_bdew ? 'default' : 'outline'} className={cn("text-xs", dno.has_bdew && "bg-purple-500")}>
+                                BDEW {dno.has_bdew ? '✓' : '–'}
+                            </Badge>
+                        </div>
+
+                        {/* MaStR Data Section */}
+                        {dno.mastr_data && (
+                            <div className="rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20 p-3">
+                                <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2 flex items-center gap-1">
+                                    <Database className="h-3 w-3" /> MaStR (Marktstammdatenregister)
+                                </h4>
+                                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                                    <div className="flex justify-between sm:block">
+                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">MaStR Nr.</dt>
+                                        <dd className="font-mono inline text-xs">{dno.mastr_data.mastr_nr}</dd>
+                                    </div>
+                                    {dno.mastr_data.acer_code && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">ACER Code</dt>
+                                            <dd className="font-mono inline text-xs">{dno.mastr_data.acer_code}</dd>
                                         </div>
-                                    </dd>
-                                </div>
-                            )}
-                            
-                            {/* Metadata */}
-                            {dno.registration_date && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Registered</dt>
-                                    <dd className="inline">{new Date(dno.registration_date).toLocaleDateString('de-DE')}</dd>
-                                </div>
-                            )}
-                            {dno.is_active !== undefined && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Status</dt>
-                                    <dd className="inline">
-                                        <Badge variant={dno.is_active ? 'default' : 'secondary'} className="text-xs">
-                                            {dno.is_active ? 'Active' : 'Inactive'}
-                                        </Badge>
-                                    </dd>
-                                </div>
-                            )}
-                            {dno.closed_network && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Network Type</dt>
-                                    <dd className="inline">
-                                        <Badge variant="outline" className="text-xs">Closed Network</Badge>
-                                    </dd>
-                                </div>
-                            )}
-                            
-                            {/* Crawlability */}
-                            <div className="flex justify-between sm:block">
-                                <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Crawlable</dt>
-                                <dd className="inline">
-                                    {dno.crawlable ? (
-                                        <Badge variant="default" className="text-xs bg-green-500">
-                                            <CheckCircle className="h-3 w-3 mr-1" /> Yes
-                                        </Badge>
-                                    ) : (
-                                        <Badge variant="destructive" className="text-xs">
-                                            <XCircle className="h-3 w-3 mr-1" /> No
-                                            {dno.crawl_blocked_reason && ` (${dno.crawl_blocked_reason})`}
-                                        </Badge>
                                     )}
-                                </dd>
+                                    {dno.mastr_data.region && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Region</dt>
+                                            <dd className="inline text-xs">{dno.mastr_data.region}</dd>
+                                        </div>
+                                    )}
+                                    {dno.mastr_data.marktrollen && dno.mastr_data.marktrollen.length > 0 && (
+                                        <div className="flex justify-between sm:block sm:col-span-full">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Market Roles</dt>
+                                            <dd className="inline">
+                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
+                                                    {dno.mastr_data.marktrollen.map((role, idx) => (
+                                                        <Badge key={idx} variant="outline" className="text-xs">{role}</Badge>
+                                                    ))}
+                                                </div>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.mastr_data.is_active !== undefined && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Status</dt>
+                                            <dd className="inline">
+                                                <Badge variant={dno.mastr_data.is_active ? 'default' : 'secondary'} className="text-xs">
+                                                    {dno.mastr_data.is_active ? 'Active' : 'Inactive'}
+                                                </Badge>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.mastr_data.closed_network && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Network</dt>
+                                            <dd className="inline">
+                                                <Badge variant="outline" className="text-xs">Closed Network</Badge>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.mastr_data.registration_date && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Registered</dt>
+                                            <dd className="inline text-xs">{new Date(dno.mastr_data.registration_date).toLocaleDateString('de-DE')}</dd>
+                                        </div>
+                                    )}
+                                    {dno.mastr_data.contact_address && (
+                                        <div className="flex justify-between sm:block sm:col-span-full">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
+                                            <dd className="inline text-xs">{dno.mastr_data.contact_address}</dd>
+                                        </div>
+                                    )}
+                                </dl>
                             </div>
-                            
-                            {/* Source & Timestamps */}
-                            {dno.source && (
+                        )}
+
+                        {/* VNB Digital Data Section */}
+                        {dno.vnb_data && (
+                            <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20 p-3">
+                                <h4 className="text-xs font-semibold text-green-700 dark:text-green-300 mb-2 flex items-center gap-1">
+                                    <Globe className="h-3 w-3" /> VNB Digital
+                                </h4>
+                                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                                    <div className="flex justify-between sm:block">
+                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">VNB ID</dt>
+                                        <dd className="font-mono inline text-xs">{dno.vnb_data.vnb_id}</dd>
+                                    </div>
+                                    {dno.vnb_data.official_name && (
+                                        <div className="flex justify-between sm:block sm:col-span-2">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Official Name</dt>
+                                            <dd className="inline text-xs">{dno.vnb_data.official_name}</dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.homepage_url && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Website</dt>
+                                            <dd className="inline">
+                                                <a href={dno.vnb_data.homepage_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
+                                                    {new URL(dno.vnb_data.homepage_url).hostname}
+                                                </a>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.phone && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Phone</dt>
+                                            <dd className="inline">
+                                                <a href={`tel:${dno.vnb_data.phone}`} className="text-primary hover:underline text-xs">{dno.vnb_data.phone}</a>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.email && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Email</dt>
+                                            <dd className="inline">
+                                                <a href={`mailto:${dno.vnb_data.email}`} className="text-primary hover:underline text-xs">{dno.vnb_data.email}</a>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.address && (
+                                        <div className="flex justify-between sm:block sm:col-span-full">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
+                                            <dd className="inline text-xs">{dno.vnb_data.address}</dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.types && dno.vnb_data.types.length > 0 && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Types</dt>
+                                            <dd className="inline">
+                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
+                                                    {dno.vnb_data.types.map((t, idx) => (
+                                                        <Badge key={idx} variant="outline" className="text-xs">{t}</Badge>
+                                                    ))}
+                                                </div>
+                                            </dd>
+                                        </div>
+                                    )}
+                                    {dno.vnb_data.voltage_types && dno.vnb_data.voltage_types.length > 0 && (
+                                        <div className="flex justify-between sm:block">
+                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Voltage</dt>
+                                            <dd className="inline">
+                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
+                                                    {dno.vnb_data.voltage_types.map((v, idx) => (
+                                                        <Badge key={idx} variant="outline" className="text-xs">{v}</Badge>
+                                                    ))}
+                                                </div>
+                                            </dd>
+                                        </div>
+                                    )}
+                                </dl>
+                            </div>
+                        )}
+
+                        {/* BDEW Data Section */}
+                        {dno.bdew_data && dno.bdew_data.length > 0 && (
+                            <div className="rounded-lg border border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20 p-3">
+                                <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
+                                    <Building className="h-3 w-3" /> BDEW Codes ({dno.bdew_data.length})
+                                </h4>
+                                <div className="space-y-3">
+                                    {dno.bdew_data.map((bdew, idx) => (
+                                        <dl key={idx} className={cn(
+                                            "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm",
+                                            idx > 0 && "pt-3 border-t border-purple-200 dark:border-purple-800"
+                                        )}>
+                                            <div className="flex justify-between sm:block">
+                                                <dt className="text-muted-foreground inline sm:inline-block sm:w-24">BDEW Code</dt>
+                                                <dd className="font-mono inline text-xs">{bdew.bdew_code}</dd>
+                                            </div>
+                                            {bdew.market_function && (
+                                                <div className="flex justify-between sm:block">
+                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Market Role</dt>
+                                                    <dd className="inline">
+                                                        <Badge variant="outline" className={cn(
+                                                            "text-xs",
+                                                            bdew.market_function === 'Netzbetreiber' && "border-purple-400 text-purple-700 dark:text-purple-300"
+                                                        )}>
+                                                            {bdew.market_function}
+                                                        </Badge>
+                                                    </dd>
+                                                </div>
+                                            )}
+                                            {bdew.is_grid_operator && (
+                                                <div className="flex justify-between sm:block">
+                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Grid Op.</dt>
+                                                    <dd className="inline">
+                                                        <Badge variant="default" className="text-xs bg-purple-500">Grid Operator</Badge>
+                                                    </dd>
+                                                </div>
+                                            )}
+                                            {bdew.contact_email && (
+                                                <div className="flex justify-between sm:block">
+                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Email</dt>
+                                                    <dd className="inline">
+                                                        <a href={`mailto:${bdew.contact_email}`} className="text-primary hover:underline text-xs">{bdew.contact_email}</a>
+                                                    </dd>
+                                                </div>
+                                            )}
+                                            {bdew.contact_phone && (
+                                                <div className="flex justify-between sm:block">
+                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Phone</dt>
+                                                    <dd className="inline">
+                                                        <a href={`tel:${bdew.contact_phone}`} className="text-primary hover:underline text-xs">{bdew.contact_phone}</a>
+                                                    </dd>
+                                                </div>
+                                            )}
+                                            {(bdew.street || bdew.city) && (
+                                                <div className="flex justify-between sm:block sm:col-span-full">
+                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
+                                                    <dd className="inline text-xs">
+                                                        {[bdew.street, bdew.zip_code, bdew.city].filter(Boolean).join(', ')}
+                                                    </dd>
+                                                </div>
+                                            )}
+                                        </dl>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+
+                        {/* General Info Section */}
+                        <div className="rounded-lg border border-border p-3">
+                            <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
+                                <Info className="h-3 w-3" /> General
+                            </h4>
+                            <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
+                                {/* Crawlability */}
                                 <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Source</dt>
+                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Crawlable</dt>
                                     <dd className="inline">
-                                        <Badge variant="outline" className="text-xs">{dno.source}</Badge>
+                                        {dno.crawlable ? (
+                                            <Badge variant="default" className="text-xs bg-green-500">
+                                                <CheckCircle className="h-3 w-3 mr-1" /> Yes
+                                            </Badge>
+                                        ) : (
+                                            <Badge variant="destructive" className="text-xs">
+                                                <XCircle className="h-3 w-3 mr-1" /> No
+                                                {dno.crawl_blocked_reason && ` (${dno.crawl_blocked_reason})`}
+                                            </Badge>
+                                        )}
                                     </dd>
                                 </div>
-                            )}
-                            {dno.last_enriched_at && (
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Enriched At</dt>
-                                    <dd className="inline text-xs">{new Date(dno.last_enriched_at).toLocaleString('de-DE')}</dd>
-                                </div>
-                            )}
-                        </dl>
+                                
+                                {/* Source & Timestamps */}
+                                {dno.source && (
+                                    <div className="flex justify-between sm:block">
+                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Source</dt>
+                                        <dd className="inline">
+                                            <Badge variant="outline" className="text-xs">{dno.source}</Badge>
+                                        </dd>
+                                    </div>
+                                )}
+                                {dno.created_at && (
+                                    <div className="flex justify-between sm:block">
+                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Created</dt>
+                                        <dd className="inline text-xs">{new Date(dno.created_at).toLocaleString('de-DE')}</dd>
+                                    </div>
+                                )}
+                                {dno.updated_at && (
+                                    <div className="flex justify-between sm:block">
+                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Updated</dt>
+                                        <dd className="inline text-xs">{new Date(dno.updated_at).toLocaleString('de-DE')}</dd>
+                                    </div>
+                                )}
+                            </dl>
+                        </div>
                     </div>
                 )}
             </Card>

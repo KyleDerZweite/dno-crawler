@@ -298,3 +298,23 @@ async def queue_enrichment_jobs(db: AsyncSession, limit: int = 100) -> int:
     
     logger.info("Enrichment jobs queued", count=len(dno_ids))
     return len(dno_ids)
+
+
+async def enqueue_enrichment_job(dno_id: int) -> bool:
+    """Enqueue a single enrichment job for a given DNO ID."""
+    from arq import create_pool
+    from arq.connections import RedisSettings
+    from app.core.config import settings
+
+    redis = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
+    try:
+        await redis.enqueue_job(
+            "enrich_dno",
+            dno_id,
+            _job_id=f"enrich-{dno_id}",
+            _queue_name="arq:queue",
+        )
+        logger.info("Enqueued enrichment job", dno_id=dno_id)
+        return True
+    finally:
+        await redis.close()

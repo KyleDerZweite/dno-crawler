@@ -11,6 +11,7 @@ from arq.connections import RedisSettings
 from app.core.config import settings
 from app.db import close_db, init_db, get_db
 from app.db.seeder import seed_dnos
+from app.jobs.enrichment_job import queue_enrichment_jobs
 
 logger = structlog.get_logger()
 
@@ -30,13 +31,23 @@ async def startup(ctx):
     logger.info("Running database seeder...")
     async for db in get_db():
         try:
-            inserted, updated, skipped = await seed_dnos(db)
+            inserted, updated, skipped, seed_source = await seed_dnos(db)
             logger.info(
                 "Database seeding complete",
                 inserted=inserted,
                 updated=updated,
-                skipped=skipped
+                skipped=skipped,
+                seed_source=seed_source,
             )
+
+            # If we seeded from base data (or generated from CSV), queue enrichment jobs.
+            # If the seed is already enriched, we skip queuing at startup to avoid unnecessary jobs.
+            if seed_source in ('base', 'generated_from_csv'):
+                try:
+                    queued = await queue_enrichment_jobs(db)
+                    logger.info("Enqueueing enrichment jobs after seeding", queued=queued)
+                except Exception as e:
+                    logger.error("Failed to queue enrichment jobs after seeding", error=str(e))
         except Exception as e:
             logger.error("Database seeding failed", error=str(e))
             # Don't fail startup on seeding errors
