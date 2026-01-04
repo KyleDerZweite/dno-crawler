@@ -14,6 +14,11 @@ data/
 │   └── {dno-slug}/
 │       ├── {slug}-netzentgelte-{year}.pdf
 │       └── {slug}-hlzf-{year}.html
+├── samples/                # Extraction samples for learning (gitignored)
+│   ├── training/           # Regex failed → AI succeeded
+│   │   └── {dno-slug}/
+│   └── debug/              # Regex failed → AI also failed
+│       └── {dno-slug}/
 ├── uploads/                # User-uploaded files (gitignored)
 │   └── {dno-slug}/
 │       └── {filename}
@@ -34,9 +39,21 @@ data/
 
 - `seed-data/marktstammdatenregister/` - Raw XML/CSV exports (too large for git)
 - `downloads/` - Crawled PDFs and HTML files
+- `samples/` - Extraction samples for learning/debugging
 - `uploads/` - User-uploaded files
 - `postgres/` - Database volume
 - `redis/` - Redis AOF persistence
+
+## Extraction Samples
+
+When regex extraction fails, samples are captured to `samples/`:
+
+| Category | Description |
+|----------|-------------|
+| `training/` | Regex failed → AI succeeded (useful for pattern learning) |
+| `debug/` | Regex failed → AI also failed (for debugging extraction) |
+
+Sample files are JSON with source file path, regex output, AI output, and failure reasons.
 
 ## File Naming Convention
 

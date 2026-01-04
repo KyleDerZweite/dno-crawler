@@ -1,5 +1,7 @@
 redis/
 postgres/
 frontend/
+downloads/
+samples/
 # exclude the raw Marktstammdatenregister dump (keep the rest of seed-data in git)
 seed-data/marktstammdatenregister/

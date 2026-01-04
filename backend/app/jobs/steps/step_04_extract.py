@@ -35,6 +35,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
+from app.services.sample_capture import SampleCapture
 
 logger = structlog.get_logger()
 
@@ -188,6 +189,24 @@ class ExtractStep(BaseStep):
                     flag_modified(job, 'context')
                     await db.commit()
                     
+                    # Capture debug sample: regex failed, AI also failed
+                    dno_slug = ctx.get("dno_slug", "unknown")
+                    sample_capture = SampleCapture()
+                    await sample_capture.capture(
+                        category="debug",
+                        dno_slug=dno_slug,
+                        year=job.year,
+                        data_type=job.data_type,
+                        source_file_path=str(path),
+                        source_format=file_format,
+                        regex_result=records,
+                        regex_fail_reason=reason,
+                        ai_result=extracted_data,
+                        ai_model=settings.ai_model,
+                        prompt_used=prompt,
+                        ai_fail_reason=ai_reason,
+                    )
+                    
                     return f"Extracted {len(extracted_data)} records using AI - FLAGGED: {ai_reason}"
                 
                 # AI passed sanity check - use it!
@@ -226,6 +245,23 @@ class ExtractStep(BaseStep):
                 job.context = ctx
                 flag_modified(job, 'context')
                 await db.commit()
+                
+                # Capture training sample: regex failed, AI succeeded
+                dno_slug = ctx.get("dno_slug", "unknown")
+                sample_capture = SampleCapture()
+                await sample_capture.capture(
+                    category="training",
+                    dno_slug=dno_slug,
+                    year=job.year,
+                    data_type=job.data_type,
+                    source_file_path=str(path),
+                    source_format=file_format,
+                    regex_result=records,
+                    regex_fail_reason=reason,
+                    ai_result=extracted_data,
+                    ai_model=settings.ai_model,
+                    prompt_used=prompt,
+                )
                 
                 return f"Extracted {len(extracted_data)} records using AI fallback ({settings.ai_model}) - regex failed: {reason}"
         
