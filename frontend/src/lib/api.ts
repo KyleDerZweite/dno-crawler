@@ -479,9 +479,17 @@ export const api = {
   },
 
   dnos: {
-    async list(include_stats?: boolean): Promise<ApiResponse<DNO[]>> {
+    async list(params?: {
+      include_stats?: boolean;
+      page?: number;
+      per_page?: number;
+    }): Promise<ApiResponse<DNO[]>> {
       const { data } = await apiClient.get("/dnos/", {
-        params: { include_stats },
+        params: {
+          include_stats: params?.include_stats,
+          page: params?.page,
+          per_page: params?.per_page,
+        },
       });
       return data;
     },

@@ -15,6 +15,7 @@ from typing import Any
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.db.models import DNOModel
 from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
@@ -194,9 +195,11 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     """
     mastr_nr = record['mastr_nr']
     
-    # Check if DNO already exists by mastr_nr
+    # Check if DNO already exists by mastr_nr (eagerly load mastr_data to avoid lazy load in async)
     result = await db.execute(
-        select(DNOModel).where(DNOModel.mastr_nr == mastr_nr)
+        select(DNOModel)
+        .options(selectinload(DNOModel.mastr_data))
+        .where(DNOModel.mastr_nr == mastr_nr)
     )
     existing_dno = result.scalar_one_or_none()
     
@@ -261,10 +264,13 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
 async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:
     """Create or update MaStR source data for a DNO."""
     
-    # Check if MaStR data already exists
-    if dno.mastr_data:
-        mastr = dno.mastr_data
-    else:
+    # Check if MaStR data already exists via explicit query (avoids lazy loading)
+    result = await db.execute(
+        select(DNOMastrData).where(DNOMastrData.dno_id == dno.id)
+    )
+    mastr = result.scalar_one_or_none()
+    
+    if mastr is None:
         mastr = DNOMastrData(dno_id=dno.id)
         db.add(mastr)
     
@@ -292,10 +298,13 @@ async def upsert_vnb_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any
     if not vnb_id:
         return
     
-    # Check if VNB data already exists
-    if dno.vnb_data:
-        vnb = dno.vnb_data
-    else:
+    # Check if VNB data already exists via explicit query (avoids lazy loading)
+    result = await db.execute(
+        select(DNOVnbData).where(DNOVnbData.dno_id == dno.id)
+    )
+    vnb = result.scalar_one_or_none()
+    
+    if vnb is None:
         vnb = DNOVnbData(dno_id=dno.id, vnb_id=str(vnb_id), name=record['name'])
         db.add(vnb)
     

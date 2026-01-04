@@ -281,9 +281,11 @@ async def list_dnos_detailed(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
     include_stats: bool = Query(False),
+    page: int = Query(1, ge=1, description="Page number"),
+    per_page: int = Query(50, description="Items per page (25, 50, 100, 250)"),
 ) -> APIResponse:
     """
-    List all DNOs with detailed information.
+    List all DNOs with detailed information (paginated).
     
     Status is computed dynamically from active jobs:
     - running: at least one running job
@@ -291,44 +293,90 @@ async def list_dnos_detailed(
     - crawled: has data points and no active jobs
     - uncrawled: no data points and no active jobs
     """
-    query = select(DNOModel).order_by(DNOModel.name)
+    # Validate per_page
+    allowed_per_page = [25, 50, 100, 250]
+    if per_page not in allowed_per_page:
+        per_page = 50  # Default to 50 if invalid
+    
+    # Get total count for pagination
+    total_count_result = await db.execute(text("SELECT COUNT(*) FROM dnos"))
+    total = total_count_result.scalar() or 0
+    total_pages = (total + per_page - 1) // per_page  # Ceiling division
+    
+    # Clamp page to valid range
+    if page > total_pages and total_pages > 0:
+        page = total_pages
+    
+    # Calculate offset
+    offset = (page - 1) * per_page
+    
+    # Paginated query
+    query = select(DNOModel).order_by(DNOModel.name).offset(offset).limit(per_page)
     result = await db.execute(query)
     dnos = result.scalars().all()
     
+    if not dnos:
+        return APIResponse(
+            success=True,
+            data=[],
+            meta={"total": total, "page": page, "per_page": per_page, "total_pages": total_pages},
+        )
+    
+    # Get DNO IDs for batch queries
+    dno_ids = [dno.id for dno in dnos]
+    
+    # Batch query for netzentgelte counts
+    netz_counts_result = await db.execute(
+        text("""
+            SELECT dno_id, COUNT(*) as count 
+            FROM netzentgelte 
+            WHERE dno_id = ANY(:dno_ids) 
+            GROUP BY dno_id
+        """),
+        {"dno_ids": dno_ids}
+    )
+    netz_counts = {row[0]: row[1] for row in netz_counts_result.fetchall()}
+    
+    # Batch query for HLZF counts
+    hlzf_counts_result = await db.execute(
+        text("""
+            SELECT dno_id, COUNT(*) as count 
+            FROM hlzf 
+            WHERE dno_id = ANY(:dno_ids) 
+            GROUP BY dno_id
+        """),
+        {"dno_ids": dno_ids}
+    )
+    hlzf_counts = {row[0]: row[1] for row in hlzf_counts_result.fetchall()}
+    
+    # Batch query for job statuses
+    job_status_result = await db.execute(
+        text("""
+            SELECT dno_id, status, COUNT(*) as count
+            FROM crawl_jobs
+            WHERE dno_id = ANY(:dno_ids) AND status IN ('running', 'pending')
+            GROUP BY dno_id, status
+        """),
+        {"dno_ids": dno_ids}
+    )
+    job_statuses = {}
+    for row in job_status_result.fetchall():
+        dno_id, status, count = row
+        if dno_id not in job_statuses:
+            job_statuses[dno_id] = {"running": 0, "pending": 0}
+        job_statuses[dno_id][status] = count
+    
     data = []
     for dno in dnos:
-        # Get total data points count (Netzentgelte + HLZF)
-        netz_count_result = await db.execute(
-            text("SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id"),
-            {"dno_id": dno.id}
-        )
-        netzentgelte_count = netz_count_result.scalar() or 0
-        
-        hlzf_count_result = await db.execute(
-            text("SELECT COUNT(*) FROM hlzf WHERE dno_id = :dno_id"),
-            {"dno_id": dno.id}
-        )
-        hlzf_count = hlzf_count_result.scalar() or 0
-        
+        netzentgelte_count = netz_counts.get(dno.id, 0)
+        hlzf_count = hlzf_counts.get(dno.id, 0)
         data_points_count = netzentgelte_count + hlzf_count
         
-        # Compute live status from jobs
-        running_count_result = await db.execute(
-            text("SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'running'"),
-            {"dno_id": dno.id}
-        )
-        running_count = running_count_result.scalar() or 0
-        
-        pending_count_result = await db.execute(
-            text("SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'pending'"),
-            {"dno_id": dno.id}
-        )
-        pending_count = pending_count_result.scalar() or 0
-        
-        # Determine status
-        if running_count > 0:
+        # Compute live status from batch-loaded job data
+        job_status = job_statuses.get(dno.id, {"running": 0, "pending": 0})
+        if job_status["running"] > 0:
             live_status = "running"
-        elif pending_count > 0:
+        elif job_status["pending"] > 0:
             live_status = "pending"
         elif data_points_count > 0:
             live_status = "crawled"
@@ -360,7 +408,11 @@ async def list_dnos_detailed(
         
         data.append(dno_data)
     
-    return APIResponse(success=True, data=data)
+    return APIResponse(
+        success=True,
+        data=data,
+        meta={"total": total, "page": page, "per_page": per_page, "total_pages": total_pages},
+    )
 
 
 @router.get("/{dno_id}")

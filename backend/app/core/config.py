@@ -72,8 +72,8 @@ class Settings(BaseSettings):
     
     @property
     def has_contact_email(self) -> bool:
-        """Check if a valid contact email is configured (not the hardcoded default)."""
-        return bool(self.contact_email) and "@kylehub.dev" not in self.contact_email
+        """Check if a valid contact email is configured."""
+        return bool(self.contact_email)
 
     # Crawler
     crawler_max_concurrent: int = 5

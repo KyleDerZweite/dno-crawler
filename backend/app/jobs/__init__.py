@@ -9,7 +9,7 @@ import structlog
 from arq.connections import RedisSettings
 
 from app.core.config import settings
-from app.db import close_db, init_db, get_db
+from app.db import close_db, init_db, get_db_session
 from app.db.seeder import seed_dnos
 from app.jobs.enrichment_job import queue_enrichment_jobs
 
@@ -29,7 +29,7 @@ async def startup(ctx):
     
     # Seed the database with DNO data
     logger.info("Running database seeder...")
-    async for db in get_db():
+    async with get_db_session() as db:
         try:
             inserted, updated, skipped, seed_source = await seed_dnos(db)
             logger.info(

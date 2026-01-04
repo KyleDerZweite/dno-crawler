@@ -8,6 +8,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card } from "@/components/ui/card";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -26,6 +33,8 @@ import {
   Zap,
   Clock,
   AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -59,6 +68,10 @@ export function DNOsPage() {
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [formData, setFormData] = useState<AddDNOForm>(initialFormState);
 
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(50);
+
   // VNB Autocomplete state
   const [vnbSuggestions, setVnbSuggestions] = useState<VNBSuggestion[]>([]);
   const [showSuggestions, setShowSuggestions] = useState(false);
@@ -71,13 +84,14 @@ export function DNOsPage() {
   const { isAdmin } = useAuth();
 
   const { data: dnosResponse, isLoading } = useQuery({
-    queryKey: ["dnos"],
-    queryFn: () => api.dnos.list(true),
+    queryKey: ["dnos", page, perPage],
+    queryFn: () => api.dnos.list({ include_stats: true, page, per_page: perPage }),
     refetchOnMount: "always",
     refetchInterval: 5000, // Poll every 5 seconds for live status updates
   });
 
   const dnos = dnosResponse?.data;
+  const meta = dnosResponse?.meta;
 
   const createDNOMutation = useMutation({
     mutationFn: (data: AddDNOForm) =>
@@ -455,9 +469,58 @@ export function DNOsPage() {
             </div>
           ) : (
             <>
-              <p className="text-sm text-muted-foreground">
-                Showing {filteredDnos.length} of {dnos?.length || 0} DNOs
-              </p>
+              {/* Pagination Header */}
+              <div className="flex items-center justify-between">
+                <p className="text-sm text-muted-foreground">
+                  Showing {((page - 1) * perPage) + 1}-{Math.min(page * perPage, meta?.total || 0)} of {meta?.total || 0} DNOs
+                  {searchTerm && ` (${filteredDnos.length} matching filter)`}
+                </p>
+                <div className="flex items-center gap-4">
+                  {/* Page Size Selector */}
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-muted-foreground">Per page:</span>
+                    <Select
+                      value={String(perPage)}
+                      onValueChange={(value) => {
+                        setPerPage(Number(value));
+                        setPage(1); // Reset to first page on size change
+                      }}
+                    >
+                      <SelectTrigger className="w-20 h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                        <SelectItem value="250">250</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  {/* Page Navigation */}
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <span className="text-sm text-muted-foreground min-w-[80px] text-center">
+                      Page {page} of {meta?.total_pages || 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(meta?.total_pages || 1, p + 1))}
+                      disabled={page >= (meta?.total_pages || 1)}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredDnos.map((dno) => (
                   <DNOCard
@@ -466,6 +529,34 @@ export function DNOsPage() {
                   />
                 ))}
               </div>
+              {/* Bottom Pagination (for long lists) */}
+              {(meta?.total_pages || 1) > 1 && (
+                <div className="flex justify-center pt-4">
+                  <div className="flex items-center gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      disabled={page <= 1}
+                    >
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
+                    </Button>
+                    <span className="text-sm text-muted-foreground px-4">
+                      Page {page} of {meta?.total_pages || 1}
+                    </span>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setPage((p) => Math.min(meta?.total_pages || 1, p + 1))}
+                      disabled={page >= (meta?.total_pages || 1)}
+                    >
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
