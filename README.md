@@ -23,7 +23,7 @@ The application follows a layered architecture with clear separation between the
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              Frontend (React SPA)                           │
-│   Vite + TypeScript + TailwindCSS + TanStack Query + react-oidc-context    │
+│   Vite + TypeScript + TailwindCSS + TanStack Query + react-oidc-context     │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
                                       │ REST API + JWT Bearer Token

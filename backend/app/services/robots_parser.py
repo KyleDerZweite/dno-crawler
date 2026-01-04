@@ -122,7 +122,7 @@ async def fetch_robots_txt(
     """
     Fetch and parse robots.txt from a website.
     
-    Detects JS protection and extracts sitemap/disallow rules.
+    Detects JS protection, HTTP errors, and extracts sitemap/disallow rules.
     
     Args:
         client: HTTP client
@@ -145,8 +145,71 @@ async def fetch_robots_txt(
     try:
         response = await client.get(robots_url, timeout=timeout, follow_redirects=True)
         content = response.text
+        status = response.status_code
         
-        # Check for JS protection
+        # === Check HTTP status codes FIRST ===
+        
+        # 403 Forbidden - Often Cloudflare or WAF blocking
+        if status == 403:
+            cf_mitigated = response.headers.get("cf-mitigated", "").lower()
+            server = response.headers.get("server", "").lower()
+            
+            if cf_mitigated == "challenge" or "cloudflare" in server:
+                log.warning("Site blocked by Cloudflare challenge (403)", cf_mitigated=cf_mitigated)
+                result.crawlable = False
+                result.blocked_reason = "cloudflare"
+                return result
+            else:
+                # Generic 403 - could be WAF, geo-block, etc.
+                log.warning("Site returned 403 Forbidden - access denied")
+                result.crawlable = False
+                result.blocked_reason = "access_denied"
+                return result
+        
+        # 429 Too Many Requests - Rate limited or IP banned
+        if status == 429:
+            retry_after = response.headers.get("retry-after", "unknown")
+            log.warning("Site rate limiting or IP blocked (429)", retry_after=retry_after)
+            result.crawlable = False
+            result.blocked_reason = "rate_limited_or_ip_blocked"
+            return result
+        
+        # 401/407 - Authentication required
+        if status in (401, 407):
+            log.warning("Site requires authentication", status=status)
+            result.crawlable = False
+            result.blocked_reason = "authentication_required"
+            return result
+        
+        # 5xx Server errors
+        if 500 <= status < 600:
+            log.warning("Site server error", status=status)
+            result.crawlable = False
+            result.blocked_reason = f"server_error_{status}"
+            return result
+        
+        # 404 - No robots.txt, but site is accessible
+        if status == 404:
+            log.info("No robots.txt found (404) - site is crawlable")
+            result.raw_content = None
+            return result
+        
+        # Other non-200 status codes
+        if status != 200:
+            log.warning("Unexpected HTTP status", status=status)
+            result.crawlable = False
+            result.blocked_reason = f"http_error_{status}"
+            return result
+        
+        # === Check for Cloudflare challenge in response headers (even on 200) ===
+        cf_mitigated = response.headers.get("cf-mitigated", "").lower()
+        if cf_mitigated == "challenge":
+            log.warning("Cloudflare challenge detected in headers despite 200 status")
+            result.crawlable = False
+            result.blocked_reason = "cloudflare"
+            return result
+        
+        # === Check for JS protection in content ===
         is_protected, protection_type = detect_js_protection(content)
         if is_protected:
             log.warning("Site uses JavaScript protection", protection=protection_type)
@@ -154,36 +217,24 @@ async def fetch_robots_txt(
             result.blocked_reason = protection_type
             return result
         
-        # Check response status
-        if response.status_code == 404:
-            # No robots.txt - still crawlable
-            log.info("No robots.txt found (404)")
-            result.raw_content = None
-            return result
-        
-        if response.status_code != 200:
-            log.warning("Unexpected robots.txt status", status=response.status_code)
-            result.raw_content = None
-            return result
-        
-        # Check if it looks like valid robots.txt (not HTML error page)
+        # === Check if response is HTML instead of robots.txt ===
         content_lower = content.lower()
         if "<html" in content_lower[:500] or "<!doctype" in content_lower[:100]:
-            # Received HTML instead of robots.txt
+            # Received HTML instead of robots.txt - check for JS protection
             is_protected, protection_type = detect_js_protection(content)
             if is_protected:
                 result.crawlable = False
                 result.blocked_reason = protection_type
                 return result
-            log.warning("Received HTML instead of robots.txt")
+            log.warning("Received HTML instead of robots.txt - may be error page")
             result.raw_content = None
             return result
         
-        # Parse robots.txt
+        # === Parse valid robots.txt ===
         result.raw_content = content
         result.sitemap_urls, result.disallow_paths = parse_robots_txt(content)
         
-        # Check if we're completely blocked
+        # Check if we're completely blocked by robots.txt rules
         if "/" in result.disallow_paths:
             log.warning("Site blocks all crawling via robots.txt")
             result.crawlable = False
@@ -198,11 +249,19 @@ async def fetch_robots_txt(
         return result
         
     except httpx.TimeoutException:
-        log.error("Timeout fetching robots.txt")
-        result.raw_content = None
+        log.error("Timeout fetching robots.txt - site may be slow or blocking")
+        result.crawlable = False
+        result.blocked_reason = "timeout"
+        return result
+        
+    except httpx.ConnectError as e:
+        log.error("Connection failed - site may be down or blocking IP", error=str(e))
+        result.crawlable = False
+        result.blocked_reason = "connection_failed"
         return result
         
     except httpx.RequestError as e:
-        log.error("Error fetching robots.txt", error=str(e))
-        result.raw_content = None
+        log.error("Request error fetching robots.txt", error=str(e))
+        result.crawlable = False
+        result.blocked_reason = "request_error"
         return result

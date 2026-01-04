@@ -244,13 +244,13 @@ async def _check_robots(website: str, log) -> dict:
         }
         
     except Exception as e:
-        log.error("Robots.txt check failed", error=str(e))
+        log.error("Robots.txt check failed unexpectedly", error=str(e), error_type=type(e).__name__)
         return {
             "raw_content": None,
             "sitemap_urls": None,
             "disallow_paths": None,
-            "crawlable": True,  # Assume crawlable if check fails
-            "blocked_reason": None,
+            "crawlable": False,  # Assume NOT crawlable if check fails - safer default
+            "blocked_reason": "check_failed",
         }
 
 
