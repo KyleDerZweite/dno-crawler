@@ -65,12 +65,25 @@ const initialFormState: AddDNOForm = {
 
 export function DNOsPage() {
   const [searchTerm, setSearchTerm] = useState("");
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState("");
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [formData, setFormData] = useState<AddDNOForm>(initialFormState);
 
   // Pagination state
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
+
+  // Debounce search term
+  useEffect(() => {
+    const handler = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+      setPage(1); // Reset to first page when search changes
+    }, 500);
+
+    return () => {
+      clearTimeout(handler);
+    };
+  }, [searchTerm]);
 
   // VNB Autocomplete state
   const [vnbSuggestions, setVnbSuggestions] = useState<VNBSuggestion[]>([]);
@@ -84,14 +97,22 @@ export function DNOsPage() {
   const { isAdmin } = useAuth();
 
   const { data: dnosResponse, isLoading } = useQuery({
-    queryKey: ["dnos", page, perPage],
-    queryFn: () => api.dnos.list({ include_stats: true, page, per_page: perPage }),
+    queryKey: ["dnos", page, perPage, debouncedSearchTerm],
+    queryFn: () => api.dnos.list({ 
+      include_stats: true, 
+      page, 
+      per_page: perPage,
+      q: debouncedSearchTerm || undefined 
+    }),
     refetchOnMount: "always",
     refetchInterval: 5000, // Poll every 5 seconds for live status updates
   });
 
   const dnos = dnosResponse?.data;
   const meta = dnosResponse?.meta;
+  
+  // Use dnos directly since filtering is now server-side
+  const displayedDnos = dnos;
 
   const createDNOMutation = useMutation({
     mutationFn: (data: AddDNOForm) =>
@@ -232,12 +253,6 @@ export function DNOsPage() {
     }
     createDNOMutation.mutate(formData);
   };
-
-  const filteredDnos = dnos?.filter(
-    (dno) =>
-      dno.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      dno.region?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
 
   return (
     <div className="space-y-8">
@@ -451,7 +466,7 @@ export function DNOsPage() {
       {/* DNO List - show empty state for both errors and empty results */}
       {!isLoading && (
         <div className="space-y-4">
-          {(!filteredDnos || filteredDnos.length === 0) ? (
+          {(!displayedDnos || displayedDnos.length === 0) ? (
             <div className="text-center py-16">
               <Card className="rounded-2xl p-8 max-w-md mx-auto">
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 border border-primary/20 flex items-center justify-center mx-auto mb-4 shadow-glow">
@@ -473,7 +488,6 @@ export function DNOsPage() {
               <div className="flex items-center justify-between">
                 <p className="text-sm text-muted-foreground">
                   Showing {((page - 1) * perPage) + 1}-{Math.min(page * perPage, meta?.total || 0)} of {meta?.total || 0} DNOs
-                  {searchTerm && ` (${filteredDnos.length} matching filter)`}
                 </p>
                 <div className="flex items-center gap-4">
                   {/* Page Size Selector */}
@@ -522,7 +536,7 @@ export function DNOsPage() {
                 </div>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredDnos.map((dno) => (
+                {displayedDnos.map((dno) => (
                   <DNOCard
                     key={dno.id}
                     dno={dno}

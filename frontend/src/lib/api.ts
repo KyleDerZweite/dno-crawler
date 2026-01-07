@@ -483,12 +483,14 @@ export const api = {
       include_stats?: boolean;
       page?: number;
       per_page?: number;
+      q?: string;
     }): Promise<ApiResponse<DNO[]>> {
       const { data } = await apiClient.get("/dnos/", {
         params: {
           include_stats: params?.include_stats,
           page: params?.page,
           per_page: params?.per_page,
+          q: params?.q,
         },
       });
       return data;

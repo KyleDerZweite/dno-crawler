@@ -2,6 +2,7 @@ import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -813,36 +814,32 @@ export function DNODetailPage() {
                                 <div className="grid gap-4 py-4">
                                     <div className="grid gap-2">
                                         <label className="text-sm font-medium">Name</label>
-                                        <input
+                                        <Input
                                             type="text"
-                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.name}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, name: e.target.value }))}
                                         />
                                     </div>
                                     <div className="grid gap-2">
                                         <label className="text-sm font-medium">Region</label>
-                                        <input
+                                        <Input
                                             type="text"
-                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.region}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, region: e.target.value }))}
                                         />
                                     </div>
                                     <div className="grid gap-2">
                                         <label className="text-sm font-medium">Website</label>
-                                        <input
+                                        <Input
                                             type="url"
-                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.website}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, website: e.target.value }))}
                                         />
                                     </div>
                                     <div className="grid gap-2">
                                         <label className="text-sm font-medium">Description</label>
-                                        <input
+                                        <Input
                                             type="text"
-                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.description}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, description: e.target.value }))}
                                         />
@@ -850,18 +847,16 @@ export function DNODetailPage() {
                                     <div className="grid grid-cols-2 gap-4">
                                         <div className="grid gap-2">
                                             <label className="text-sm font-medium">Phone</label>
-                                            <input
+                                            <Input
                                                 type="text"
-                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                                 value={editDNOData.phone}
                                                 onChange={(e) => setEditDNOData(prev => ({ ...prev, phone: e.target.value }))}
                                             />
                                         </div>
                                         <div className="grid gap-2">
                                             <label className="text-sm font-medium">Email</label>
-                                            <input
+                                            <Input
                                                 type="email"
-                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                                 value={editDNOData.email}
                                                 onChange={(e) => setEditDNOData(prev => ({ ...prev, email: e.target.value }))}
                                             />
@@ -869,9 +864,8 @@ export function DNODetailPage() {
                                     </div>
                                     <div className="grid gap-2">
                                         <label className="text-sm font-medium">Contact Address</label>
-                                        <input
+                                        <Input
                                             type="text"
-                                            className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                                             value={editDNOData.contact_address}
                                             onChange={(e) => setEditDNOData(prev => ({ ...prev, contact_address: e.target.value }))}
                                         />
@@ -1859,24 +1853,62 @@ export function DNODetailPage() {
                         {editModalType === 'netzentgelte' ? (
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Leistung (€/kW)</label>
-                                    <input
-                                        type="number"
-                                        step="0.01"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
-                                        value={editRecord.leistung ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, leistung: e.target.value ? parseFloat(e.target.value) : undefined })}
-                                    />
+                                    <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Leistung (€/kW)</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="number"
+                                            step="0.01"
+                                            className="w-full h-10 px-3 py-2 border rounded-md bg-background ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            value={editRecord.leistung ?? ''}
+                                            onChange={(e) => setEditRecord({ ...editRecord, leistung: e.target.value ? parseFloat(e.target.value) : undefined })}
+                                            placeholder="0.00"
+                                        />
+                                        <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                type="button"
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
+                                                onClick={() => setEditRecord({ ...editRecord, leistung: (editRecord.leistung || 0) + 1 })}
+                                            >
+                                                <ChevronUp className="h-3 w-3" />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
+                                                onClick={() => setEditRecord({ ...editRecord, leistung: Math.max(0, (editRecord.leistung || 0) - 1) })}
+                                            >
+                                                <ChevronDown className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                                 <div>
-                                    <label className="block text-sm font-medium mb-1">Arbeit (ct/kWh)</label>
-                                    <input
-                                        type="number"
-                                        step="0.001"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
-                                        value={editRecord.arbeit ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, arbeit: e.target.value ? parseFloat(e.target.value) : undefined })}
-                                    />
+                                    <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Arbeit (ct/kWh)</label>
+                                    <div className="relative group">
+                                        <input
+                                            type="number"
+                                            step="0.001"
+                                            className="w-full h-10 px-3 py-2 border rounded-md bg-background ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                            value={editRecord.arbeit ?? ''}
+                                            onChange={(e) => setEditRecord({ ...editRecord, arbeit: e.target.value ? parseFloat(e.target.value) : undefined })}
+                                            placeholder="0.000"
+                                        />
+                                        <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <button 
+                                                type="button"
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
+                                                onClick={() => setEditRecord({ ...editRecord, arbeit: (editRecord.arbeit || 0) + 0.1 })}
+                                            >
+                                                <ChevronUp className="h-3 w-3" />
+                                            </button>
+                                            <button 
+                                                type="button"
+                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
+                                                onClick={() => setEditRecord({ ...editRecord, arbeit: Math.max(0, (editRecord.arbeit || 0) - 0.1) })}
+                                            >
+                                                <ChevronDown className="h-3 w-3" />
+                                            </button>
+                                        </div>
+                                    </div>
                                 </div>
                             </div>
                         ) : (
@@ -1884,36 +1916,32 @@ export function DNODetailPage() {
                                 <p className="text-sm text-muted-foreground mb-2">Enter time ranges (comma-separated, e.g., "08:00 - 12:00, 17:00 - 19:00")</p>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Winter</label>
-                                    <input
+                                    <Input
                                         type="text"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
                                         value={editRecord.winter ?? ''}
                                         onChange={(e) => setEditRecord({ ...editRecord, winter: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Frühling</label>
-                                    <input
+                                    <Input
                                         type="text"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
                                         value={editRecord.fruehling ?? ''}
                                         onChange={(e) => setEditRecord({ ...editRecord, fruehling: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Sommer</label>
-                                    <input
+                                    <Input
                                         type="text"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
                                         value={editRecord.sommer ?? ''}
                                         onChange={(e) => setEditRecord({ ...editRecord, sommer: e.target.value })}
                                     />
                                 </div>
                                 <div>
                                     <label className="block text-sm font-medium mb-1">Herbst</label>
-                                    <input
+                                    <Input
                                         type="text"
-                                        className="w-full px-3 py-2 border rounded-md bg-background"
                                         value={editRecord.herbst ?? ''}
                                         onChange={(e) => setEditRecord({ ...editRecord, herbst: e.target.value })}
                                     />

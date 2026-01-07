@@ -6,7 +6,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -283,6 +283,7 @@ async def list_dnos_detailed(
     include_stats: bool = Query(False),
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, description="Items per page (25, 50, 100, 250)"),
+    q: str | None = Query(None, description="Search term"),
 ) -> APIResponse:
     """
     List all DNOs with detailed information (paginated).
@@ -298,20 +299,40 @@ async def list_dnos_detailed(
     if per_page not in allowed_per_page:
         per_page = 50  # Default to 50 if invalid
     
-    # Get total count for pagination
-    total_count_result = await db.execute(text("SELECT COUNT(*) FROM dnos"))
+    # Base query
+    query = select(DNOModel)
+    
+    # Apply search filter if provided
+    if q:
+        search_filter = or_(
+            DNOModel.name.ilike(f"%{q}%"),
+            DNOModel.official_name.ilike(f"%{q}%"),
+            DNOModel.region.ilike(f"%{q}%"),
+            DNOModel.vnb_id.ilike(f"%{q}%")
+        )
+        query = query.where(search_filter)
+        
+        # Count with filter
+        count_query = select(func.count()).select_from(DNOModel).where(search_filter)
+    else:
+        # Total count without filter
+        count_query = select(func.count()).select_from(DNOModel)
+
+    total_count_result = await db.execute(count_query)
     total = total_count_result.scalar() or 0
     total_pages = (total + per_page - 1) // per_page  # Ceiling division
     
     # Clamp page to valid range
     if page > total_pages and total_pages > 0:
         page = total_pages
+    elif total_pages == 0:
+        page = 1
     
     # Calculate offset
     offset = (page - 1) * per_page
     
     # Paginated query
-    query = select(DNOModel).order_by(DNOModel.name).offset(offset).limit(per_page)
+    query = query.order_by(DNOModel.name).offset(offset).limit(per_page)
     result = await db.execute(query)
     dnos = result.scalars().all()
     

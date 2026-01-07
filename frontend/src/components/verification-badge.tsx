@@ -30,6 +30,8 @@ import {
 import { cn } from "@/lib/utils";
 import { AxiosError } from "axios";
 
+import { Textarea } from "@/components/ui/textarea";
+
 interface VerificationBadgeProps {
     status: string;
     verifiedBy?: string;
@@ -467,8 +469,8 @@ export function VerificationBadge({
                             <label className="text-sm font-medium">
                                 Additional notes {issueType === "other" && <span className="text-destructive">*</span>}
                             </label>
-                            <textarea
-                                className="w-full min-h-[80px] rounded-md border border-input bg-background px-3 py-2 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-ring"
+                            <Textarea
+                                className="w-full min-h-[80px] resize-none"
                                 placeholder={issueType === "other" ? "Please describe the issue... (minimum 10 characters)" : "Optional additional details..."}
                                 value={flagNotes}
                                 onChange={(e) => setFlagNotes(e.target.value)}

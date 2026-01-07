@@ -13,10 +13,10 @@ import {
   Activity,
   TrendingUp,
   Clock,
-  Loader2,
   Search
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -27,7 +27,7 @@ export function DashboardPage() {
       // In a real app, you'd have a stats endpoint
       const dnos = await api.dnos.list();
       return {
-        totalDnos: dnos.data.length,
+        totalDnos: dnos.meta?.total ?? dnos.data.length,
         activeCrawls: 0,
         lastUpdated: new Date().toLocaleDateString(),
         dataPoints: dnos.data.reduce((acc, dno) => acc + (dno.data_points_count || 0), 0),
@@ -134,7 +134,7 @@ function StatCard({
         <div>
           <p className="text-sm text-muted-foreground">{title}</p>
           {isLoading ? (
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <Skeleton className="h-8 w-24 my-1" />
           ) : (
             <p className={`text-2xl font-bold ${accent ? 'text-primary' : 'text-foreground'}`}>
               {value}
