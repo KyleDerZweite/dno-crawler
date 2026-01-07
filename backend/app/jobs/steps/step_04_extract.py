@@ -277,6 +277,25 @@ class ExtractStep(BaseStep):
             ai_attempted=ai_result is not None if settings.ai_enabled else False,
         )
         
+        # Capture debug sample when AI was attempted but completely failed (rate limited, API error)
+        if settings.ai_enabled and ai_result is None:
+            dno_slug = ctx.get("dno_slug", "unknown")
+            sample_capture = SampleCapture()
+            await sample_capture.capture(
+                category="debug",
+                dno_slug=dno_slug,
+                year=job.year,
+                data_type=job.data_type,
+                source_file_path=str(path),
+                source_format=file_format,
+                regex_result=records,
+                regex_fail_reason=reason,
+                ai_result=None,
+                ai_model=settings.ai_model,
+                prompt_used=prompt,
+                ai_fail_reason="AI extraction returned None (rate limited or API error)",
+            )
+        
         ctx["extracted_data"] = records
         ctx["extraction_notes"] = f"{method} extraction - FLAGGED: {reason}"
         ctx["extraction_method"] = method
@@ -351,20 +370,23 @@ class ExtractStep(BaseStep):
 
     def _validate_hlzf(self, records: list) -> tuple[bool, str]:
         """
-        Check HLZF has ≥1 record with winter non-null.
+        Check HLZF extraction quality.
         
         Rules:
-        - At least 1 record exists
+        - Requires all 5 voltage levels (HS, HS/MS, MS, MS/NS, NS)
         - At least one record has winter time window (peak load almost always has winter data)
         """
-        if len(records) < 1:
-            return False, "No HLZF records extracted"
+        if len(records) < 5:
+            return False, f"Missing voltage levels: only {len(records)} extracted (expected 5)"
         
-        # Check at least one record has winter data
-        has_winter = any(record.get("winter") is not None for record in records)
+        # Check at least one record has winter data (time value, not "entfällt")
+        has_winter = any(
+            record.get("winter") is not None and str(record.get("winter")).lower() != "entfällt"
+            for record in records
+        )
         
         if not has_winter:
-            return False, "No records with winter time window (all records have null winter)"
+            return False, "No records with winter time window (all records have null or 'entfällt' winter)"
         
         return True, "OK"
 

@@ -479,6 +479,17 @@ export const api = {
   },
 
   dnos: {
+    async getStats(): Promise<ApiResponse<{
+      total_dnos: number;
+      netzentgelte_count: number;
+      hlzf_count: number;
+      total_data_points: number;
+      active_crawls: number;
+    }>> {
+      const { data } = await apiClient.get("/dnos/stats");
+      return data;
+    },
+
     async list(params?: {
       include_stats?: boolean;
       page?: number;
@@ -668,8 +679,9 @@ export const api = {
   admin: {
     async getDashboard(): Promise<
       ApiResponse<{
-        dnos: { total: number };
+        dnos: { total: number; uncrawled: number; crawled: number };
         jobs: { pending: number; running: number };
+        data_points: { netzentgelte: number; hlzf: number; total: number };
         flagged: { netzentgelte: number; hlzf: number; total: number };
       }>
     > {

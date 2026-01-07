@@ -276,6 +276,45 @@ async def create_dno(
     )
 
 
+@router.get("/stats")
+async def get_stats(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    current_user: Annotated[AuthUser, Depends(get_current_user)],
+) -> APIResponse:
+    """
+    Get dashboard statistics for authenticated users.
+    
+    Returns counts for DNOs, data points, and active jobs.
+    """
+    from app.db.models import NetzentgelteModel, HLZFModel
+    
+    # Count DNOs
+    dno_count = await db.scalar(select(func.count(DNOModel.id)))
+    
+    # Count data points
+    netzentgelte_count = await db.scalar(select(func.count(NetzentgelteModel.id)))
+    hlzf_count = await db.scalar(select(func.count(HLZFModel.id)))
+    
+    # Count active jobs
+    pending_jobs = await db.scalar(
+        select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
+    )
+    running_jobs = await db.scalar(
+        select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "running")
+    )
+    
+    return APIResponse(
+        success=True,
+        data={
+            "total_dnos": dno_count or 0,
+            "netzentgelte_count": netzentgelte_count or 0,
+            "hlzf_count": hlzf_count or 0,
+            "total_data_points": (netzentgelte_count or 0) + (hlzf_count or 0),
+            "active_crawls": (pending_jobs or 0) + (running_jobs or 0),
+        },
+    )
+
+
 @router.get("/")
 async def list_dnos_detailed(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -833,7 +872,7 @@ async def get_dno_data(
     netzentgelte_query = text("""
         SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, 
                verification_status, extraction_source, extraction_model, extraction_source_format,
-               last_edited_by, last_edited_at
+               last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM netzentgelte
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
@@ -858,13 +897,19 @@ async def get_dno_data(
             "extraction_source_format": row[10],
             "last_edited_by": row[11],
             "last_edited_at": row[12].isoformat() if row[12] else None,
+            # Verification/flag fields
+            "verified_by": row[13],
+            "verified_at": row[14].isoformat() if row[14] else None,
+            "flagged_by": row[15],
+            "flagged_at": row[16].isoformat() if row[16] else None,
+            "flag_reason": row[17],
         })
     
     # Query HLZF data
     hlzf_query = text("""
         SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, 
                verification_status, extraction_source, extraction_model, extraction_source_format,
-               last_edited_by, last_edited_at
+               last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM hlzf
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
@@ -902,6 +947,12 @@ async def get_dno_data(
             "extraction_source_format": row[10],
             "last_edited_by": row[11],
             "last_edited_at": row[12].isoformat() if row[12] else None,
+            # Verification/flag fields
+            "verified_by": row[13],
+            "verified_at": row[14].isoformat() if row[14] else None,
+            "flagged_by": row[15],
+            "flagged_at": row[16].isoformat() if row[16] else None,
+            "flag_reason": row[17],
         })
     
     return APIResponse(

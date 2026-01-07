@@ -99,14 +99,78 @@ class ValidateStep(BaseStep):
         if len(data) < 2:
             issues.append(f"Only {len(data)} voltage levels (expected at least 2)")
         
+        # Check that expected voltage levels are present
+        # Standard German grid has: HS, HS/MS, MS, MS/NS, NS (5 levels)
+        expected_levels = {"hs", "ms", "ns"}  # At minimum these 3
+        umspannung_levels = {"hs/ms", "ms/ns"}  # Transformation levels (optional but common)
+        
+        found_levels = set()
+        for record in data:
+            vl = str(record.get("voltage_level", "")).lower()
+            # Normalize voltage level names
+            if "hochspannung" in vl or vl == "hs":
+                found_levels.add("hs")
+            elif "mittelspannung" in vl and "nieder" not in vl and "umspann" not in vl:
+                found_levels.add("ms")
+            elif "niederspannung" in vl or vl == "ns":
+                found_levels.add("ns")
+            # Check for Umspannung levels
+            if ("umspann" in vl or "/" in vl) and "hs" in vl and "ms" in vl:
+                found_levels.add("hs/ms")
+            if ("umspann" in vl or "/" in vl) and "ms" in vl and "ns" in vl:
+                found_levels.add("ms/ns")
+        
+        missing_levels = expected_levels - found_levels
+        if missing_levels:
+            issues.append(f"Missing expected voltage levels: {', '.join(sorted(missing_levels)).upper()}")
+        
+        # Check for Umspannung levels (warn but don't fail)
+        missing_umspannung = umspannung_levels - found_levels
+        if missing_umspannung and len(data) < 4:
+            issues.append(f"Missing transformation levels: {', '.join(sorted(missing_umspannung)).upper()} (expected 5 levels total)")
+        
+        seasons = ["winter", "fruehling", "sommer", "herbst"]
+        total_season_slots = 0
+        filled_or_explicit_empty = 0  # Has time data OR explicitly "entfällt"
+        completely_missing = 0  # Empty/None with no explicit "entfällt"
+        
         for i, record in enumerate(data):
             if not record.get("voltage_level"):
                 issues.append(f"Record {i}: missing voltage_level")
             
-            # Check at least one season has data
-            seasons = ["winter", "fruehling", "sommer", "herbst"]
-            has_data = any(record.get(s) for s in seasons)
-            if not has_data:
-                issues.append(f"Record {i}: no seasonal data")
+            # Count how many seasons have data vs are legitimately empty
+            for season in seasons:
+                total_season_slots += 1
+                val = record.get(season)
+                val_str = str(val or "").strip().lower()
+                
+                if val_str in ["entfällt", "-"]:
+                    # Explicitly marked as not applicable - this is valid
+                    filled_or_explicit_empty += 1
+                elif val and val_str not in ["none", ""]:
+                    # Has actual time data
+                    filled_or_explicit_empty += 1
+                else:
+                    # Missing/None with no explicit marker - might be extraction issue
+                    completely_missing += 1
+        
+        # Check at least one season has time data overall
+        has_any_time_data = any(
+            record.get(s) and str(record.get(s)).strip().lower() not in ["entfällt", "-", "none", ""]
+            for record in data
+            for s in seasons
+        )
+        if not has_any_time_data:
+            issues.append("No time window data found in any record")
+        
+        # Check if too many seasons are completely missing (not "entfällt", just empty)
+        # This suggests extraction failure rather than legitimate empty data
+        if total_season_slots > 0 and completely_missing > 0:
+            missing_rate = completely_missing / total_season_slots
+            if missing_rate > 0.5:
+                issues.append(
+                    f"{completely_missing}/{total_season_slots} season slots are completely empty "
+                    f"(not 'entfällt') - extraction may be incomplete"
+                )
         
         return issues

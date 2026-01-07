@@ -24,13 +24,12 @@ export function DashboardPage() {
   const { data: stats, isLoading } = useQuery({
     queryKey: ["dashboard-stats"],
     queryFn: async () => {
-      // In a real app, you'd have a stats endpoint
-      const dnos = await api.dnos.list();
+      const response = await api.dnos.getStats();
       return {
-        totalDnos: dnos.meta?.total ?? dnos.data.length,
-        activeCrawls: 0,
+        totalDnos: response.data.total_dnos,
+        activeCrawls: response.data.active_crawls,
         lastUpdated: new Date().toLocaleDateString(),
-        dataPoints: dnos.data.reduce((acc, dno) => acc + (dno.data_points_count || 0), 0),
+        dataPoints: response.data.total_data_points,
       };
     },
   });
@@ -60,7 +59,7 @@ export function DashboardPage() {
           icon={TrendingUp}
           title="Data Points"
           value={stats?.dataPoints?.toLocaleString() || 0}
-          subtitle="Netzentgelte records"
+          subtitle="Total records"
           isLoading={isLoading}
           accent
         />

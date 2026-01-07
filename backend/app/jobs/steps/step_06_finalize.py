@@ -24,6 +24,7 @@ Output:
 """
 
 from datetime import datetime
+import re
 from urllib.parse import urlparse
 
 import structlog
@@ -64,10 +65,14 @@ class FinalizeStep(BaseStep):
         # Get extraction source metadata
         source_meta = ctx.get("extraction_source_meta", {})
         
+        # Check if data should be auto-flagged (sanity check failed)
+        auto_flagged = ctx.get("auto_flagged", False)
+        auto_flag_reason = ctx.get("auto_flag_reason")
+        
         if job.data_type == "hlzf":
-            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta)
+            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason)
         elif job.data_type == "netzentgelte":
-            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta)
+            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason)
         else:
             logger.warning("unknown_data_type", data_type=job.data_type)
         
@@ -119,13 +124,16 @@ class FinalizeStep(BaseStep):
         
         Mappings:
         - Hochspannung, HöS, HS -> HS
-        - Hochspannung mit Umspannung auf MS, HS/MS, Umspannung Hoch-/Mittelspannung -> HS/MS
+        - Hochspannung mit Umspannung auf MS, HS/MS, Umspannung Hoch-/Mittelspannung, Umspannung zur Mittelspannung -> HS/MS
         - Mittelspannung, MS -> MS
-        - Mittelspannung mit Umspannung auf NS, MS/NS, Umspannung Mittel-/Niederspannung -> MS/NS
+        - Mittelspannung mit Umspannung auf NS, MS/NS, Umspannung Mittel-/Niederspannung, Umspannung zur Niederspannung -> MS/NS
         - Niederspannung, NS -> NS
         - Höchstspannung -> HöS (rarely used, keep as is)
         """
         raw = raw.strip()
+        # Normalize newlines to spaces (pdfplumber sometimes splits across lines)
+        raw = raw.replace('\n', ' ').replace('\r', ' ')
+        raw = ' '.join(raw.split())  # Normalize whitespace
         raw_lower = raw.lower()
         
         # Already abbreviated - clean up spaces
@@ -135,19 +143,31 @@ class FinalizeStep(BaseStep):
             return raw
         
         # Check for Umspannung (Transformer) levels first (most specific)
-        if "umspannung" in raw_lower or "/" in raw_lower or "hs/ms" in raw_lower or "ms/ns" in raw_lower:
-            # HS/MS variants
+        # "Umspannung zur X" means the transformation FROM the higher level TO X
+        # So "Umspannung zur Mittelspannung" = HS/MS (from HS to MS)
+        # And "Umspannung zur Niederspannung" = MS/NS (from MS to NS)
+        if "umspannung" in raw_lower:
+            # "Umspannung zur Mittelspannung" - transformation ending at MS = HS/MS
+            if "zur mittelspannung" in raw_lower or "zur ms" in raw_lower:
+                return "HS/MS"
+            # "Umspannung zur Niederspannung" - transformation ending at NS = MS/NS
+            if "zur niederspannung" in raw_lower or "zur ns" in raw_lower:
+                return "MS/NS"
+            # Generic Umspannung with both levels mentioned
             if ("hoch" in raw_lower and "mittel" in raw_lower) or "hs/ms" in raw_lower:
                 return "HS/MS"
-            # MS/NS variants
             if ("mittel" in raw_lower and "nieder" in raw_lower) or "ms/ns" in raw_lower:
                 return "MS/NS"
-            # Implicit MS/NS: "Umspannung zur Niederspannung" usually implies MS->NS
-            if "nieder" in raw_lower and "umspannung" in raw_lower:
+        
+        # Check for slash notation (explicit transformation levels)
+        if "/" in raw_lower or "hs/ms" in raw_lower or "ms/ns" in raw_lower:
+            if ("hoch" in raw_lower and "mittel" in raw_lower) or "hs/ms" in raw_lower:
+                return "HS/MS"
+            if ("mittel" in raw_lower and "nieder" in raw_lower) or "ms/ns" in raw_lower:
                 return "MS/NS"
         
-        # Check for single levels (HS, MS, NS)
-        if "hoch" in raw_lower or "hs" in raw_lower.split(): # Split to avoid matching 'hs' inside other words if any
+        # Check for single levels (HS, MS, NS) - only if NOT Umspannung
+        if "hoch" in raw_lower or "hs" in raw_lower.split():
             return "HS"
         if "mittel" in raw_lower or "ms" in raw_lower.split():
             return "MS"
@@ -165,6 +185,62 @@ class FinalizeStep(BaseStep):
         logger.warning("unknown_voltage_level", raw=raw)
         return raw.strip()
     
+    def _normalize_hlzf_time(self, value: str | None) -> str | None:
+        """
+        Normalize HLZF time values to consistent HH:MM:SS format.
+        
+        Handles:
+        - "7:15" -> "07:15:00"
+        - "07:15" -> "07:15:00" 
+        - "7:15:00" -> "07:15:00"
+        - "7:15-13:15" -> "07:15:00-13:15:00"
+        - "18:00 20:00" -> "18:00:00-20:00:00" (space instead of hyphen - AI error)
+        - Multiple ranges separated by newlines
+        """
+        if value is None:
+            return None
+        
+        value = value.strip()
+        if not value or value.lower() == "entfällt" or value == "-":
+            return None
+        
+        def normalize_single_time(t: str) -> str:
+            """Normalize a single time like '7:15' to '07:15:00'."""
+            t = t.strip()
+            # Match time with optional seconds: H:MM or HH:MM or H:MM:SS or HH:MM:SS
+            match = re.match(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$', t)
+            if match:
+                hour = match.group(1).zfill(2)
+                minute = match.group(2)
+                second = match.group(3) if match.group(3) else "00"
+                return f"{hour}:{minute}:{second}"
+            return t  # Return as-is if not matching expected format
+        
+        def normalize_range(r: str) -> str:
+            """Normalize a time range like '7:15-13:15' to '07:15:00-13:15:00'."""
+            r = r.strip()
+            
+            # First, try to match range with any dash type: hyphen (-), en-dash (–), em-dash (—)
+            match = re.match(r'^(.+?)\s*[-–—]\s*(.+)$', r)
+            if match:
+                start = normalize_single_time(match.group(1))
+                end = normalize_single_time(match.group(2))
+                return f"{start}-{end}"
+            
+            # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
+            space_match = re.match(r'^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$', r)
+            if space_match:
+                start = normalize_single_time(space_match.group(1))
+                end = normalize_single_time(space_match.group(2))
+                return f"{start}-{end}"
+            
+            return normalize_single_time(r)  # Single time, not a range
+        
+        # Split by newlines (multiple ranges) and normalize each
+        lines = value.split('\n')
+        normalized_lines = [normalize_range(line) for line in lines if line.strip()]
+        return '\n'.join(normalized_lines) if normalized_lines else None
+    
     async def _save_hlzf(
         self,
         db: AsyncSession,
@@ -172,6 +248,8 @@ class FinalizeStep(BaseStep):
         year: int,
         records: list[dict],
         source_meta: dict | None = None,
+        auto_flagged: bool = False,
+        auto_flag_reason: str | None = None,
     ) -> int:
         """Save HLZF records with upsert logic."""
         saved = 0
@@ -199,34 +277,41 @@ class FinalizeStep(BaseStep):
             if existing:
                 # Update existing record - always overwrite with new values (including null)
                 if "winter" in record:
-                    existing.winter = record.get("winter")
+                    existing.winter = self._normalize_hlzf_time(record.get("winter"))
                 if "fruehling" in record:
-                    existing.fruehling = record.get("fruehling")
+                    existing.fruehling = self._normalize_hlzf_time(record.get("fruehling"))
                 if "sommer" in record:
-                    existing.sommer = record.get("sommer")
+                    existing.sommer = self._normalize_hlzf_time(record.get("sommer"))
                 if "herbst" in record:
-                    existing.herbst = record.get("herbst")
+                    existing.herbst = self._normalize_hlzf_time(record.get("herbst"))
                 # Update extraction source (overwrite with new extraction)
                 existing.extraction_source = source_meta.get("source")
                 existing.extraction_model = source_meta.get("model")
                 existing.extraction_source_format = source_meta.get("source_format")
-                logger.debug("hlzf_updated", voltage_level=voltage_level, year=year)
+                # Apply auto-flag if sanity check failed
+                if auto_flagged:
+                    existing.verification_status = "flagged"
+                    existing.flag_reason = auto_flag_reason
+                logger.debug("hlzf_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source
                 new_record = HLZFModel(
                     dno_id=dno_id,
                     year=year,
                     voltage_level=voltage_level,
-                    winter=record.get("winter"),
-                    fruehling=record.get("fruehling"),
-                    sommer=record.get("sommer"),
-                    herbst=record.get("herbst"),
+                    winter=self._normalize_hlzf_time(record.get("winter")),
+                    fruehling=self._normalize_hlzf_time(record.get("fruehling")),
+                    sommer=self._normalize_hlzf_time(record.get("sommer")),
+                    herbst=self._normalize_hlzf_time(record.get("herbst")),
                     extraction_source=source_meta.get("source"),
                     extraction_model=source_meta.get("model"),
                     extraction_source_format=source_meta.get("source_format"),
+                    # Apply auto-flag if sanity check failed
+                    verification_status="flagged" if auto_flagged else "pending",
+                    flag_reason=auto_flag_reason if auto_flagged else None,
                 )
                 db.add(new_record)
-                logger.debug("hlzf_inserted", voltage_level=voltage_level, year=year)
+                logger.debug("hlzf_inserted", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             
             saved += 1
         
@@ -240,6 +325,8 @@ class FinalizeStep(BaseStep):
         year: int,
         records: list[dict],
         source_meta: dict | None = None,
+        auto_flagged: bool = False,
+        auto_flag_reason: str | None = None,
     ) -> int:
         """Save Netzentgelte records with upsert logic."""
         saved = 0
@@ -284,7 +371,11 @@ class FinalizeStep(BaseStep):
                 existing.extraction_source = source_meta.get("source")
                 existing.extraction_model = source_meta.get("model")
                 existing.extraction_source_format = source_meta.get("source_format")
-                logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year)
+                # Apply auto-flag if sanity check failed
+                if auto_flagged:
+                    existing.verification_status = "flagged"
+                    existing.flag_reason = auto_flag_reason
+                logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source
                 new_record = NetzentgelteModel(
@@ -298,9 +389,12 @@ class FinalizeStep(BaseStep):
                     extraction_source=source_meta.get("source"),
                     extraction_model=source_meta.get("model"),
                     extraction_source_format=source_meta.get("source_format"),
+                    # Apply auto-flag if sanity check failed
+                    verification_status="flagged" if auto_flagged else "pending",
+                    flag_reason=auto_flag_reason if auto_flagged else None,
                 )
                 db.add(new_record)
-                logger.debug("netzentgelte_inserted", voltage_level=voltage_level, year=year)
+                logger.debug("netzentgelte_inserted", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             
             saved += 1
         

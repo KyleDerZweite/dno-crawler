@@ -264,17 +264,42 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
         return records
     
     # Look for header row with seasons
+    header_row_idx = None
     header_row = None
     for i, row in enumerate(table):
-        if row and any(s in str(row).lower() for s in ["winter", "frühling", "sommer", "herbst"]):
-            header_row = i
+        row_str = str(row).lower()
+        if row and any(s in row_str for s in ["winter", "frühling", "sommer", "herbst"]):
+            header_row_idx = i
+            header_row = row
             break
     
-    if header_row is None:
+    if header_row_idx is None:
         return records
     
+    # Parse header to determine column indices for each season
+    # This handles tables where seasons appear in any order
+    season_columns = {
+        "winter": None,
+        "fruehling": None,
+        "sommer": None,
+        "herbst": None,
+    }
+    
+    for col_idx, cell in enumerate(header_row):
+        cell_lower = str(cell or "").lower()
+        if "winter" in cell_lower:
+            season_columns["winter"] = col_idx
+        elif "frühling" in cell_lower or "fruehling" in cell_lower or "frühjahr" in cell_lower:
+            season_columns["fruehling"] = col_idx
+        elif "sommer" in cell_lower:
+            season_columns["sommer"] = col_idx
+        elif "herbst" in cell_lower:
+            season_columns["herbst"] = col_idx
+    
+    logger.debug(f"HLZF season column mapping: {season_columns}")
+    
     # Parse data rows after header
-    for row in table[header_row + 1:]:
+    for row in table[header_row_idx + 1:]:
         if not row or len(row) < 2:
             continue
         
@@ -284,18 +309,19 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
         if any(v in first_col for v in ["spannung", "netz", "umspann"]):
             voltage_level = str(row[0]).strip()
             
-            # Extract seasonal values (Winter, Frühling, Sommer, Herbst)
-            winter = _clean_time_value(row[1] if len(row) > 1 else None)
-            fruehling = _clean_time_value(row[2] if len(row) > 2 else None)
-            sommer = _clean_time_value(row[3] if len(row) > 3 else None)
-            herbst = _clean_time_value(row[4] if len(row) > 4 else None)
+            # Extract seasonal values using the column mapping from header
+            def get_season_value(season_key):
+                col_idx = season_columns.get(season_key)
+                if col_idx is not None and col_idx < len(row):
+                    return _clean_time_value(row[col_idx])
+                return None
             
             records.append({
                 "voltage_level": voltage_level,
-                "winter": winter,
-                "fruehling": fruehling,
-                "sommer": sommer,
-                "herbst": herbst,
+                "winter": get_season_value("winter"),
+                "fruehling": get_season_value("fruehling"),
+                "sommer": get_season_value("sommer"),
+                "herbst": get_season_value("herbst"),
                 "source_page": page_num,
             })
     
@@ -342,18 +368,47 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
 
 
 def _clean_time_value(value: Any) -> str | None:
-    """Clean and normalize a time window value."""
+    """
+    Clean and normalize a time window value.
+    
+    Returns:
+        - Cleaned time string like "08:15-18:00" or "12:15-13:15\n16:45-19:45"
+        - "entfällt" if explicitly marked as not applicable
+        - None if empty or missing
+    """
     if value is None:
         return None
     
     s = str(value).strip()
     
-    # Handle "entfällt" (not applicable)
-    if "entfällt" in s.lower() or s == "-" or s == "":
+    # Handle empty values
+    if s == "" or s == "-":
         return None
     
-    # Clean up whitespace
-    s = re.sub(r'\s+', '\n', s).strip()
+    # Handle "entfällt" (not applicable) - return explicit marker, not None
+    if "entfällt" in s.lower():
+        return "entfällt"
     
+    # Clean up time format: "08:15 - 18:00" or "08:15\n-\n18:00" -> "08:15-18:00"
+    # First, normalize all whitespace/newlines around dashes
+    s = re.sub(r'\s*-\s*', '-', s)
+    s = re.sub(r'\s*–\s*', '-', s)  # en-dash
+    s = re.sub(r'\s*—\s*', '-', s)  # em-dash
+    
+    # Multiple time ranges separated by newlines should be cleaned
+    # "12:15-13:15\n16:45-19:45" is valid format
+    # Split by remaining whitespace into potential time ranges
+    parts = s.split()
+    cleaned_parts = []
+    for part in parts:
+        part = part.strip()
+        # Check if it looks like a time range (HH:MM-HH:MM)
+        if re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}$', part):
+            cleaned_parts.append(part)
+    
+    if cleaned_parts:
+        return "\n".join(cleaned_parts)
+    
+    # If no clean time ranges found, return the stripped value as-is
+    # (might need manual review)
     return s if s else None
-

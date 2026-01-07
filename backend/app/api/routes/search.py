@@ -105,6 +105,7 @@ class NetzentgelteData(BaseModel):
     arbeit: Optional[float] = None
     leistung_unter_2500h: Optional[float] = None
     arbeit_unter_2500h: Optional[float] = None
+    verification_status: Optional[str] = None
 
 
 class HLZFTimeRange(BaseModel):
@@ -121,6 +122,7 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
     - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
     - "12:15-13:15\n16:45-19:45" (newline-separated)
     - "08:00 – 12:00" (en-dash with spaces)
+    - "18:00 20:00" (space instead of hyphen - AI error)
     - "entfällt" or "-" (no data)
     
     Returns list of HLZFTimeRange or None if no valid ranges.
@@ -131,6 +133,14 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
         return None
     
     ranges = []
+    
+    # Normalize time helper
+    def normalize_time(t: str) -> str:
+        parts = t.split(':')
+        hour = parts[0].zfill(2)
+        minute = parts[1] if len(parts) > 1 else "00"
+        second = parts[2] if len(parts) > 2 else "00"
+        return f"{hour}:{minute}:{second}"
     
     # Split by comma OR newline to get individual periods
     # This handles both "12:15-13:15, 16:45-19:45" and "12:15-13:15\n16:45-19:45"
@@ -149,15 +159,19 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
         )
         
         if match:
-            start_time = match.group(1)
-            end_time = match.group(2)
-            
-            # Add :00 seconds if missing (12:15 -> 12:15:00)
-            if len(start_time) == 5:
-                start_time += ":00"
-            if len(end_time) == 5:
-                end_time += ":00"
-            
+            start_time = normalize_time(match.group(1))
+            end_time = normalize_time(match.group(2))
+            ranges.append(HLZFTimeRange(start=start_time, end=end_time))
+            continue
+        
+        # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
+        space_match = re.match(
+            r'^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$',
+            period
+        )
+        if space_match:
+            start_time = normalize_time(space_match.group(1))
+            end_time = normalize_time(space_match.group(2))
             ranges.append(HLZFTimeRange(start=start_time, end=end_time))
     
     return ranges if ranges else None
@@ -177,6 +191,8 @@ class HLZFData(BaseModel):
     fruehling_ranges: Optional[list[HLZFTimeRange]] = None
     sommer_ranges: Optional[list[HLZFTimeRange]] = None
     herbst_ranges: Optional[list[HLZFTimeRange]] = None
+    # Verification status
+    verification_status: Optional[str] = None
 
 
 class PublicSearchResponse(BaseModel):
@@ -603,6 +619,7 @@ async def _build_response(
             arbeit=n.arbeit,
             leistung_unter_2500h=getattr(n, 'leistung_unter_2500h', None),
             arbeit_unter_2500h=getattr(n, 'arbeit_unter_2500h', None),
+            verification_status=getattr(n, 'verification_status', None),
         )
         for n in netzentgelte_result.scalars().all()
     ]
@@ -619,6 +636,7 @@ async def _build_response(
             fruehling_ranges=_parse_hlzf_times(h.fruehling),
             sommer_ranges=_parse_hlzf_times(h.sommer),
             herbst_ranges=_parse_hlzf_times(h.herbst),
+            verification_status=getattr(h, 'verification_status', None),
         )
         for h in hlzf_result.scalars().all()
     ]

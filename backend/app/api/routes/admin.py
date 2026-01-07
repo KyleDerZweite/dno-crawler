@@ -64,6 +64,10 @@ async def admin_dashboard(
         select(func.count(HLZFModel.id)).where(HLZFModel.verification_status == "flagged")
     )
     
+    # Count total data points
+    total_netzentgelte = await db.scalar(select(func.count(NetzentgelteModel.id)))
+    total_hlzf = await db.scalar(select(func.count(HLZFModel.id)))
+    
     return APIResponse(
         success=True,
         data={
@@ -75,6 +79,11 @@ async def admin_dashboard(
             "jobs": {
                 "pending": pending_jobs or 0,
                 "running": running_jobs or 0,
+            },
+            "data_points": {
+                "netzentgelte": total_netzentgelte or 0,
+                "hlzf": total_hlzf or 0,
+                "total": (total_netzentgelte or 0) + (total_hlzf or 0),
             },
             "flagged": {
                 "netzentgelte": flagged_netzentgelte or 0,
