@@ -513,7 +513,13 @@ class DNOSourceProfile(Base, TimestampMixin):
 
 
 class CrawlJobModel(Base, TimestampMixin):
-    """Crawl job tracking."""
+    """Crawl job tracking.
+    
+    Supports split job architecture:
+    - job_type: 'crawl' (discover+download), 'extract' (extract+validate+finalize), or 'full' (legacy)
+    - parent_job_id: Links extract job back to its parent crawl job
+    - child_job_id: Links crawl job to the extract job it spawned
+    """
 
     __tablename__ = "crawl_jobs"
     
@@ -523,6 +529,15 @@ class CrawlJobModel(Base, TimestampMixin):
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    
+    # Job type: 'crawl' (steps 0-3), 'extract' (steps 4-6), or 'full' (legacy all steps)
+    job_type: Mapped[str] = mapped_column(String(20), default="full")
+    
+    # Parent/child linking for split jobs
+    parent_job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True
+    )
+    child_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Updated when extract job is created
     
     # Status
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
@@ -543,6 +558,14 @@ class CrawlJobModel(Base, TimestampMixin):
 
     steps: Mapped[list["CrawlJobStepModel"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
+    )
+    
+    # Relationship to parent job (for extract jobs)
+    parent_job: Mapped["CrawlJobModel | None"] = relationship(
+        "CrawlJobModel",
+        remote_side=[id],
+        foreign_keys=[parent_job_id],
+        uselist=False,
     )
 
 

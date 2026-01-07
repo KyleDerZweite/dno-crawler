@@ -92,6 +92,13 @@ export function JobDetailsPage() {
     const status = job.status as JobStatus;
     const config = JOB_STATUS_CONFIG[status] ?? JOB_STATUS_CONFIG.pending;
     const StatusIcon = config.icon;
+    
+    // Job type config
+    const jobTypeLabels: Record<string, string> = {
+        full: 'Full Pipeline',
+        crawl: 'Crawl Only',
+        extract: 'Extract Only',
+    };
 
     return (
         <div className="space-y-6">
@@ -104,8 +111,11 @@ export function JobDetailsPage() {
                     <h1 className="text-2xl font-bold text-foreground">
                         {job.dno_name || `Job ${job.id.slice(0, 8)}`}
                     </h1>
-                    <p className="text-muted-foreground">
+                    <p className="text-muted-foreground flex items-center gap-2">
                         {job.year} · {job.data_type}
+                        <Badge variant="outline">
+                            {jobTypeLabels[job.job_type || 'full']}
+                        </Badge>
                     </p>
                 </div>
                 <Button
@@ -121,6 +131,46 @@ export function JobDetailsPage() {
                     Delete
                 </Button>
             </div>
+
+            {/* Linked Jobs Info */}
+            {(job.parent_job || job.child_job) && (
+                <Card className="p-4 bg-muted/30">
+                    <div className="flex items-center gap-4 text-sm">
+                        {job.parent_job && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">Parent crawl job:</span>
+                                <Button 
+                                    variant="link" 
+                                    size="sm" 
+                                    className="p-0 h-auto"
+                                    onClick={() => navigate(`/jobs/${job.parent_job!.id}`)}
+                                >
+                                    #{job.parent_job.id}
+                                </Button>
+                                <Badge variant="outline" className="text-xs">
+                                    {job.parent_job.status}
+                                </Badge>
+                            </div>
+                        )}
+                        {job.child_job && (
+                            <div className="flex items-center gap-2">
+                                <span className="text-muted-foreground">Extract job:</span>
+                                <Button 
+                                    variant="link" 
+                                    size="sm" 
+                                    className="p-0 h-auto"
+                                    onClick={() => navigate(`/jobs/${job.child_job!.id}`)}
+                                >
+                                    #{job.child_job.id}
+                                </Button>
+                                <Badge variant="outline" className="text-xs">
+                                    {job.child_job.status}
+                                </Badge>
+                            </div>
+                        )}
+                    </div>
+                </Card>
+            )}
 
             {/* Status Card */}
             <Card className="p-6">

@@ -87,14 +87,15 @@ services:
     networks:
       - dno-crawler
 
-  # Background Worker
-  worker:
+  # Crawl Worker - Handles discovery and downloading (steps 0-3)
+  # IMPORTANT: Only run ONE crawl worker to ensure polite crawling!
+  worker-crawl:
     build:
       context: ./backend
       dockerfile: Dockerfile
-    container_name: dno-crawler-worker
+    container_name: dno-crawler-worker-crawl
     restart: unless-stopped
-    command: arq app.jobs.WorkerSettings
+    command: arq app.jobs.CrawlWorkerSettings
     stop_signal: SIGINT # arq handles SIGINT more gracefully than SIGTERM
     stop_grace_period: 30s # Give more time for job completion
     user: "0:0"
@@ -104,6 +105,37 @@ services:
       - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
       - REDIS_URL=redis://redis:6379/0
       - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - STORAGE_PATH=/data
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app:ro,z
+      - ./data:/data:rw,z
+    networks:
+      - dno-crawler
+
+  # Extract Worker - Handles extraction, validation, finalization (steps 4-6)
+  # Can run multiple instances safely since no external HTTP requests
+  worker-extract:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: dno-crawler-worker-extract
+    restart: unless-stopped
+    command: arq app.jobs.ExtractWorkerSettings
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    user: "0:0"
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+      - OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
       - STORAGE_PATH=/data
     depends_on:
       db:

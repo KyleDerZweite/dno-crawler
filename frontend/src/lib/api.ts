@@ -332,12 +332,15 @@ export interface Job {
   dno_name?: string;
   year: number;
   data_type: string;
+  job_type?: 'full' | 'crawl' | 'extract';
   status: "pending" | "running" | "completed" | "failed" | "cancelled";
   progress: number;
   current_step?: string;
   error_message?: string;
   triggered_by?: string;
   priority: number;
+  parent_job_id?: string;
+  child_job_id?: string;
   started_at?: string;
   completed_at?: string;
   created_at: string;
@@ -377,6 +380,16 @@ export interface JobDetails extends Job {
   updated_at?: string;
   steps: JobStep[];
   extraction_log?: ExtractionLog;
+  parent_job?: {
+    id: string;
+    job_type: string;
+    status: string;
+  };
+  child_job?: {
+    id: string;
+    job_type: string;
+    status: string;
+  };
 }
 
 // User info response from /auth/me endpoint
@@ -514,8 +527,13 @@ export const api = {
 
     async triggerCrawl(
       dno_id: string,
-      payload: { year: number; data_type?: 'all' | 'netzentgelte' | 'hlzf'; priority?: number }
-    ): Promise<ApiResponse<{ job_id: string }>> {
+      payload: { 
+        year: number; 
+        data_type?: 'all' | 'netzentgelte' | 'hlzf'; 
+        priority?: number;
+        job_type?: 'full' | 'crawl' | 'extract';
+      }
+    ): Promise<ApiResponse<{ job_id: string; job_type: string }>> {
       const { data } = await apiClient.post(`/dnos/${dno_id}/crawl`, payload);
       return data;
     },

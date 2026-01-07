@@ -57,8 +57,9 @@ export function DNODetailPage() {
     const queryClient = useQueryClient();
     const { toast } = useToast();
 
-    // Filter state - default to 2024
-    const [yearFilter, setYearFilter] = useState<number[]>([2024]);
+    // Filter state - will be set dynamically based on available data
+    const [yearFilter, setYearFilter] = useState<number[]>([]);
+    const [yearFilterInitialized, setYearFilterInitialized] = useState(false);
     const [voltageLevelFilter, setVoltageLevelFilter] = useState<string[]>([]);
 
     // Dropdown menu state
@@ -82,6 +83,7 @@ export function DNODetailPage() {
     const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
     const [crawlYears, setCrawlYears] = useState<number[]>(DEFAULT_CRAWL_YEARS);
     const [crawlDataType, setCrawlDataType] = useState<'all' | 'netzentgelte' | 'hlzf'>('all');
+    const [crawlJobType, setCrawlJobType] = useState<'full' | 'crawl' | 'extract'>('full');
     const [showAdvancedCrawl, setShowAdvancedCrawl] = useState(false);
 
     // Edit DNO metadata dialog state
@@ -191,14 +193,22 @@ export function DNODetailPage() {
     });
 
     const triggerCrawlMutation = useMutation({
-        mutationFn: async ({ years, dataType }: { years: number[]; dataType: 'all' | 'netzentgelte' | 'hlzf' }) => {
+        mutationFn: async ({ years, dataType, jobType }: { 
+            years: number[]; 
+            dataType: 'all' | 'netzentgelte' | 'hlzf';
+            jobType: 'full' | 'crawl' | 'extract';
+        }) => {
             // When 'all' is selected, create separate jobs for netzentgelte and hlzf
             const typesToCrawl = dataType === 'all' ? ['netzentgelte', 'hlzf'] as const : [dataType];
             const results = [];
 
             for (const year of years) {
                 for (const type of typesToCrawl) {
-                    const result = await api.dnos.triggerCrawl(numericId!, { year, data_type: type });
+                    const result = await api.dnos.triggerCrawl(numericId!, { 
+                        year, 
+                        data_type: type,
+                        job_type: jobType,
+                    });
                     results.push(result);
                 }
             }
@@ -206,8 +216,10 @@ export function DNODetailPage() {
         },
         onSuccess: (results, variables) => {
             const jobCount = results.length;
+            const jobTypeLabel = variables.jobType === 'full' ? 'Full' : 
+                                 variables.jobType === 'crawl' ? 'Crawl' : 'Extract';
             toast({
-                title: "Crawl triggered",
+                title: `${jobTypeLabel} job${jobCount > 1 ? 's' : ''} triggered`,
                 description: `${jobCount} job${jobCount > 1 ? 's' : ''} queued for years: ${variables.years.join(', ')}`,
             });
             queryClient.invalidateQueries({ queryKey: ["dno-jobs", numericId] });
@@ -322,6 +334,29 @@ export function DNODetailPage() {
             voltageLevels: Array.from(voltageLevels).sort(),
         };
     }, [dnoData]);
+
+    // Set initial year filter based on available data
+    // Priority: 2024 if available, otherwise latest year, or only year if just one
+    useEffect(() => {
+        if (yearFilterInitialized || filterOptions.years.length === 0) return;
+        
+        const availableYears = filterOptions.years;
+        let defaultYear: number;
+        
+        if (availableYears.includes(2024)) {
+            // Prefer 2024 if available
+            defaultYear = 2024;
+        } else if (availableYears.length === 1) {
+            // Only one year available, use it
+            defaultYear = availableYears[0];
+        } else {
+            // Use the latest year (array is sorted desc)
+            defaultYear = availableYears[0];
+        }
+        
+        setYearFilter([defaultYear]);
+        setYearFilterInitialized(true);
+    }, [filterOptions.years, yearFilterInitialized]);
 
     // Calculate data completeness
     // Expected: 5 voltage levels × 2 data types × 5 years (2022-2026) = 50 rows total
@@ -741,24 +776,65 @@ export function DNODetailPage() {
                                     )}
                                 </button>
                                 {showAdvancedCrawl && (
-                                    <div className="p-3 border-t space-y-3">
-                                        <label className="text-sm font-medium">Data Type</label>
-                                        <div className="flex gap-2">
-                                            {(['all', 'netzentgelte', 'hlzf'] as const).map((type) => (
-                                                <button
-                                                    key={type}
-                                                    type="button"
-                                                    onClick={() => setCrawlDataType(type)}
-                                                    className={cn(
-                                                        "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
-                                                        crawlDataType === type
-                                                            ? "bg-primary text-primary-foreground border-primary"
-                                                            : "bg-background border-input hover:bg-muted"
-                                                    )}
-                                                >
-                                                    {type === 'all' ? 'All' : type === 'netzentgelte' ? 'Netzentgelte' : 'HLZF'}
-                                                </button>
-                                            ))}
+                                    <div className="p-3 border-t space-y-4">
+                                        {/* Job Type Selection */}
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Job Type</label>
+                                            <div className="flex flex-wrap gap-2">
+                                                {([
+                                                    { value: 'full', label: 'Full Pipeline', desc: 'Crawl + Extract' },
+                                                    { value: 'crawl', label: 'Crawl Only', desc: 'Download file' },
+                                                    { value: 'extract', label: 'Extract Only', desc: 'Process existing file' },
+                                                ] as const).map((opt) => (
+                                                    <button
+                                                        key={opt.value}
+                                                        type="button"
+                                                        onClick={() => setCrawlJobType(opt.value)}
+                                                        className={cn(
+                                                            "flex flex-col items-start px-3 py-2 rounded-md border text-sm transition-colors",
+                                                            crawlJobType === opt.value
+                                                                ? "bg-primary text-primary-foreground border-primary"
+                                                                : "bg-background border-input hover:bg-muted"
+                                                        )}
+                                                    >
+                                                        <span className="font-medium">{opt.label}</span>
+                                                        <span className={cn(
+                                                            "text-xs",
+                                                            crawlJobType === opt.value 
+                                                                ? "text-primary-foreground/70" 
+                                                                : "text-muted-foreground"
+                                                        )}>{opt.desc}</span>
+                                                    </button>
+                                                ))}
+                                            </div>
+                                            {crawlJobType === 'extract' && (
+                                                <p className="text-xs text-muted-foreground flex items-center gap-1">
+                                                    <Info className="w-3 h-3" />
+                                                    Requires an existing downloaded file for the selected year/type
+                                                </p>
+                                            )}
+                                        </div>
+                                        
+                                        {/* Data Type Selection */}
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Data Type</label>
+                                            <div className="flex gap-2">
+                                                {(['all', 'netzentgelte', 'hlzf'] as const).map((type) => (
+                                                    <button
+                                                        key={type}
+                                                        type="button"
+                                                        onClick={() => setCrawlDataType(type)}
+                                                        className={cn(
+                                                            "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
+                                                            crawlDataType === type
+                                                                ? "bg-primary text-primary-foreground border-primary"
+                                                                : "bg-background border-input hover:bg-muted"
+                                                        )}
+                                                    >
+                                                        {type === 'all' ? 'All' : type === 'netzentgelte' ? 'Netzentgelte' : 'HLZF'}
+                                                    </button>
+                                                ))}
+                                            </div>
                                         </div>
                                     </div>
                                 )}
@@ -772,7 +848,11 @@ export function DNODetailPage() {
                                     Cancel
                                 </Button>
                                 <Button
-                                    onClick={() => triggerCrawlMutation.mutate({ years: crawlYears, dataType: crawlDataType })}
+                                    onClick={() => triggerCrawlMutation.mutate({ 
+                                        years: crawlYears, 
+                                        dataType: crawlDataType,
+                                        jobType: crawlJobType,
+                                    })}
                                     disabled={triggerCrawlMutation.isPending || crawlYears.length === 0}
                                 >
                                     {triggerCrawlMutation.isPending ? (
@@ -782,7 +862,7 @@ export function DNODetailPage() {
                                         </>
                                     ) : (
                                         <>
-                                            Start {crawlJobCount} Job{crawlJobCount > 1 ? 's' : ''}
+                                            Start {crawlJobCount} {crawlJobType === 'full' ? '' : crawlJobType + ' '}Job{crawlJobCount > 1 ? 's' : ''}
                                         </>
                                     )}
                                 </Button>
@@ -1820,8 +1900,13 @@ export function DNODetailPage() {
                                 <div className="flex items-center gap-3">
                                     {getStatusIcon(job.status)}
                                     <div>
-                                        <p className="font-medium">
+                                        <p className="font-medium flex items-center gap-2">
                                             {job.year} - {job.data_type}
+                                            {job.job_type && job.job_type !== 'full' && (
+                                                <Badge variant="outline" className="text-xs">
+                                                    {job.job_type === 'crawl' ? 'Crawl Only' : 'Extract Only'}
+                                                </Badge>
+                                            )}
                                         </p>
                                         <p className="text-xs text-muted-foreground">
                                             {new Date(job.created_at).toLocaleString()}

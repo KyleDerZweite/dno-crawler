@@ -127,14 +127,28 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 
 async def init_db() -> None:
-    """Initialize database tables."""
+    """Initialize database tables.
+    
+    Handles concurrent startup of multiple workers safely by:
+    1. Using checkfirst=True to avoid creating existing objects
+    2. Catching duplicate key errors (race condition between check and create)
+    
+    If another worker creates tables between our check and create, we catch
+    the error and continue - the tables exist, which is what we wanted.
+    """
     try:
         async with engine.begin() as conn:
-            await conn.run_sync(Base.metadata.create_all)
+            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
         logger.info("Database tables initialized")
     except Exception as e:
-        logger.error("Failed to initialize database", error=str(e))
-        raise
+        error_str = str(e)
+        # Race condition: another worker created tables between our check and create
+        # This is fine - tables exist now, which is what we wanted
+        if "duplicate key value violates unique constraint" in error_str and "pg_type_typname_nsp_index" in error_str:
+            logger.info("Database tables already created by another worker")
+        else:
+            logger.error("Failed to initialize database", error=error_str)
+            raise
 
 
 async def close_db() -> None:

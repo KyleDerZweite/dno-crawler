@@ -67,14 +67,23 @@ async def list_jobs(
     else:
         dnos = {}
     
-    # Calculate queue position for pending jobs
+    # Calculate queue position for pending jobs (separate for crawl and extract queues)
     pending_jobs_query = (
-        select(CrawlJobModel.id)
+        select(CrawlJobModel.id, CrawlJobModel.job_type)
         .where(CrawlJobModel.status == "pending")
         .order_by(CrawlJobModel.created_at.asc())
     )
     pending_result = await db.execute(pending_jobs_query)
-    pending_order = {job_id: idx + 1 for idx, job_id in enumerate(pending_result.scalars().all())}
+    pending_order = {}
+    crawl_position = 0
+    extract_position = 0
+    for job_id, job_type in pending_result.fetchall():
+        if job_type in ("crawl", "full"):
+            crawl_position += 1
+            pending_order[job_id] = crawl_position
+        else:  # extract
+            extract_position += 1
+            pending_order[job_id] = extract_position
     
     return {
         "jobs": [
@@ -84,12 +93,15 @@ async def list_jobs(
                 "dno_name": dnos.get(job.dno_id).name if dnos.get(job.dno_id) else None,
                 "year": job.year,
                 "data_type": job.data_type,
+                "job_type": getattr(job, 'job_type', 'full'),  # Include job type
                 "status": job.status,
                 "progress": job.progress,
                 "current_step": job.current_step,
                 "error_message": job.error_message,
                 "triggered_by": job.triggered_by,
                 "queue_position": pending_order.get(job.id) if job.status == "pending" else None,
+                "parent_job_id": str(job.parent_job_id) if getattr(job, 'parent_job_id', None) else None,
+                "child_job_id": str(job.child_job_id) if getattr(job, 'child_job_id', None) else None,
                 "started_at": job.started_at.isoformat() if job.started_at else None,
                 "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                 "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -128,6 +140,28 @@ async def get_job(
     # Get DNO info
     dno = await db.get(DNOModel, job.dno_id)
     
+    # Get linked jobs info
+    parent_job_info = None
+    child_job_info = None
+    
+    if getattr(job, 'parent_job_id', None):
+        parent = await db.get(CrawlJobModel, job.parent_job_id)
+        if parent:
+            parent_job_info = {
+                "id": str(parent.id),
+                "job_type": getattr(parent, 'job_type', 'full'),
+                "status": parent.status,
+            }
+    
+    if getattr(job, 'child_job_id', None):
+        child = await db.get(CrawlJobModel, job.child_job_id)
+        if child:
+            child_job_info = {
+                "id": str(child.id),
+                "job_type": getattr(child, 'job_type', 'full'),
+                "status": child.status,
+            }
+    
     return APIResponse(
         success=True,
         data={
@@ -137,12 +171,15 @@ async def get_job(
             "dno_slug": dno.slug if dno else None,
             "year": job.year,
             "data_type": job.data_type,
+            "job_type": getattr(job, 'job_type', 'full'),
             "status": job.status,
             "progress": job.progress,
             "current_step": job.current_step,
             "error_message": job.error_message,
             "triggered_by": job.triggered_by,
             "priority": job.priority,
+            "parent_job": parent_job_info,
+            "child_job": child_job_info,
             "started_at": job.started_at.isoformat() if job.started_at else None,
             "completed_at": job.completed_at.isoformat() if job.completed_at else None,
             "created_at": job.created_at.isoformat() if job.created_at else None,

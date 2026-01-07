@@ -137,20 +137,32 @@ type CrawlJobItem = {
   dno_name?: string;
   year: number;
   data_type: string;
+  job_type?: 'full' | 'crawl' | 'extract';
   status: string;
   progress: number;
   current_step?: string;
   error_message?: string;
   queue_position?: number;
+  parent_job_id?: string;
+  child_job_id?: string;
   started_at?: string;
   completed_at?: string;
   created_at?: string;
+};
+
+// Job type badge config
+const jobTypeConfig: Record<string, { label: string; color: string }> = {
+  full: { label: 'Full', color: 'bg-purple-500/20 text-purple-600 border-purple-500/30' },
+  crawl: { label: 'Crawl', color: 'bg-orange-500/20 text-orange-600 border-orange-500/30' },
+  extract: { label: 'Extract', color: 'bg-teal-500/20 text-teal-600 border-teal-500/30' },
 };
 
 function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void }) {
   const status = job.status as keyof typeof statusConfig;
   const config = statusConfig[status] || statusConfig["pending"];
   const StatusIcon = config.icon;
+  const jobType = job.job_type || 'full';
+  const typeConfig = jobTypeConfig[jobType] || jobTypeConfig.full;
 
   return (
     <Card
@@ -167,6 +179,9 @@ function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void
               <span className="font-semibold">{job.dno_name || `Job ${job.job_id.slice(0, 8)}`}</span>
               <Badge variant="outline">{job.year}</Badge>
               <Badge variant="secondary">{job.data_type}</Badge>
+              <Badge className={cn("text-xs", typeConfig.color)} variant="outline">
+                {typeConfig.label}
+              </Badge>
             </div>
             <div className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
               {job.queue_position && (
@@ -175,6 +190,16 @@ function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void
                 </Badge>
               )}
               <span>{job.current_step || "Waiting to start"}</span>
+              {job.child_job_id && (
+                <Badge variant="outline" className="text-xs">
+                  → Extract #{job.child_job_id}
+                </Badge>
+              )}
+              {job.parent_job_id && (
+                <Badge variant="outline" className="text-xs">
+                  ← Crawl #{job.parent_job_id}
+                </Badge>
+              )}
             </div>
           </div>
         </div>
