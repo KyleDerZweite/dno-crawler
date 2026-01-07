@@ -38,10 +38,48 @@ export function Layout() {
   const location = useLocation()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [sidebarExpanded, setSidebarExpanded] = useState(true)
+  const [isManualToggle, setIsManualToggle] = useState(false)
 
   const allNavigation = isAdmin()
     ? [...navigation, ...adminNavigation]
     : navigation
+
+  // Responsive sidebar: auto-collapse on medium screens, expand on large
+  useEffect(() => {
+    const handleResize = () => {
+      const width = window.innerWidth
+      // Only auto-adjust if user hasn't manually toggled
+      if (!isManualToggle) {
+        if (width >= 1280) {
+          // xl and above: expanded
+          setSidebarExpanded(true)
+        } else if (width >= 1024) {
+          // lg (1024-1279): collapsed
+          setSidebarExpanded(false)
+        }
+      }
+    }
+
+    // Initial check
+    handleResize()
+
+    window.addEventListener('resize', handleResize)
+    return () => window.removeEventListener('resize', handleResize)
+  }, [isManualToggle])
+
+  // Reset manual toggle when crossing breakpoints significantly
+  useEffect(() => {
+    const handleBreakpointReset = () => {
+      const width = window.innerWidth
+      // Reset manual toggle if we go to mobile or back to xl+
+      if (width < 1024 || width >= 1280) {
+        setIsManualToggle(false)
+      }
+    }
+
+    window.addEventListener('resize', handleBreakpointReset)
+    return () => window.removeEventListener('resize', handleBreakpointReset)
+  }, [])
 
   // Derive page title for document and header
   const path = location.pathname;
@@ -112,7 +150,10 @@ export function Layout() {
           
           {/* Collapse button - desktop only */}
           <button
-            onClick={() => setSidebarExpanded(!sidebarExpanded)}
+            onClick={() => {
+              setIsManualToggle(true)
+              setSidebarExpanded(!sidebarExpanded)
+            }}
             className={cn(
               "hidden lg:flex items-center justify-center w-6 h-6 rounded-md text-muted-foreground hover:text-foreground hover:bg-secondary transition-colors",
               !sidebarExpanded && "absolute -right-3 top-5 bg-card border border-border shadow-sm"
@@ -149,7 +190,7 @@ export function Layout() {
                     key={item.name}
                     to={item.href}
                     className={cn(
-                      "flex items-center rounded-md transition-colors px-3 py-2.5",
+                      "flex items-center rounded-md transition-colors px-3 py-2.5 relative",
                       sidebarExpanded ? "justify-start gap-3" : "justify-center",
                       isActive
                         ? "bg-secondary text-foreground font-medium"
@@ -157,6 +198,9 @@ export function Layout() {
                     )}
                     onClick={() => setSidebarOpen(false)}
                   >
+                    {isActive && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-primary/40 rounded-full" />
+                    )}
                     <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
                       <item.icon className="h-4 w-4" />
                     </span>
@@ -191,7 +235,7 @@ export function Layout() {
                   <Link
                     to="/settings"
                     className={cn(
-                      "flex items-center rounded-md transition-colors px-3 py-2.5",
+                      "flex items-center rounded-md transition-colors px-3 py-2.5 relative",
                       sidebarExpanded ? "justify-start gap-3" : "justify-center",
                       isSettingsActive
                         ? "bg-secondary text-foreground font-medium"
@@ -199,6 +243,9 @@ export function Layout() {
                     )}
                     onClick={() => setSidebarOpen(false)}
                   >
+                    {isSettingsActive && (
+                      <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-primary/40 rounded-full" />
+                    )}
                     <span className="flex-shrink-0 w-5 h-5 flex items-center justify-center">
                       <Settings className="h-4 w-4" />
                     </span>
