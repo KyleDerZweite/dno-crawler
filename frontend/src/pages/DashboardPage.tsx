@@ -13,10 +13,12 @@ import {
   Activity,
   TrendingUp,
   Clock,
-  Search
+  Search,
+  ArrowRight
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
 
 export function DashboardPage() {
   const { user } = useAuth();
@@ -38,16 +40,16 @@ export function DashboardPage() {
     <div className="space-y-8">
       {/* Welcome Section */}
       <div>
-        <h1 className="text-3xl font-bold text-foreground">
-          Welcome back{user?.name ? `, ${user.name}` : ""}!
+        <h1 className="text-2xl font-semibold text-foreground tracking-tight">
+          Welcome back{user?.name ? `, ${user.name}` : ""}
         </h1>
-        <p className="text-muted-foreground mt-2">
+        <p className="text-muted-foreground mt-1 text-sm">
           Here's an overview of your DNO Crawler instance
         </p>
       </div>
 
       {/* Stats Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <StatCard
           icon={Database}
           title="Total DNOs"
@@ -80,27 +82,28 @@ export function DashboardPage() {
       </div>
 
       {/* Quick Actions */}
-      <Card className="p-6">
-        <CardHeader className="p-0 pb-4">
-          <CardTitle className="text-lg">Quick Actions</CardTitle>
+      <Card>
+        <CardHeader className="pb-4">
+          <CardTitle className="text-base font-medium">Quick Actions</CardTitle>
         </CardHeader>
-        <CardContent className="p-0 flex flex-wrap gap-4">
-          <Button asChild>
-            <Link to="/search" className="flex items-center gap-2">
+        <CardContent className="flex flex-wrap gap-3">
+          <Button asChild className="gap-2">
+            <Link to="/search">
               <Search className="h-4 w-4" />
               Search DNOs
+              <ArrowRight className="h-3.5 w-3.5 ml-1 opacity-60" />
             </Link>
           </Button>
-          <Button variant="outline" asChild>
-            <Link to="/dnos" className="flex items-center gap-2">
+          <Button variant="secondary" asChild className="gap-2">
+            <Link to="/dnos">
               <Database className="h-4 w-4" />
               View DNOs
             </Link>
           </Button>
-          <Button variant="outline" asChild>
+          <Button variant="secondary" asChild>
             <Link to="/jobs">View Jobs</Link>
           </Button>
-          <Button variant="outline" asChild>
+          <Button variant="ghost" asChild className="text-muted-foreground">
             <Link to="/settings">Settings</Link>
           </Button>
         </CardContent>
@@ -125,22 +128,34 @@ function StatCard({
   accent?: boolean
 }) {
   return (
-    <Card className={`p-6 ${accent ? 'bg-gradient-to-br from-primary/10 to-transparent' : ''}`}>
+    <Card className={cn(
+      "p-6 transition-all duration-200 hover:border-emerald-400/30",
+      accent && "bg-gradient-to-br from-primary/10 to-transparent"
+    )}>
       <div className="flex items-center gap-4">
-        <div className={`p-3 rounded-xl ${accent ? 'bg-primary/20' : 'bg-secondary'}`}>
-          <Icon className={`h-6 w-6 ${accent ? 'text-primary' : 'text-muted-foreground'}`} />
+        <div className={cn(
+          "p-3 rounded-lg",
+          accent ? "bg-primary/15" : "bg-secondary"
+        )}>
+          <Icon className={cn(
+            "h-5 w-5",
+            accent ? "text-primary" : "text-muted-foreground"
+          )} />
         </div>
-        <div>
-          <p className="text-sm text-muted-foreground">{title}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-sm text-muted-foreground font-medium">{title}</p>
           {isLoading ? (
-            <Skeleton className="h-8 w-24 my-1" />
+            <Skeleton className="h-7 w-20 my-1" />
           ) : (
-            <p className={`text-2xl font-bold ${accent ? 'text-primary' : 'text-foreground'}`}>
+            <p className={cn(
+              "text-2xl font-semibold tracking-tight",
+              accent ? "text-primary" : "text-foreground"
+            )}>
               {value}
             </p>
           )}
           {subtitle && (
-            <p className="text-xs text-muted-foreground">{subtitle}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{subtitle}</p>
           )}
         </div>
       </div>

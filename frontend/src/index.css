@@ -1,58 +1,66 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@100..900&family=Space+Grotesk:wght@300..700&display=swap');
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 240 10% 4%;  /* #09090b - Zinc 950 */
-    --foreground: 0 0% 98%;    /* #fafafa */
+    --radius: 0.75rem;
     
-    --card: 240 6% 10%;        /* #18181b - Zinc 900 */
+    /* Dark theme - Pangolin inspired with softer backgrounds */
+    --background: 240 6% 10%;     /* Softer dark - not true black */
+    --foreground: 0 0% 98%;       /* #fafafa */
+    
+    --card: 240 5% 13%;           /* Slightly elevated from background */
     --card-foreground: 0 0% 98%;
 
-    --popover: 240 6% 10%;
+    --popover: 240 5% 13%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 262 83% 58%;    /* #8b5cf6 - Violet 500 */
+    --primary: 262 83% 58%;       /* #8b5cf6 - Violet 500 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 4% 16%;   /* #27272a - Zinc 800 */
+    --secondary: 240 5% 17%;      /* Subtle elevation */
     --secondary-foreground: 0 0% 98%;
 
-    --muted: 240 4% 16%;
-    --muted-foreground: 240 5% 65%;
+    --muted: 240 5% 17%;
+    --muted-foreground: 240 5% 64%;
 
-    --accent: 262 83% 58%;
+    --accent: 262 83% 58%;        /* Violet accent */
     --accent-foreground: 0 0% 100%;
     
-    --success: 167 68% 45%;    /* #25c2a0 - Teal */
+    --success: 152 69% 45%;       /* Emerald */
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;     /* #f59e0b - Amber */
+    --warning: 38 92% 50%;        /* Amber */
     --warning-foreground: 0 0% 0%;
 
-    --error: 0 62.8% 50%;      /* Red */
+    --error: 0 84% 60%;           /* Red */
     --error-foreground: 0 0% 100%;
 
-    --destructive: 0 62.8% 30.6%;
+    --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 240 4% 16%;
-    --input: 240 4% 16%;
-    --ring: 262 83% 58%;
+    --border: 240 4% 20%;
+    --input: 240 4% 20%;
+    --ring: 262 83% 58%;          /* Violet ring */
     
-    --radius: 0.5rem;
+    /* Sidebar - same as card for unified look */
+    --sidebar: 240 5% 11%;
+    --sidebar-foreground: 240 5% 64%;
+    --sidebar-primary: 262 83% 58%;   /* Violet */
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 240 5% 17%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 4% 18%;
 
-    /* Custom Variables */
-    --sidebar: 0 0% 0%;        /* #000000 - Black */
-    --sidebar-foreground: 240 5% 65%;
-
-    /* DNO specific colors (adapted from mana colors for diversity) */
-    --chart-1: 210 100% 50%;   /* Blue */
-    --chart-2: 142 71% 45%;    /* Green */
-    --chart-3: 0 72% 51%;      /* Red */
-    --chart-4: 43 96% 56%;     /* Gold */
-    --chart-5: 0 0% 60%;       /* Gray */
+    /* Chart colors */
+    --chart-1: 262 83% 58%;       /* Violet primary */
+    --chart-2: 152 69% 45%;       /* Emerald */
+    --chart-3: 217 91% 60%;       /* Blue */
+    --chart-4: 43 96% 56%;        /* Gold */
+    --chart-5: 0 72% 51%;         /* Red */
   }
 }
 
@@ -60,8 +68,20 @@
   * {
     @apply border-border;
   }
+  
+  html {
+    font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
   body {
     @apply bg-background text-foreground;
+  }
+  
+  h1, h2, h3, h4, h5, h6 {
+    font-family: 'Space Grotesk', 'Inter', sans-serif;
+    letter-spacing: -0.025em;
   }
 }
 
@@ -110,20 +130,29 @@
     background-color: hsl(var(--error));
   }
 
-  .card-hover-glow {
-    @apply transition-all duration-200;
+  /* Pangolin-style hover effects */
+  .nav-item {
+    @apply flex items-center rounded-md transition-colors px-2 py-2;
+  }
+  
+  .nav-item-active {
+    @apply bg-secondary font-medium text-foreground;
+  }
+  
+  .nav-item-inactive {
+    @apply text-muted-foreground hover:bg-secondary/80 hover:text-foreground;
   }
 
-  .card-hover-glow:hover {
-    box-shadow: 0 0 20px rgba(139, 92, 246, 0.1);
+  .card-hover {
+    @apply transition-all duration-200 hover:border-border/80;
   }
 
   .shadow-glow {
-    box-shadow: 0 0 15px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 15px hsl(var(--primary) / 0.2);
   }
 
   .shadow-glow-lg {
-    box-shadow: 0 0 25px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 0 25px hsl(var(--primary) / 0.3);
   }
 
   .text-gradient {
