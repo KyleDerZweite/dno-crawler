@@ -11,111 +11,16 @@ from typing import Any
 import structlog
 import pdfplumber
 
+# Import voltage level normalization from shared constants
+from app.core.constants import (
+    VOLTAGE_LEVEL_ALIASES,
+    STANDARD_DNO_LEVELS,
+    SMALL_DNO_LEVELS,
+    TSO_LEVELS,
+    normalize_voltage_level,
+)
+
 logger = structlog.get_logger()
-
-
-# =============================================================================
-# Voltage Level Normalization
-# =============================================================================
-# Maps various voltage level naming conventions to standardized abbreviations.
-# Some DNOs (especially small municipal utilities) use non-standard naming.
-
-VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
-    # Standard German names → abbreviations
-    "hochspannung": "HS",
-    "hochspannungsnetz": "HS",
-    "inhs": "HS",
-    "hs": "HS",
-    
-    "mittelspannung": "MS",
-    "mittelspannungsnetz": "MS",
-    "inms": "MS",
-    "ms": "MS",
-    # Non-standard (some municipal utilities use MSP)
-    "msp": "MS",
-    "mittelspannung (msp)": "MS",
-    
-    "niederspannung": "NS",
-    "niederspannungsnetz": "NS",
-    "inns": "NS",
-    "ns": "NS",
-    # Non-standard (some municipal utilities use NSP)
-    "nsp": "NS",
-    "niederspannung (nsp)": "NS",
-    
-    # Umspannung levels
-    "umspannung hoch-/mittelspannung": "HS/MS",
-    "umspannung hs/ms": "HS/MS",
-    "umspannung zur mittelspannung": "HS/MS",
-    "aushs": "HS/MS",
-    "hs/ms": "HS/MS",
-    
-    "umspannung mittel-/niederspannung": "MS/NS",
-    "umspannung ms/ns": "MS/NS",
-    "umspannung zur niederspannung": "MS/NS",
-    "ausms": "MS/NS",
-    "ms/ns": "MS/NS",
-    # Non-standard municipal naming
-    "msp/nsp": "MS/NS",
-    "umspannung msp/nsp": "MS/NS",
-    
-    # Höchstspannung (TSO level - rare but possible)
-    "höchstspannung": "HöS",
-    "höchstspannungsnetz": "HöS",
-    "hös": "HöS",
-    "umspannung höchst-/hochspannung": "HöS/HS",
-    "umspannung hös/hs": "HöS/HS",
-    "aushös": "HöS/HS",
-    "hös/hs": "HöS/HS",
-}
-
-# Standard voltage levels for validation
-STANDARD_DNO_LEVELS = ["HS", "HS/MS", "MS", "MS/NS", "NS"]  # 5 levels
-SMALL_DNO_LEVELS = ["MS", "MS/NS", "NS"]  # 3 levels (no high voltage)
-TSO_LEVELS = ["HöS", "HöS/HS", "HS", "HS/MS", "MS"]  # 5 levels (no low voltage)
-
-
-def normalize_voltage_level(level: str) -> str:
-    """
-    Normalize voltage level name to standard abbreviation.
-    
-    Args:
-        level: Raw voltage level string from document
-        
-    Returns:
-        Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS, HöS, HöS/HS)
-    """
-    if not level:
-        return level
-    
-    # Clean and lowercase for matching
-    cleaned = level.strip().lower()
-    cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
-    cleaned = re.sub(r'[()]', '', cleaned)  # Remove parentheses
-    cleaned = cleaned.strip()
-    
-    # Direct match
-    if cleaned in VOLTAGE_LEVEL_ALIASES:
-        return VOLTAGE_LEVEL_ALIASES[cleaned]
-    
-    # Partial match - check if any key is contained in the level
-    for alias, standard in VOLTAGE_LEVEL_ALIASES.items():
-        if alias in cleaned:
-            return standard
-    
-    # If no match found, try to extract useful info
-    # Check for compound levels first (with /)
-    if "/" in cleaned:
-        parts = cleaned.split("/")
-        if len(parts) == 2:
-            # Try to normalize each part
-            left = normalize_voltage_level(parts[0].strip())
-            right = normalize_voltage_level(parts[1].strip())
-            if left and right and len(left) <= 3 and len(right) <= 3:
-                return f"{left}/{right}"
-    
-    # Return original with first letter capitalized if no match
-    return level.strip()
 
 
 def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:

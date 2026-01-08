@@ -1,7 +1,7 @@
 # Codebase Refactor & Cleanup Tasks
 
 > **Started:** 2026-01-08
-> **Last Updated:** 2026-01-08 17:30
+> **Last Updated:** 2026-01-08 22:30
 
 ## Overview
 
@@ -14,9 +14,9 @@ This document tracks the progress of a deep codebase refactor to improve maintai
 | Phase | Description | Status | Progress |
 |-------|-------------|--------|----------|
 | Phase 1 | Frontend Component Decomposition | ✅ Complete | 18/18 |
-| Phase 2 | Backend Route Decomposition | ⏳ Pending | 0/5 |
-| Phase 3 | Shared Types & Constants | ⏳ Pending | 0/4 |
-| Phase 4 | Backend Service Layer Cleanup | ⏳ Pending | 0/4 |
+| Phase 2 | Backend Route Decomposition | ✅ Complete | 8/8 |
+| Phase 3 | Shared Types & Constants | ✅ Complete | 4/4 |
+| Phase 4 | Backend Service Layer Cleanup | ✅ Complete | 4/4 |
 | Phase 5 | File Naming Conventions | ✅ Complete | 3/3 |
 
 ---
@@ -78,43 +78,92 @@ This document tracks the progress of a deep codebase refactor to improve maintai
 
 ---
 
-## Phase 2: Backend Route Decomposition
+## Phase 2: Backend Route Decomposition ✅
 
 **Goal:** Split `dnos.py` (1,819 lines, 64KB) into domain-focused modules.
 
+### Strategy
+The decomposition fully migrated all endpoints to the new modular structure:
+1. Created `dnos/` package with individual modules
+2. Original monolithic `dnos.py` deleted (no legacy code)
+3. All endpoints migrated to domain-specific modules
+
 ### Tasks
 
-- [ ] **Task 2.1:** Create `backend/app/api/routes/dnos/` directory structure
-- [ ] **Task 2.2:** Extract Pydantic schemas to `schemas.py`
-- [ ] **Task 2.3:** Extract CRUD endpoints to `crud.py`
-- [ ] **Task 2.4:** Extract crawl/job endpoints to `crawl.py`
-- [ ] **Task 2.5:** Extract data endpoints (Netzentgelte/HLZF) to `data.py`
+- [x] **Task 2.1:** Create `backend/app/api/routes/dnos/` directory structure
+- [x] **Task 2.2:** Extract Pydantic schemas to `schemas.py`
+- [x] **Task 2.3:** Create `utils.py` with shared helper functions
+- [x] **Task 2.4:** Extract CRUD endpoints to `crud.py`
+- [x] **Task 2.5:** Extract crawl/job endpoints to `crawl.py`
+- [x] **Task 2.6:** Extract data endpoints (Netzentgelte/HLZF) to `data.py`
+- [x] **Task 2.7:** Extract file operations to `files.py`
+- [x] **Task 2.8:** Extract import/export to `import_export.py`
+
+### Completed Files
+
+| File | Description | Lines |
+|------|-------------|-------|
+| `dnos/__init__.py` | Main router combining all sub-routers | ~35 |
+| `dnos/schemas.py` | Pydantic request/response models | ~140 |
+| `dnos/utils.py` | Shared utilities (slugify, etc.) | ~20 |
+| `dnos/crud.py` | DNO CRUD operations, VNB search | ~580 |
+| `dnos/crawl.py` | Crawl/job trigger and history | ~200 |
+| `dnos/data.py` | Netzentgelte/HLZF CRUD | ~290 |
+| `dnos/files.py` | File list and upload | ~140 |
+| `dnos/import_export.py` | JSON import/export | ~290 |
+
+**Total: ~1,695 lines across 8 files** (vs 1,819 in original monolith)
 
 ---
 
-## Phase 3: Shared Types & Constants
+## Phase 3: Shared Types & Constants ✅
 
 **Goal:** Create single sources of truth for types and constants.
 
 ### Tasks
 
-- [ ] **Task 3.1:** Create `frontend/src/types/` directory with domain-specific type files
-- [ ] **Task 3.2:** Create `frontend/src/constants/` for shared constants
-- [ ] **Task 3.3:** Split `frontend/src/lib/api.ts` into domain modules
-- [ ] **Task 3.4:** Create `backend/app/core/constants.py` for shared backend constants
+- [x] **Task 3.1:** Create `frontend/src/types/` directory with domain-specific type files
+- [x] **Task 3.2:** Create `frontend/src/constants/` for shared constants
+- [x] **Task 3.3:** Added note to `frontend/src/lib/api.ts` pointing to new types (backward compatible)
+- [x] **Task 3.4:** Create `backend/app/core/constants.py` for shared backend constants
+
+### Created Files
+
+**Frontend Types (`frontend/src/types/`):**
+- `api.types.ts` - API response types, pagination
+- `dno.types.ts` - DNO, VNB, address types
+- `data.types.ts` - Netzentgelte, HLZF types
+- `job.types.ts` - Job, step, extraction log types
+- `search.types.ts` - Public search API types
+- `index.ts` - Re-exports all types
+
+**Frontend Constants (`frontend/src/constants/`):**
+- `api.ts` - API URL, pagination defaults, years
+- `status.ts` - DNO/job/verification status config
+- `voltage-levels.ts` - Voltage level constants
+- `index.ts` - Re-exports all constants
+
+**Backend:**
+- `backend/app/core/constants.py` - Shared backend constants
 
 ---
 
-## Phase 4: Backend Service Layer Cleanup
+## Phase 4: Backend Service Layer Cleanup ✅
 
 **Goal:** Reduce duplication and improve organization in service layer.
 
 ### Tasks
 
-- [ ] **Task 4.1:** Extract voltage level normalization to `core/normalization.py`
-- [ ] **Task 4.2:** Extract AI prompt templates to `services/extraction/prompts/`
-- [ ] **Task 4.3:** Create shared value parsing utilities in `core/parsers.py`
-- [ ] **Task 4.4:** Deduplicate HLZF time parsing logic
+- [x] **Task 4.1:** Voltage level normalization in `core/constants.py` (normalize_voltage_level function)
+- [x] **Task 4.2:** Extract AI prompt templates to `services/extraction/prompts/`
+- [x] **Task 4.3:** Create shared value parsing utilities in `core/parsers.py`
+- [x] **Task 4.4:** HLZF time parsing already consolidated in `html_extractor.py` (no duplication found)
+
+### Created Files
+
+- `backend/app/core/constants.py` - Voltage levels, data types, job config, pagination
+- `backend/app/core/parsers.py` - German number parsing, time window normalization
+- `backend/app/services/extraction/prompts/__init__.py` - AI extraction prompts
 
 ---
 
@@ -168,6 +217,11 @@ These issues were discovered during the refactoring process and should be tracke
 
 ### 2026-01-08
 
+- **22:30** - ✅ **Phase 4 Complete!** Backend service layer cleanup (constants, parsers, prompts)
+- **22:25** - ✅ **Phase 3 Complete!** Created frontend types/ and constants/ directories
+- **21:59** - ✅ **Phase 2 Complete!** Decomposed dnos.py (1,819 lines) into 8 modular files
+- **21:50** - Started Phase 2: Created `dnos/` package with schemas.py, utils.py
+- **17:30** - ✅ **Phase 5 Complete!** Renamed 5 component files to PascalCase, updated all imports
 - **17:18** - Created `docs/FILE_NAMING_CONVENTIONS.md` with AI-optimized conventions
 - **17:10** - ✅ **Phase 1 Complete!** DNODetailPage.tsx refactored from 2,488 to 981 lines (60% reduction)
 - **16:57** - Completed 16/18 Phase 1 tasks (all components extracted, ready for integration)

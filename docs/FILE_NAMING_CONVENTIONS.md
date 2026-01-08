@@ -288,53 +288,6 @@ app/{domain}/                      # snake_case for directory
 
 ---
 
-## Migration Guidelines
-
-### Files to Rename (Current Project)
-
-```yaml
-# Priority: HIGH - Inconsistent hook naming
-frontend/src/lib/use-auth.ts:
-  current: "use-auth.ts"
-  status: CORRECT ✓
-
-frontend/src/hooks/use-toast.ts:
-  current: "use-toast.ts"  
-  status: CORRECT ✓
-
-frontend/src/hooks/use-error-toast.ts:
-  current: "use-error-toast.ts"
-  status: CORRECT ✓
-
-# Priority: MEDIUM - Component naming
-frontend/src/components/verification-badge.tsx:
-  current: "verification-badge.tsx"
-  recommended: "VerificationBadge.tsx"
-  reason: "Components should use PascalCase"
-
-frontend/src/components/extraction-source-badge.tsx:
-  current: "extraction-source-badge.tsx"
-  recommended: "ExtractionSourceBadge.tsx"
-  reason: "Components should use PascalCase"
-
-frontend/src/lib/auth-callback.tsx:
-  current: "auth-callback.tsx"
-  recommended: "AuthCallback.tsx"
-  reason: "This is a component, should use PascalCase"
-
-frontend/src/lib/auth-provider.tsx:
-  current: "auth-provider.tsx"
-  recommended: "AuthProvider.tsx"
-  reason: "This is a component, should use PascalCase"
-
-frontend/src/lib/protected-route.tsx:
-  current: "protected-route.tsx"
-  recommended: "ProtectedRoute.tsx"
-  reason: "This is a component, should use PascalCase"
-```
-
----
-
 ## AI Agent Instructions
 
 When creating or modifying files in this project:

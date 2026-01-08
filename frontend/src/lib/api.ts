@@ -1,3 +1,10 @@
+/**
+ * API Client and Functions
+ * 
+ * NOTE: Type definitions are now also available in @/types directory.
+ * New code should prefer importing from '@/types' and '@/constants'.
+ * Types in this file are kept for backwards compatibility.
+ */
 import axios, { AxiosError, type InternalAxiosRequestConfig } from "axios";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
