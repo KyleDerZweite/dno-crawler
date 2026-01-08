@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,14 @@ import { Label } from "@/components/ui/label";
 import {
   Card,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import {
   Activity,
@@ -17,6 +25,7 @@ import {
   XCircle,
   AlertCircle,
   ChevronRight,
+  Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -33,7 +42,9 @@ const statusConfig: Record<JobStatus, { label: string; color: string; icon: Reac
 export function JobsPage() {
   const { isAdmin } = useAuth();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [jobToDelete, setJobToDelete] = useState<string | null>(null);
 
   const isAdminUser = isAdmin();
 
@@ -67,6 +78,19 @@ export function JobsPage() {
   // Detail view - navigate to job detail page
   const handleJobClick = (job: typeof jobs[0]) => {
     navigate(`/jobs/${job.job_id}`);
+  };
+
+  // Delete mutation
+  const deleteMutation = useMutation({
+    mutationFn: api.jobs.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setJobToDelete(null);
+    },
+  });
+
+  const handleDelete = (jobId: string) => {
+    deleteMutation.mutate(jobId);
   };
 
   return (
@@ -122,10 +146,32 @@ export function JobsPage() {
               key={job.job_id}
               job={job}
               onClick={() => handleJobClick(job)}
+              onDelete={() => setJobToDelete(job.job_id)}
             />
           ))}
         </div>
       )}
+
+      {/* Delete Confirmation Dialog */}
+      <Dialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Job</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete this job? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setJobToDelete(null)}>Cancel</Button>
+            <Button
+              variant="destructive"
+              onClick={() => jobToDelete && handleDelete(jobToDelete)}
+            >
+              Delete
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -157,7 +203,7 @@ const jobTypeConfig: Record<string, { label: string; color: string }> = {
   extract: { label: 'Extract', color: 'bg-teal-500/20 text-teal-600 border-teal-500/30' },
 };
 
-function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void }) {
+function CrawlJobCard({ job, onClick, onDelete }: { job: CrawlJobItem; onClick: () => void; onDelete: () => void }) {
   const status = job.status as keyof typeof statusConfig;
   const config = statusConfig[status] || statusConfig["pending"];
   const StatusIcon = config.icon;
@@ -205,13 +251,26 @@ function CrawlJobCard({ job, onClick }: { job: CrawlJobItem; onClick: () => void
         </div>
 
         <div className="flex items-center gap-4">
-          {job.created_at && (
-            <div className="text-right text-sm text-muted-foreground">
-              <div>{new Date(job.created_at).toLocaleDateString()}</div>
-              <div>{new Date(job.created_at).toLocaleTimeString()}</div>
-            </div>
-          )}
-          <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          <div className="flex items-center gap-2">
+            {job.created_at && (
+              <div className="text-right text-sm text-muted-foreground mr-2">
+                <div>{new Date(job.created_at).toLocaleDateString()}</div>
+                <div>{new Date(job.created_at).toLocaleTimeString()}</div>
+              </div>
+            )}
+            <Button
+              variant="ghost"
+              size="icon"
+              className="h-8 w-8 text-muted-foreground hover:text-destructive"
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <ChevronRight className="h-5 w-5 text-muted-foreground" />
+          </div>
         </div>
       </div>
     </Card>

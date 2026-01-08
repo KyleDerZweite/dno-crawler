@@ -836,3 +836,40 @@ async def cancel_bulk_extract(
         message=f"Cancelled {cancelled_count} pending bulk extraction jobs",
         data={"cancelled": cancelled_count},
     )
+
+
+@router.delete("/extract/bulk")
+async def delete_bulk_extract_jobs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Delete ALL bulk extraction jobs to reset progress.
+    
+    This effectively resets the 'Bulk Extraction Progress' bar.
+    It deletes jobs with BULK_EXTRACT_PRIORITY (2).
+    """
+    # Delete all jobs with bulk priority
+    query = select(CrawlJobModel).where(
+        CrawlJobModel.priority == BULK_EXTRACT_PRIORITY
+    )
+    result = await db.execute(query)
+    jobs = result.scalars().all()
+    
+    deleted_count = 0
+    for job in jobs:
+        await db.delete(job)
+        deleted_count += 1
+    
+    await db.commit()
+    
+    logger.info(
+        "bulk_extract_reset",
+        deleted_count=deleted_count,
+        admin=admin.email,
+    )
+    
+    return APIResponse(
+        success=True,
+        message=f"Deleted {deleted_count} bulk extraction jobs",
+        data={"deleted": deleted_count},
+    )

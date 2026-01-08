@@ -889,6 +889,15 @@ export const api = {
       const { data } = await apiClient.post("/admin/extract/bulk/cancel");
       return data;
     },
+
+    async resetBulkExtract(): Promise<
+      ApiResponse<{
+        deleted: number;
+      }>
+    > {
+      const { data } = await apiClient.delete("/admin/extract/bulk");
+      return data;
+    },
   },
 
   // Verification API - Data quality management

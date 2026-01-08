@@ -54,6 +54,7 @@ import {
   CheckCircle2,
   FileWarning,
   HardDrive,
+  Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
@@ -365,6 +366,14 @@ function CachedFilesSection() {
     },
   });
 
+  // Reset mutation (delete all bulk jobs)
+  const resetMutation = useMutation({
+    mutationFn: api.admin.resetBulkExtract,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+    },
+  });
+
   const filesData = filesResponse?.data;
   const bulkStatus = bulkStatusResponse?.data;
   const previewData = previewMutation.data?.data;
@@ -597,6 +606,21 @@ function CachedFilesSection() {
                       <XCircle className="mr-2 h-4 w-4" />
                     )}
                     Cancel Pending
+                  </Button>
+                )}
+                {!hasPendingJobs && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => resetMutation.mutate()}
+                    disabled={resetMutation.isPending}
+                  >
+                    {resetMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Trash2 className="mr-2 h-4 w-4" />
+                    )}
+                    Reset Progress
                   </Button>
                 )}
               </div>
