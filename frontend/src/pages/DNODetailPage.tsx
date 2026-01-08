@@ -452,20 +452,90 @@ export function DNODetailPage() {
         setYearFilterInitialized(true);
     }, [filterOptions.years, yearFilterInitialized]);
 
-    // Calculate data completeness
-    // Expected: 5 voltage levels × 2 data types × 5 years (2022-2026) = 50 rows total
+    // Calculate data completeness dynamically
+    // 50% weight for Netzentgelte + 50% weight for HLZF
+    // Based on actual years and voltage levels present (not fixed 50 datapoints)
     const dataCompleteness = useMemo(() => {
-        const netzentgelteCount = dnoData?.netzentgelte?.length || 0;
-        const hlzfCount = dnoData?.hlzf?.length || 0;
-        const totalRecords = netzentgelteCount + hlzfCount;
-        const expectedRecords = 50; // 5 voltage levels × 5 years × 2 data types
-        const percentage = expectedRecords > 0 ? Math.min((totalRecords / expectedRecords) * 100, 100) : 0;
-        return {
-            total: totalRecords,
-            expected: expectedRecords,
-            percentage: percentage,
+        const netzentgelte = dnoData?.netzentgelte || [];
+        const hlzf = dnoData?.hlzf || [];
+
+        // Get unique years that have any data
+        const allYears = new Set<number>();
+        netzentgelte.forEach(item => allYears.add(item.year));
+        hlzf.forEach(item => allYears.add(item.year));
+        const yearsCount = allYears.size || 1; // At least 1 to avoid division by zero
+
+        // Determine voltage levels this DNO actually uses (based on existing data)
+        const voltageLevels = new Set<string>();
+        netzentgelte.forEach(item => voltageLevels.add(item.voltage_level));
+        hlzf.forEach(item => voltageLevels.add(item.voltage_level));
+
+        // If no data yet, assume standard 5 levels for expected
+        const levelsCount = voltageLevels.size || 5;
+
+        // Expected = levels × years for each data type
+        const expectedPerType = levelsCount * yearsCount;
+
+        // Helper to check if a value is "real" data (not null, "-", or "N/A")
+        const isValidValue = (v: unknown): boolean => {
+            if (v === null || v === undefined) return false;
+            const str = String(v).trim().toLowerCase();
+            return str !== "-" && str !== "n/a" && str !== "" && str !== "null";
         };
-    }, [dnoData?.netzentgelte?.length, dnoData?.hlzf?.length]);
+
+        // Count Netzentgelte records with actual price data
+        let netzentgelteValid = 0;
+        netzentgelte.forEach(item => {
+            const hasLeistung = isValidValue(item.leistung);
+            const hasArbeit = isValidValue(item.arbeit);
+            const hasLeistungUnter = isValidValue(item.leistung_unter_2500h);
+            const hasArbeitUnter = isValidValue(item.arbeit_unter_2500h);
+            if (hasLeistung || hasArbeit || hasLeistungUnter || hasArbeitUnter) {
+                netzentgelteValid++;
+            }
+        });
+
+        // Count HLZF records with actual time data
+        let hlzfValid = 0;
+        hlzf.forEach(item => {
+            const hasWinter = isValidValue(item.winter);
+            const hasHerbst = isValidValue(item.herbst);
+            const hasFruehling = isValidValue(item.fruehling);
+            const hasSommer = isValidValue(item.sommer);
+            if (hasWinter || hasHerbst || hasFruehling || hasSommer) {
+                hlzfValid++;
+            }
+        });
+
+        // Calculate percentages for each type (capped at 100%)
+        const netzentgeltePercent = expectedPerType > 0
+            ? Math.min((netzentgelteValid / expectedPerType) * 100, 100)
+            : 0;
+        const hlzfPercent = expectedPerType > 0
+            ? Math.min((hlzfValid / expectedPerType) * 100, 100)
+            : 0;
+
+        // Weighted average: 50% Netzentgelte + 50% HLZF
+        const totalPercent = (netzentgeltePercent + hlzfPercent) / 2;
+
+        return {
+            total: netzentgelteValid + hlzfValid,
+            expected: expectedPerType * 2, // Total expected for both types
+            percentage: totalPercent,
+            netzentgelte: {
+                valid: netzentgelteValid,
+                expected: expectedPerType,
+                percentage: netzentgeltePercent,
+            },
+            hlzf: {
+                valid: hlzfValid,
+                expected: expectedPerType,
+                percentage: hlzfPercent,
+            },
+            years: yearsCount,
+            voltageLevels: levelsCount,
+        };
+    }, [dnoData?.netzentgelte, dnoData?.hlzf]);
 
     // Apply filters to data
     const filteredNetzentgelte = useMemo(() => {
@@ -1131,7 +1201,10 @@ export function DNODetailPage() {
                         </div>
                     </div>
                 </Card>
-                <Card className="p-4">
+                <Card
+                    className="p-4 cursor-help"
+                    title={`Data Completeness Breakdown:\n\nNetzentgelte: ${dataCompleteness.netzentgelte.percentage.toFixed(0)}% (${dataCompleteness.netzentgelte.valid}/${dataCompleteness.netzentgelte.expected})\nHLZF: ${dataCompleteness.hlzf.percentage.toFixed(0)}% (${dataCompleteness.hlzf.valid}/${dataCompleteness.hlzf.expected})\n\nBased on ${dataCompleteness.voltageLevels} voltage levels × ${dataCompleteness.years} years`}
+                >
                     <div className="flex items-center gap-3">
                         <div className="relative">
                             <svg className="h-12 w-12 -rotate-90" viewBox="0 0 36 36">
@@ -1164,6 +1237,9 @@ export function DNODetailPage() {
                         <div>
                             <p className="text-sm text-muted-foreground">Data Completeness</p>
                             <p className="text-2xl font-bold">{dataCompleteness.percentage.toFixed(0)}%</p>
+                            <p className="text-xs text-muted-foreground">
+                                {dataCompleteness.voltageLevels} levels × {dataCompleteness.years} yrs
+                            </p>
                         </div>
                     </div>
                 </Card>
@@ -1840,6 +1916,152 @@ export function DNODetailPage() {
                 )}
             </Card>
 
+            {/* Import / Export Data */}
+            <Card className="p-6">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <FolderInput className="h-5 w-5 text-purple-500" />
+                    Import / Export Data
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                    {/* Export Side */}
+                    <div className="space-y-4">
+                        <h3 className="font-medium flex items-center gap-2">
+                            <Download className="h-4 w-4" />
+                            Export as JSON
+                        </h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Data Types</label>
+                                <div className="flex gap-2">
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (exportDataTypes.includes("netzentgelte")) {
+                                                setExportDataTypes(exportDataTypes.filter(t => t !== "netzentgelte"));
+                                            } else {
+                                                setExportDataTypes([...exportDataTypes, "netzentgelte"]);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors",
+                                            exportDataTypes.includes("netzentgelte")
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background border-input hover:bg-muted"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-4 h-4 rounded border flex items-center justify-center",
+                                            exportDataTypes.includes("netzentgelte")
+                                                ? "bg-primary-foreground/20 border-primary-foreground/50"
+                                                : "border-current opacity-50"
+                                        )}>
+                                            {exportDataTypes.includes("netzentgelte") && <Check className="w-3 h-3" />}
+                                        </div>
+                                        Netzentgelte
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={() => {
+                                            if (exportDataTypes.includes("hlzf")) {
+                                                setExportDataTypes(exportDataTypes.filter(t => t !== "hlzf"));
+                                            } else {
+                                                setExportDataTypes([...exportDataTypes, "hlzf"]);
+                                            }
+                                        }}
+                                        className={cn(
+                                            "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors",
+                                            exportDataTypes.includes("hlzf")
+                                                ? "bg-primary text-primary-foreground border-primary"
+                                                : "bg-background border-input hover:bg-muted"
+                                        )}
+                                    >
+                                        <div className={cn(
+                                            "w-4 h-4 rounded border flex items-center justify-center",
+                                            exportDataTypes.includes("hlzf")
+                                                ? "bg-primary-foreground/20 border-primary-foreground/50"
+                                                : "border-current opacity-50"
+                                        )}>
+                                            {exportDataTypes.includes("hlzf") && <Check className="w-3 h-3" />}
+                                        </div>
+                                        HLZF
+                                    </button>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Years (optional)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {filterOptions.years.length > 0 ? (
+                                        filterOptions.years.map((year) => (
+                                            <button
+                                                key={year}
+                                                type="button"
+                                                onClick={() => {
+                                                    if (exportYears.includes(year)) {
+                                                        setExportYears(exportYears.filter(y => y !== year));
+                                                    } else {
+                                                        setExportYears([...exportYears, year]);
+                                                    }
+                                                }}
+                                                className={cn(
+                                                    "px-2 py-1 text-xs rounded border transition-colors",
+                                                    exportYears.includes(year)
+                                                        ? "bg-primary text-primary-foreground border-primary"
+                                                        : "bg-background border-input hover:bg-muted"
+                                                )}
+                                            >
+                                                {year}
+                                            </button>
+                                        ))
+                                    ) : (
+                                        <p className="text-xs text-muted-foreground">No data available yet</p>
+                                    )}
+                                </div>
+                                {filterOptions.years.length > 0 && exportYears.length === 0 && (
+                                    <p className="text-xs text-muted-foreground mt-1">All years selected by default</p>
+                                )}
+                            </div>
+                            <Button
+                                onClick={handleExport}
+                                disabled={isExporting || exportDataTypes.length === 0}
+                                className="w-full"
+                            >
+                                {isExporting ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Download className="mr-2 h-4 w-4" />
+                                )}
+                                Download JSON
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Import Side */}
+                    <div className="space-y-4">
+                        <h3 className="font-medium flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            Import from JSON
+                        </h3>
+                        <div
+                            className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                            onClick={() => importFileRef.current?.click()}
+                        >
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={(e) => handleImportFileSelect(e.target.files)}
+                                className="hidden"
+                                ref={importFileRef}
+                            />
+                            <Upload className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
+                            <p className="text-sm font-medium">Drop JSON file or click to browse</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Accepts exported JSON files
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
             {/* Source Files */}
             <Card className="p-6">
                 <div className="flex items-center justify-between mb-4">
@@ -1973,126 +2195,6 @@ export function DNODetailPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Import / Export Data */}
-            <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <FolderInput className="h-5 w-5 text-purple-500" />
-                    Import / Export Data
-                </h2>
-                <div className="grid md:grid-cols-2 gap-6">
-                    {/* Export Side */}
-                    <div className="space-y-4">
-                        <h3 className="font-medium flex items-center gap-2">
-                            <Download className="h-4 w-4" />
-                            Export as JSON
-                        </h3>
-                        <div className="space-y-3">
-                            <div>
-                                <label className="text-sm font-medium mb-2 block">Data Types</label>
-                                <div className="flex gap-3">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="checkbox"
-                                            checked={exportDataTypes.includes("netzentgelte")}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setExportDataTypes([...exportDataTypes, "netzentgelte"]);
-                                                } else {
-                                                    setExportDataTypes(exportDataTypes.filter(t => t !== "netzentgelte"));
-                                                }
-                                            }}
-                                            className="rounded border-input"
-                                        />
-                                        Netzentgelte
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="checkbox"
-                                            checked={exportDataTypes.includes("hlzf")}
-                                            onChange={(e) => {
-                                                if (e.target.checked) {
-                                                    setExportDataTypes([...exportDataTypes, "hlzf"]);
-                                                } else {
-                                                    setExportDataTypes(exportDataTypes.filter(t => t !== "hlzf"));
-                                                }
-                                            }}
-                                            className="rounded border-input"
-                                        />
-                                        HLZF
-                                    </label>
-                                </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium mb-2 block">Years (optional)</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {AVAILABLE_YEARS.map((year) => (
-                                        <button
-                                            key={year}
-                                            type="button"
-                                            onClick={() => {
-                                                if (exportYears.includes(year)) {
-                                                    setExportYears(exportYears.filter(y => y !== year));
-                                                } else {
-                                                    setExportYears([...exportYears, year]);
-                                                }
-                                            }}
-                                            className={cn(
-                                                "px-2 py-1 text-xs rounded border transition-colors",
-                                                exportYears.includes(year)
-                                                    ? "bg-primary text-primary-foreground border-primary"
-                                                    : "bg-background border-input hover:bg-muted"
-                                            )}
-                                        >
-                                            {year}
-                                        </button>
-                                    ))}
-                                </div>
-                                {exportYears.length === 0 && (
-                                    <p className="text-xs text-muted-foreground mt-1">All years selected by default</p>
-                                )}
-                            </div>
-                            <Button
-                                onClick={handleExport}
-                                disabled={isExporting || exportDataTypes.length === 0}
-                                className="w-full"
-                            >
-                                {isExporting ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                ) : (
-                                    <Download className="mr-2 h-4 w-4" />
-                                )}
-                                Download JSON
-                            </Button>
-                        </div>
-                    </div>
-
-                    {/* Import Side */}
-                    <div className="space-y-4">
-                        <h3 className="font-medium flex items-center gap-2">
-                            <Upload className="h-4 w-4" />
-                            Import from JSON
-                        </h3>
-                        <div
-                            className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
-                            onClick={() => importFileRef.current?.click()}
-                        >
-                            <input
-                                type="file"
-                                accept=".json"
-                                onChange={(e) => handleImportFileSelect(e.target.files)}
-                                className="hidden"
-                                ref={importFileRef}
-                            />
-                            <Upload className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
-                            <p className="text-sm font-medium">Drop JSON file or click to browse</p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                Accepts exported JSON files
-                            </p>
-                        </div>
-                    </div>
-                </div>
-            </Card>
 
             {/* Import Preview Dialog */}
             <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>

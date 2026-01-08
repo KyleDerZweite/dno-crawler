@@ -88,18 +88,25 @@ class ValidateStep(BaseStep):
         errors = []
         warnings = []
         
-        # Check minimum records - this is a critical error
-        if len(data) < 3:
-            errors.append(f"Only {len(data)} voltage levels (expected at least 3)")
+        # Check minimum records - at least 2 for small municipal DNOs
+        if len(data) < 2:
+            errors.append(f"Only {len(data)} voltage levels (expected at least 2)")
+        
+        # Helper to check if value is valid (not None, "-", or "N/A")
+        def is_valid_value(v):
+            if v is None:
+                return False
+            v_str = str(v).strip().lower()
+            return v_str not in ["-", "n/a", "null", "none", ""]
         
         for i, record in enumerate(data):
             # Check required fields - missing voltage_level is critical
             if not record.get("voltage_level"):
                 errors.append(f"Record {i}: missing voltage_level")
             
-            # Validate Arbeitspreis range - out of range is just a warning
+            # Validate Arbeitspreis range - skip "-" and null values
             ap = record.get("arbeitspreis") or record.get("arbeit")
-            if ap is not None:
+            if is_valid_value(ap):
                 try:
                     ap_float = float(str(ap).replace(",", "."))
                     if not (0.01 <= ap_float <= 20):
@@ -107,9 +114,9 @@ class ValidateStep(BaseStep):
                 except (ValueError, TypeError):
                     warnings.append(f"Arbeitspreis '{ap}' is not a valid number")
             
-            # Validate Leistungspreis range - out of range is just a warning
+            # Validate Leistungspreis range - skip "-" and null values
             lp = record.get("leistungspreis") or record.get("leistung")
-            if lp is not None:
+            if is_valid_value(lp):
                 try:
                     lp_float = float(str(lp).replace(",", "."))
                     if not (0 <= lp_float <= 500):
@@ -130,15 +137,19 @@ class ValidateStep(BaseStep):
         errors = []
         warnings = []
         
-        # Check minimum records - less than 2 is critical
+        # Check minimum records - less than 2 is critical (even small DNOs have at least 2)
         if len(data) < 2:
             errors.append(f"Only {len(data)} voltage levels (expected at least 2)")
         
-        # Check that expected voltage levels are present
-        # Standard German grid has: HS, HS/MS, MS, MS/NS, NS (5 levels)
-        expected_levels = {"hs", "ms", "ns"}  # At minimum these 3
-        umspannung_levels = {"hs/ms", "ms/ns"}  # Transformation levels (optional but common)
+        # Helper to check if value is valid time data
+        def is_valid_time(v):
+            if v is None:
+                return False
+            v_str = str(v).strip().lower()
+            return v_str not in ["-", "entfällt", "null", "none", ""]
         
+        # Check that expected voltage levels are present
+        # Note: Small DNOs may only have MS, MS/NS, NS (3 levels) - that's OK
         found_levels = set()
         for record in data:
             vl = str(record.get("voltage_level", "")).lower()
@@ -157,59 +168,42 @@ class ValidateStep(BaseStep):
             if ("umspann" in vl or "/" in vl) and "ms" in vl and "ns" in vl:
                 found_levels.add("ms/ns")
         
-        # Missing expected voltage levels is a warning (might be legitimate for some DNOs)
-        missing_levels = expected_levels - found_levels
-        if missing_levels:
-            warnings.append(f"Missing expected voltage levels: {', '.join(sorted(missing_levels)).upper()}")
+        # Only warn if neither HS nor MS are present (very suspicious)
+        if "ms" not in found_levels and "hs" not in found_levels:
+            warnings.append("Neither MS nor HS voltage levels found - verify extraction")
         
-        # Check for Umspannung levels (warn but don't fail)
-        missing_umspannung = umspannung_levels - found_levels
-        if missing_umspannung and len(data) < 4:
-            warnings.append(f"Missing transformation levels: {', '.join(sorted(missing_umspannung)).upper()} (expected 5 levels total)")
+        # Peak load seasons (winter and herbst)
+        peak_seasons = ["winter", "herbst"]
+        # Off-peak seasons (often legitimately empty)
+        offpeak_seasons = ["fruehling", "sommer"]
         
-        seasons = ["winter", "fruehling", "sommer", "herbst"]
-        total_season_slots = 0
-        filled_or_explicit_empty = 0  # Has time data OR explicitly "entfällt"
-        completely_missing = 0  # Empty/None with no explicit "entfällt"
+        total_peak_slots = 0
+        filled_peak_slots = 0
         
         for i, record in enumerate(data):
             # Missing voltage_level is a critical error
             if not record.get("voltage_level"):
                 errors.append(f"Record {i}: missing voltage_level")
             
-            # Count how many seasons have data vs are legitimately empty
-            for season in seasons:
-                total_season_slots += 1
-                val = record.get(season)
-                val_str = str(val or "").strip().lower()
-                
-                if val_str in ["entfällt", "-"]:
-                    # Explicitly marked as not applicable - this is valid
-                    filled_or_explicit_empty += 1
-                elif val and val_str not in ["none", ""]:
-                    # Has actual time data
-                    filled_or_explicit_empty += 1
-                else:
-                    # Missing/None with no explicit marker - might be extraction issue or legitimate
-                    completely_missing += 1
+            # Count peak season data (winter + herbst)
+            for season in peak_seasons:
+                total_peak_slots += 1
+                if is_valid_time(record.get(season)):
+                    filled_peak_slots += 1
         
-        # Check at least one season has time data overall - no time data is an error
-        has_any_time_data = any(
-            record.get(s) and str(record.get(s)).strip().lower() not in ["entfällt", "-", "none", ""]
-            for record in data
-            for s in seasons
-        )
-        if not has_any_time_data:
-            errors.append("No time window data found in any record")
+        # Check at least one peak season has time data overall
+        has_any_peak_data = filled_peak_slots > 0
+        if not has_any_peak_data:
+            errors.append("No time window data found for peak seasons (winter/herbst)")
         
-        # Check if too many seasons are completely missing (not "entfällt", just empty)
-        # This is just a warning - many DNOs legitimately use null/None for empty seasons
-        if total_season_slots > 0 and completely_missing > 0:
-            missing_rate = completely_missing / total_season_slots
-            if missing_rate > 0.5:
+        # Warn if less than 40% of peak slots have data (might be incomplete extraction)
+        if total_peak_slots > 0 and filled_peak_slots > 0:
+            fill_rate = filled_peak_slots / total_peak_slots
+            if fill_rate < 0.4:
                 warnings.append(
-                    f"{completely_missing}/{total_season_slots} season slots are empty "
-                    f"(null instead of 'entfällt') - may be incomplete extraction"
+                    f"Only {filled_peak_slots}/{total_peak_slots} peak season slots have data - "
+                    f"may be incomplete extraction"
                 )
         
         return errors, warnings
+

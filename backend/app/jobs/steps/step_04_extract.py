@@ -342,14 +342,14 @@ class ExtractStep(BaseStep):
 
     def _validate_netzentgelte(self, records: list) -> tuple[bool, str]:
         """
-        Check netzentgelte has ≥3 records with price values.
+        Check netzentgelte has sufficient records with price values.
         
         Rules:
-        - At least 3 records (some DNOs only operate at certain voltage levels)
-        - Each record must have at least leistung OR arbeit non-null
+        - At least 2 records (small municipal utilities may only have MS and NS)
+        - Each record must have at least leistung OR arbeit with actual value
         """
-        if len(records) < 3:
-            return False, f"Too few records: {len(records)} (minimum 3 required)"
+        if len(records) < 2:
+            return False, f"Too few records: {len(records)} (minimum 2 required)"
         
         # Check each record has at least one price value
         valid_records = 0
@@ -359,12 +359,19 @@ class ExtractStep(BaseStep):
             leistung_unter = record.get("leistung_unter_2500h")
             arbeit_unter = record.get("arbeit_unter_2500h")
             
-            # At least one price must be non-null
-            if any(v is not None for v in [leistung, arbeit, leistung_unter, arbeit_unter]):
+            # Check if value is valid (not None, not "-", not "N/A")
+            def is_valid_value(v):
+                if v is None:
+                    return False
+                v_str = str(v).strip().lower()
+                return v_str not in ["-", "n/a", "null", "none", ""]
+            
+            # At least one price must be a valid value
+            if any(is_valid_value(v) for v in [leistung, arbeit, leistung_unter, arbeit_unter]):
                 valid_records += 1
         
-        if valid_records < 3:
-            return False, f"Too few valid records with prices: {valid_records} (minimum 3 required)"
+        if valid_records < 2:
+            return False, f"Too few valid records with prices: {valid_records} (minimum 2 required)"
         
         return True, "OK"
 
@@ -373,22 +380,30 @@ class ExtractStep(BaseStep):
         Check HLZF extraction quality.
         
         Rules:
-        - Requires all 5 voltage levels (HS, HS/MS, MS, MS/NS, NS)
-        - At least one record has winter time window (peak load almost always has winter data)
+        - At least 2 voltage levels (small DNOs may only have MS, MS/NS, NS)
+        - At least one record has winter or herbst time window (peak load is in cold months)
         """
-        if len(records) < 5:
-            return False, f"Missing voltage levels: only {len(records)} extracted (expected 5)"
+        if len(records) < 2:
+            return False, f"Missing voltage levels: only {len(records)} extracted (minimum 2 required)"
         
-        # Check at least one record has winter data (time value, not "entfällt")
-        has_winter = any(
-            record.get("winter") is not None and str(record.get("winter")).lower() != "entfällt"
+        # Check if value is valid time data (not null, "-", or "entfällt")
+        def is_valid_time(v):
+            if v is None:
+                return False
+            v_str = str(v).strip().lower()
+            return v_str not in ["-", "entfällt", "null", "none", ""]
+        
+        # Check at least one record has winter or herbst data (peak load times)
+        has_peak_time = any(
+            is_valid_time(record.get("winter")) or is_valid_time(record.get("herbst"))
             for record in records
         )
         
-        if not has_winter:
-            return False, "No records with winter time window (all records have null or 'entfällt' winter)"
+        if not has_peak_time:
+            return False, "No records with winter or herbst time window (peak load times missing)"
         
         return True, "OK"
+
 
     async def _extract_with_ai(
         self, 
@@ -471,16 +486,21 @@ class ExtractStep(BaseStep):
 DNO: {dno_name}
 Year: {year}
 
-CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any!
+IMPORTANT: Extract ALL voltage levels present in the document - the number varies by DNO:
+- Large DNOs typically have 5 levels: HS, HS/MS, MS, MS/NS, NS
+- Small municipal utilities often only have 3 levels: MS, MS/NS, NS (no high voltage infrastructure)
+- TSOs may have HöS (Höchstspannung) instead of NS
 
 Map these voltage level names to standardized abbreviations:
 - Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
 - Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
-- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" → output as "MS"
-- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" → output as "MS/NS"
-- Niederspannung / Niederspannungsnetz / "inNS" / "NS" → output as "NS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" → output as "NS"
+- Höchstspannung / "HöS" → output as "HöS" (rare, TSO only)
+- Umspannung Höchst-/Hochspannung / "ausHöS" / "HöS/HS" → output as "HöS/HS" (rare, TSO only)
 
-SKIP any "ausHÖS" or "HÖS" entries (these are from upstream TSO, not this DNO).
+SKIP any "ausHÖS" or upstream TSO entries if extracting for a DNO (not TSO).
 
 NOTE: The document may have ONE combined table OR SEPARATE tables per voltage level.
 Voltage level names may be split across multiple lines in PDFs.
@@ -489,27 +509,27 @@ German electricity tariffs often have TWO sets of prices based on annual usage:
 - "< 2.500 h/a" or "unter 2500h" (under 2500 hours/year usage)
 - "≥ 2.500 h/a" or "über 2500h" (2500+ hours/year usage)
 
-For EACH of the 5 voltage levels, extract:
+For EACH voltage level found, extract:
 - voltage_level: Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS)
-- leistung_unter_2500h: Capacity price (Leistungspreis) for < 2500h in €/kW/a
-- arbeit_unter_2500h: Work price (Arbeitspreis) for < 2500h in ct/kWh
-- leistung: Capacity price (Leistungspreis) for ≥ 2500h in €/kW/a  
-- arbeit: Work price (Arbeitspreis) for ≥ 2500h in ct/kWh
+- leistung_unter_2500h: Capacity price (Leistungspreis) for < 2500h in €/kW/a, or "-" if not available
+- arbeit_unter_2500h: Work price (Arbeitspreis) for < 2500h in ct/kWh, or "-" if not available
+- leistung: Capacity price (Leistungspreis) for ≥ 2500h in €/kW/a, or "-" if not available
+- arbeit: Work price (Arbeitspreis) for ≥ 2500h in ct/kWh, or "-" if not available
 
 If only one set of prices exists (no usage distinction), use leistung and arbeit fields only.
+Use "-" for any price that doesn't exist for this DNO/voltage level (not null).
 
-YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
+Return the structure:
 {{
   "success": true,
   "data_type": "netzentgelte",
   "source_page": <page number>,
-  "notes": "<any observations about the table format>",
+  "notes": "<observations about the table format and which voltage levels were found>",
+  "voltage_levels_found": <number of voltage levels>,
   "data": [
-    {{"voltage_level": "HS", "leistung_unter_2500h": ..., "arbeit_unter_2500h": ..., "leistung": ..., "arbeit": ...}},
+    {{"voltage_level": "HS", "leistung_unter_2500h": "26.88", "arbeit_unter_2500h": "8.58", "leistung": "230.39", "arbeit": "0.44"}},
     {{"voltage_level": "HS/MS", ...}},
-    {{"voltage_level": "MS", ...}},
-    {{"voltage_level": "MS/NS", ...}},
-    {{"voltage_level": "NS", ...}}
+    ...
   ]
 }}
 """
@@ -519,42 +539,51 @@ YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
 DNO: {dno_name}
 Year: {year}
 
-CRITICAL: You MUST extract EXACTLY 5 voltage levels. Do NOT skip any!
+IMPORTANT: Extract ALL voltage levels present in the document - the number varies by DNO:
+- Large DNOs typically have 5 levels: HS, HS/MS, MS, MS/NS, NS
+- Small municipal utilities often only have 3 levels: MS, MS/NS, NS (no high voltage infrastructure)
+- TSOs may have HöS (Höchstspannung) instead of NS
 
 Map these voltage level names to standardized abbreviations:
 - Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
 - Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
-- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" → output as "MS"
-- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" → output as "MS/NS"
-- Niederspannung / Niederspannungsnetz / "inNS" / "NS" → output as "NS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" → output as "NS"
+- Höchstspannung / "HöS" → output as "HöS" (rare, TSO only)
+- Umspannung Höchst-/Hochspannung / "ausHöS" / "HöS/HS" → output as "HöS/HS" (rare, TSO only)
 
-SKIP any "ausHÖS" or "HÖS" entries (these are from upstream TSO, not this DNO).
+SKIP any upstream TSO entries if extracting for a DNO (not TSO).
 
 NOTE: In PDF tables, voltage level names may be split across multiple lines.
 The document may have ONE combined table OR SEPARATE tables per voltage level.
 Season columns may appear in any order (Frühling, Sommer, Herbst, Winter).
 Time columns may use "von/bis" format or direct time ranges.
 
-For EACH of the 5 voltage levels, extract:
-- winter: Time window(s) for Dec-Feb, or null if empty/"entfällt"
-- fruehling: Time window(s) for Mar-May, or null if empty/"entfällt"
-- sommer: Time window(s) for Jun-Aug, or null if empty/"entfällt"
-- herbst: Time window(s) for Sep-Nov, or null if empty/"entfällt"
+For EACH voltage level found, extract:
+- winter: Time window(s) for Dec-Feb
+- fruehling: Time window(s) for Mar-May
+- sommer: Time window(s) for Jun-Aug
+- herbst: Time window(s) for Sep-Nov
 
-Time format: "HH:MM-HH:MM" (e.g., "07:30-15:30"). Multiple windows separated by "\\n".
+Values for each season:
+- Time window format: "HH:MM-HH:MM" (e.g., "07:30-15:30")
+- Multiple windows: Separate with "\\n" (e.g., "07:30-13:00\\n17:00-19:30")
+- No peak load times: Use "-" if explicitly marked as "entfällt" or no times for that season
+- Note: It is NORMAL for Spring (Frühling) and Summer (Sommer) to have no peak times (use "-")
 
-YOU MUST RETURN EXACTLY 5 RECORDS - one for each voltage level:
+Return the structure:
 {{
   "success": true,
   "data_type": "hlzf",
   "source_page": <page number where table was found>,
-  "notes": "<any observations about the table format>",
+  "notes": "<observations about the table format and which voltage levels were found>",
+  "voltage_levels_found": <number of voltage levels>,
   "data": [
-    {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": null, "sommer": null, "herbst": "11:15-14:00"}},
-    {{"voltage_level": "HS/MS", "winter": "07:30-15:45\\n16:30-18:15", "fruehling": null, "sommer": null, "herbst": "16:45-17:30"}},
-    {{"voltage_level": "MS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
-    {{"voltage_level": "MS/NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}},
-    {{"voltage_level": "NS", "winter": "...", "fruehling": "...", "sommer": "...", "herbst": "..."}}
+    {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": "-", "sommer": "-", "herbst": "11:15-14:00"}},
+    {{"voltage_level": "HS/MS", "winter": "07:30-15:45\\n16:30-18:15", "fruehling": "-", "sommer": "-", "herbst": "16:45-17:30"}},
+    ...
   ]
 }}
 """
+
