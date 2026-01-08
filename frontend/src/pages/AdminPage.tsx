@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { useAuth } from "@/lib/use-auth";
 import { Link } from "react-router-dom";
@@ -15,7 +15,29 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
+} from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Badge } from "@/components/ui/badge";
+import { Progress } from "@/components/ui/progress";
 import {
   Shield,
   Database,
@@ -24,8 +46,17 @@ import {
   AlertTriangle,
   Zap,
   Clock,
+  FileText,
+  Play,
+  XCircle,
+  ChevronDown,
+  Loader2,
+  CheckCircle2,
+  FileWarning,
+  HardDrive,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useState } from "react";
 
 export function AdminPage() {
   const { isAdmin } = useAuth();
@@ -214,6 +245,9 @@ export function AdminPage() {
         </CardContent>
       </Card>
 
+      {/* Cached Files & Bulk Extraction */}
+      <CachedFilesSection />
+
       {/* User Management Info */}
       <Card>
         <CardHeader>
@@ -271,4 +305,423 @@ function StatCard({ icon: Icon, title, value, color, bg, loading }: {
       </div>
     </Card>
   )
+}
+
+// ==============================================================================
+// Cached Files & Bulk Extraction Section
+// ==============================================================================
+
+type ExtractMode = "flagged_only" | "default" | "force_override";
+
+function CachedFilesSection() {
+  const queryClient = useQueryClient();
+  const [showPreview, setShowPreview] = useState(false);
+  const [selectedMode, setSelectedMode] = useState<ExtractMode>("default");
+  const [advancedOpen, setAdvancedOpen] = useState(false);
+  const [selectedFormats, setSelectedFormats] = useState<string[]>([]);
+  const [selectedDataTypes, setSelectedDataTypes] = useState<string[]>(["netzentgelte", "hlzf"]);
+
+  // Fetch cached files stats
+  const { data: filesResponse, isLoading: filesLoading } = useQuery({
+    queryKey: ["admin", "cached-files"],
+    queryFn: api.admin.getCachedFiles,
+    refetchInterval: 30000, // Refresh every 30s
+  });
+
+  // Fetch bulk extract status
+  const { data: bulkStatusResponse } = useQuery({
+    queryKey: ["admin", "bulk-extract-status"],
+    queryFn: api.admin.getBulkExtractStatus,
+    refetchInterval: 5000, // Refresh every 5s for progress
+  });
+
+  // Preview mutation
+  const previewMutation = useMutation({
+    mutationFn: () => api.admin.previewBulkExtract({
+      mode: selectedMode,
+      data_types: selectedDataTypes,
+      formats: selectedFormats.length > 0 ? selectedFormats : undefined,
+    }),
+  });
+
+  // Trigger extraction mutation
+  const extractMutation = useMutation({
+    mutationFn: () => api.admin.triggerBulkExtract({
+      mode: selectedMode,
+      data_types: selectedDataTypes,
+      formats: selectedFormats.length > 0 ? selectedFormats : undefined,
+    }),
+    onSuccess: () => {
+      setShowPreview(false);
+      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+    },
+  });
+
+  // Cancel mutation
+  const cancelMutation = useMutation({
+    mutationFn: api.admin.cancelBulkExtract,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+    },
+  });
+
+  const filesData = filesResponse?.data;
+  const bulkStatus = bulkStatusResponse?.data;
+  const previewData = previewMutation.data?.data;
+  const availableFormats = Object.keys(filesData?.by_format || {});
+
+  const handleOpenPreview = async () => {
+    await previewMutation.mutateAsync();
+    setShowPreview(true);
+  };
+
+  const hasPendingJobs = (bulkStatus?.pending || 0) > 0 || (bulkStatus?.running || 0) > 0;
+
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <HardDrive className="h-5 w-5 text-primary" />
+            Cached Files & Bulk Extraction
+          </CardTitle>
+          <CardDescription>
+            Manage downloaded files and trigger bulk data extraction
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {/* File Stats */}
+          <div className="grid gap-3 md:grid-cols-4">
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+              <FileText className="h-5 w-5 text-muted-foreground" />
+              <div>
+                <div className="text-xl font-bold">
+                  {filesLoading ? "..." : filesData?.total_files || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Total Files</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+              <FileWarning className="h-5 w-5 text-amber-500" />
+              <div>
+                <div className="text-xl font-bold text-amber-500">
+                  {filesLoading ? "..." : filesData?.by_status.no_data || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">No Data</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+              <AlertTriangle className="h-5 w-5 text-orange-500" />
+              <div>
+                <div className="text-xl font-bold text-orange-500">
+                  {filesLoading ? "..." : filesData?.by_status.flagged || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Flagged</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-3 p-3 rounded-lg border bg-muted/20">
+              <CheckCircle2 className="h-5 w-5 text-green-500" />
+              <div>
+                <div className="text-xl font-bold text-green-500">
+                  {filesLoading ? "..." : filesData?.by_status.verified || 0}
+                </div>
+                <p className="text-xs text-muted-foreground">Verified</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Bulk Extraction Controls */}
+          <div className="p-4 rounded-lg border bg-muted/10 space-y-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h4 className="font-medium">Bulk Extraction</h4>
+                <p className="text-sm text-muted-foreground">
+                  Extract data from all cached files based on mode
+                </p>
+              </div>
+              <div className="flex items-center gap-2">
+                <Select
+                  value={selectedMode}
+                  onValueChange={(v) => setSelectedMode(v as ExtractMode)}
+                >
+                  <SelectTrigger className="w-48">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="flagged_only">
+                      <div className="flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4 text-amber-500" />
+                        Flagged Only
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="default">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-blue-500" />
+                        Default
+                      </div>
+                    </SelectItem>
+                    <SelectItem value="force_override">
+                      <div className="flex items-center gap-2">
+                        <XCircle className="h-4 w-4 text-red-500" />
+                        Force Override
+                      </div>
+                    </SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  onClick={handleOpenPreview}
+                  disabled={previewMutation.isPending || filesLoading}
+                >
+                  {previewMutation.isPending ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Play className="mr-2 h-4 w-4" />
+                  )}
+                  Preview & Start
+                </Button>
+              </div>
+            </div>
+
+            {/* Mode explanation */}
+            <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+              {selectedMode === "flagged_only" && (
+                <span>Only re-extract files where data has been flagged as incorrect.</span>
+              )}
+              {selectedMode === "default" && (
+                <span>Extract files with no data, flagged data, or unverified data. <strong>Verified data is protected.</strong></span>
+              )}
+              {selectedMode === "force_override" && (
+                <span className="text-red-500">⚠️ Override ALL data including verified records. Use with caution!</span>
+              )}
+            </div>
+
+            {/* Advanced Options */}
+            <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+              <CollapsibleTrigger className="flex items-center gap-1 text-sm text-muted-foreground hover:text-foreground">
+                <ChevronDown className={`h-4 w-4 transition-transform ${advancedOpen ? "rotate-180" : ""}`} />
+                Advanced Options
+              </CollapsibleTrigger>
+              <CollapsibleContent className="pt-3 space-y-3">
+                <div className="grid gap-4 md:grid-cols-2">
+                  {/* Data Types */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">Data Types</label>
+                    <div className="flex gap-4">
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectedDataTypes.includes("netzentgelte")}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedDataTypes([...selectedDataTypes, "netzentgelte"]);
+                            } else {
+                              setSelectedDataTypes(selectedDataTypes.filter(t => t !== "netzentgelte"));
+                            }
+                          }}
+                        />
+                        Netzentgelte
+                      </label>
+                      <label className="flex items-center gap-2 text-sm">
+                        <Checkbox
+                          checked={selectedDataTypes.includes("hlzf")}
+                          onCheckedChange={(checked) => {
+                            if (checked) {
+                              setSelectedDataTypes([...selectedDataTypes, "hlzf"]);
+                            } else {
+                              setSelectedDataTypes(selectedDataTypes.filter(t => t !== "hlzf"));
+                            }
+                          }}
+                        />
+                        HLZF
+                      </label>
+                    </div>
+                  </div>
+                  {/* File Formats */}
+                  <div>
+                    <label className="text-sm font-medium mb-2 block">File Formats</label>
+                    <div className="flex gap-4 flex-wrap">
+                      {availableFormats.map((format) => (
+                        <label key={format} className="flex items-center gap-2 text-sm">
+                          <Checkbox
+                            checked={selectedFormats.includes(format)}
+                            onCheckedChange={(checked) => {
+                              if (checked) {
+                                setSelectedFormats([...selectedFormats, format]);
+                              } else {
+                                setSelectedFormats(selectedFormats.filter(f => f !== format));
+                              }
+                            }}
+                          />
+                          {format.toUpperCase()}
+                        </label>
+                      ))}
+                      {availableFormats.length === 0 && (
+                        <span className="text-sm text-muted-foreground">No files found</span>
+                      )}
+                    </div>
+                    {selectedFormats.length === 0 && availableFormats.length > 0 && (
+                      <p className="text-xs text-muted-foreground mt-1">All formats selected by default</p>
+                    )}
+                  </div>
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+          </div>
+
+          {/* Bulk Job Progress */}
+          {(bulkStatus?.total || 0) > 0 && (
+            <div className="p-4 rounded-lg border space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  <h4 className="font-medium">Bulk Extraction Progress</h4>
+                </div>
+                {hasPendingJobs && (
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => cancelMutation.mutate()}
+                    disabled={cancelMutation.isPending}
+                  >
+                    {cancelMutation.isPending ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <XCircle className="mr-2 h-4 w-4" />
+                    )}
+                    Cancel Pending
+                  </Button>
+                )}
+              </div>
+              <Progress value={bulkStatus?.progress_percent || 0} className="h-2" />
+              <div className="flex justify-between text-sm text-muted-foreground">
+                <span>{bulkStatus?.progress_percent || 0}% complete</span>
+                <span>
+                  {bulkStatus?.completed || 0} / {bulkStatus?.total || 0} jobs
+                  {(bulkStatus?.failed || 0) > 0 && (
+                    <span className="text-red-500 ml-2">({bulkStatus?.failed} failed)</span>
+                  )}
+                </span>
+              </div>
+              <div className="flex gap-4 text-xs">
+                <span className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-yellow-500" />
+                  Pending: {bulkStatus?.pending || 0}
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-blue-500 animate-pulse" />
+                  Running: {bulkStatus?.running || 0}
+                </span>
+                <span className="flex items-center gap-1">
+                  <div className="h-2 w-2 rounded-full bg-green-500" />
+                  Completed: {bulkStatus?.completed || 0}
+                </span>
+                {(bulkStatus?.failed || 0) > 0 && (
+                  <span className="flex items-center gap-1">
+                    <div className="h-2 w-2 rounded-full bg-red-500" />
+                    Failed: {bulkStatus?.failed || 0}
+                  </span>
+                )}
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Preview Dialog */}
+      <Dialog open={showPreview} onOpenChange={setShowPreview}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Play className="h-5 w-5" />
+              Bulk Extraction Preview
+            </DialogTitle>
+            <DialogDescription>
+              Review what will be extracted before starting
+            </DialogDescription>
+          </DialogHeader>
+
+          {previewData && (
+            <div className="space-y-4">
+              {/* Summary Stats */}
+              <div className="grid gap-3 md:grid-cols-3">
+                <div className="p-3 rounded-lg border bg-muted/20 text-center">
+                  <div className="text-2xl font-bold">{previewData.total_files}</div>
+                  <p className="text-xs text-muted-foreground">Total Files Scanned</p>
+                </div>
+                <div className="p-3 rounded-lg border bg-primary/10 text-center">
+                  <div className="text-2xl font-bold text-primary">{previewData.will_extract}</div>
+                  <p className="text-xs text-muted-foreground">Jobs to Queue</p>
+                </div>
+                {selectedMode !== "force_override" && previewData.protected_verified > 0 && (
+                  <div className="p-3 rounded-lg border bg-green-500/10 text-center">
+                    <div className="text-2xl font-bold text-green-500">{previewData.protected_verified}</div>
+                    <p className="text-xs text-muted-foreground">Protected (Verified)</p>
+                  </div>
+                )}
+                {selectedMode === "force_override" && previewData.will_override_verified > 0 && (
+                  <div className="p-3 rounded-lg border bg-red-500/10 text-center">
+                    <div className="text-2xl font-bold text-red-500">{previewData.will_override_verified}</div>
+                    <p className="text-xs text-muted-foreground">Will Override Verified!</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Breakdown */}
+              <div className="p-3 rounded-lg bg-muted/30 space-y-2">
+                <h4 className="font-medium text-sm">Breakdown by Status</h4>
+                <div className="grid gap-2 md:grid-cols-3 text-sm">
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">No existing data:</span>
+                    <span>{previewData.no_data}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Flagged:</span>
+                    <span className="text-amber-500">{previewData.flagged}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-muted-foreground">Unverified:</span>
+                    <span>{previewData.unverified}</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Mode Info */}
+              <div className={`p-3 rounded-lg text-sm ${selectedMode === "force_override" ? "bg-red-500/10 border border-red-500/30" : "bg-blue-500/10"}`}>
+                <strong>Mode: </strong>
+                {selectedMode === "flagged_only" && "Only re-extracting flagged data"}
+                {selectedMode === "default" && "Default mode - verified data is protected"}
+                {selectedMode === "force_override" && (
+                  <span className="text-red-500">
+                    ⚠️ Force Override - ALL data including {previewData.will_override_verified} verified records will be overwritten!
+                  </span>
+                )}
+              </div>
+
+              {/* Info about priority */}
+              <p className="text-xs text-muted-foreground">
+                Jobs will be queued with lower priority so they don't block regular extraction jobs.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowPreview(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={() => extractMutation.mutate()}
+              disabled={extractMutation.isPending || (previewData?.will_extract || 0) === 0}
+              variant={selectedMode === "force_override" ? "destructive" : "default"}
+            >
+              {extractMutation.isPending ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Play className="mr-2 h-4 w-4" />
+              )}
+              Queue {previewData?.will_extract || 0} Jobs
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
 }

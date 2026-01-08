@@ -727,6 +727,110 @@ export const api = {
       const { data } = await apiClient.get("/admin/flagged");
       return data;
     },
+
+    // Cached files and bulk extraction
+    async getCachedFiles(): Promise<
+      ApiResponse<{
+        total_files: number;
+        files: Array<{
+          name: string;
+          path: string;
+          dno_slug: string;
+          dno_id: number;
+          dno_name: string;
+          data_type: string;
+          year: number;
+          format: string;
+          size: number;
+          extraction_status: "no_data" | "flagged" | "verified" | "unverified";
+        }>;
+        by_data_type: { netzentgelte: number; hlzf: number };
+        by_format: Record<string, number>;
+        by_status: {
+          no_data: number;
+          flagged: number;
+          verified: number;
+          unverified: number;
+        };
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/files");
+      return data;
+    },
+
+    async previewBulkExtract(options: {
+      mode: "flagged_only" | "default" | "force_override";
+      data_types?: string[];
+      years?: number[];
+      formats?: string[];
+      dno_ids?: number[];
+    }): Promise<
+      ApiResponse<{
+        total_files: number;
+        will_extract: number;
+        protected_verified: number;
+        will_override_verified: number;
+        flagged: number;
+        no_data: number;
+        unverified: number;
+        files: Array<{
+          name: string;
+          path: string;
+          dno_slug: string;
+          dno_id: number;
+          dno_name: string;
+          data_type: string;
+          year: number;
+          format: string;
+          will_extract: boolean;
+          has_verified: boolean;
+          has_flagged: boolean;
+          has_data: boolean;
+        }>;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/extract/preview", options);
+      return data;
+    },
+
+    async triggerBulkExtract(options: {
+      mode: "flagged_only" | "default" | "force_override";
+      data_types?: string[];
+      years?: number[];
+      formats?: string[];
+      dno_ids?: number[];
+    }): Promise<
+      ApiResponse<{
+        jobs_queued: number;
+        files_scanned: number;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/extract/bulk", options);
+      return data;
+    },
+
+    async getBulkExtractStatus(): Promise<
+      ApiResponse<{
+        total: number;
+        pending: number;
+        running: number;
+        completed: number;
+        failed: number;
+        progress_percent: number;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/extract/bulk/status");
+      return data;
+    },
+
+    async cancelBulkExtract(): Promise<
+      ApiResponse<{
+        cancelled: number;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/extract/bulk/cancel");
+      return data;
+    },
   },
 
   // Verification API - Data quality management

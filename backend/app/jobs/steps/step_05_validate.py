@@ -38,66 +38,101 @@ class ValidateStep(BaseStep):
     async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         ctx = job.context or {}
         data = ctx.get("extracted_data", [])
-        issues = []
         
         await asyncio.sleep(0.2)  # Simulate validation
         
         if not data:
-            issues.append("No data extracted")
             ctx["is_valid"] = False
-            ctx["validation_issues"] = issues
+            ctx["validation_issues"] = ["No data extracted"]
             await db.commit()
             return "FAILED: No data extracted"
         
+        # Validate and separate errors from warnings
         if job.data_type == "netzentgelte":
-            issues = self._validate_netzentgelte(data)
+            errors, warnings = self._validate_netzentgelte(data)
         else:
-            issues = self._validate_hlzf(data)
+            errors, warnings = self._validate_hlzf(data)
         
-        is_valid = len(issues) == 0
-        ctx["is_valid"] = is_valid
-        ctx["validation_issues"] = issues
+        # Errors = critical issues that make data unusable (don't save)
+        # Warnings = quality concerns but data is still usable (save but flag)
+        has_errors = len(errors) > 0
+        has_warnings = len(warnings) > 0
+        
+        # Data is valid if there are no critical errors
+        # Warnings allow saving but trigger auto-flagging
+        ctx["is_valid"] = not has_errors
+        ctx["validation_issues"] = errors + warnings
+        
+        # Auto-flag if there are warnings (data will be saved but flagged for review)
+        if has_warnings and not has_errors:
+            ctx["auto_flagged"] = True
+            ctx["auto_flag_reason"] = f"Validation warnings: {'; '.join(warnings[:2])}"
+        
         await db.commit()
         
-        if is_valid:
-            return f"PASSED: {len(data)} records validated successfully"
+        if has_errors:
+            return f"FAILED: {len(errors)} errors found: {', '.join(errors[:2])}"
+        elif has_warnings:
+            return f"WARNING: {len(warnings)} issues found: {', '.join(warnings[:2])}"
         else:
-            return f"WARNING: {len(issues)} issues found: {', '.join(issues[:3])}"
+            return f"PASSED: {len(data)} records validated successfully"
     
-    def _validate_netzentgelte(self, data: list[dict]) -> list[str]:
-        """Validate Netzentgelte data."""
-        issues = []
+    def _validate_netzentgelte(self, data: list[dict]) -> tuple[list[str], list[str]]:
+        """Validate Netzentgelte data.
         
-        # Check minimum records
+        Returns:
+            Tuple of (errors, warnings):
+            - errors: Critical issues that should block saving
+            - warnings: Quality concerns that should flag but allow saving
+        """
+        errors = []
+        warnings = []
+        
+        # Check minimum records - this is a critical error
         if len(data) < 3:
-            issues.append(f"Only {len(data)} voltage levels (expected at least 3)")
+            errors.append(f"Only {len(data)} voltage levels (expected at least 3)")
         
         for i, record in enumerate(data):
-            # Check required fields
+            # Check required fields - missing voltage_level is critical
             if not record.get("voltage_level"):
-                issues.append(f"Record {i}: missing voltage_level")
+                errors.append(f"Record {i}: missing voltage_level")
             
-            # Validate Arbeitspreis range
-            ap = record.get("arbeitspreis")
+            # Validate Arbeitspreis range - out of range is just a warning
+            ap = record.get("arbeitspreis") or record.get("arbeit")
             if ap is not None:
-                if not (0.01 <= ap <= 20):
-                    issues.append(f"Arbeitspreis {ap} ct/kWh outside typical range (0.01-20)")
+                try:
+                    ap_float = float(str(ap).replace(",", "."))
+                    if not (0.01 <= ap_float <= 20):
+                        warnings.append(f"Arbeitspreis {ap} ct/kWh outside typical range (0.01-20)")
+                except (ValueError, TypeError):
+                    warnings.append(f"Arbeitspreis '{ap}' is not a valid number")
             
-            # Validate Leistungspreis range
-            lp = record.get("leistungspreis")
+            # Validate Leistungspreis range - out of range is just a warning
+            lp = record.get("leistungspreis") or record.get("leistung")
             if lp is not None:
-                if not (1 <= lp <= 500):
-                    issues.append(f"Leistungspreis {lp} €/kW outside typical range (1-500)")
+                try:
+                    lp_float = float(str(lp).replace(",", "."))
+                    if not (0 <= lp_float <= 500):
+                        warnings.append(f"Leistungspreis {lp} €/kW outside typical range (0-500)")
+                except (ValueError, TypeError):
+                    warnings.append(f"Leistungspreis '{lp}' is not a valid number")
         
-        return issues
+        return errors, warnings
     
-    def _validate_hlzf(self, data: list[dict]) -> list[str]:
-        """Validate HLZF data."""
-        issues = []
+    def _validate_hlzf(self, data: list[dict]) -> tuple[list[str], list[str]]:
+        """Validate HLZF data.
         
-        # Check minimum records
+        Returns:
+            Tuple of (errors, warnings):
+            - errors: Critical issues that should block saving (no data, missing voltage_level)
+            - warnings: Quality concerns that should flag but allow saving (empty seasons, etc.)
+        """
+        errors = []
+        warnings = []
+        
+        # Check minimum records - less than 2 is critical
         if len(data) < 2:
-            issues.append(f"Only {len(data)} voltage levels (expected at least 2)")
+            errors.append(f"Only {len(data)} voltage levels (expected at least 2)")
         
         # Check that expected voltage levels are present
         # Standard German grid has: HS, HS/MS, MS, MS/NS, NS (5 levels)
@@ -112,6 +147,8 @@ class ValidateStep(BaseStep):
                 found_levels.add("hs")
             elif "mittelspannung" in vl and "nieder" not in vl and "umspann" not in vl:
                 found_levels.add("ms")
+            elif vl == "ms":  # Handle abbreviated form
+                found_levels.add("ms")
             elif "niederspannung" in vl or vl == "ns":
                 found_levels.add("ns")
             # Check for Umspannung levels
@@ -120,14 +157,15 @@ class ValidateStep(BaseStep):
             if ("umspann" in vl or "/" in vl) and "ms" in vl and "ns" in vl:
                 found_levels.add("ms/ns")
         
+        # Missing expected voltage levels is a warning (might be legitimate for some DNOs)
         missing_levels = expected_levels - found_levels
         if missing_levels:
-            issues.append(f"Missing expected voltage levels: {', '.join(sorted(missing_levels)).upper()}")
+            warnings.append(f"Missing expected voltage levels: {', '.join(sorted(missing_levels)).upper()}")
         
         # Check for Umspannung levels (warn but don't fail)
         missing_umspannung = umspannung_levels - found_levels
         if missing_umspannung and len(data) < 4:
-            issues.append(f"Missing transformation levels: {', '.join(sorted(missing_umspannung)).upper()} (expected 5 levels total)")
+            warnings.append(f"Missing transformation levels: {', '.join(sorted(missing_umspannung)).upper()} (expected 5 levels total)")
         
         seasons = ["winter", "fruehling", "sommer", "herbst"]
         total_season_slots = 0
@@ -135,8 +173,9 @@ class ValidateStep(BaseStep):
         completely_missing = 0  # Empty/None with no explicit "entfällt"
         
         for i, record in enumerate(data):
+            # Missing voltage_level is a critical error
             if not record.get("voltage_level"):
-                issues.append(f"Record {i}: missing voltage_level")
+                errors.append(f"Record {i}: missing voltage_level")
             
             # Count how many seasons have data vs are legitimately empty
             for season in seasons:
@@ -151,26 +190,26 @@ class ValidateStep(BaseStep):
                     # Has actual time data
                     filled_or_explicit_empty += 1
                 else:
-                    # Missing/None with no explicit marker - might be extraction issue
+                    # Missing/None with no explicit marker - might be extraction issue or legitimate
                     completely_missing += 1
         
-        # Check at least one season has time data overall
+        # Check at least one season has time data overall - no time data is an error
         has_any_time_data = any(
             record.get(s) and str(record.get(s)).strip().lower() not in ["entfällt", "-", "none", ""]
             for record in data
             for s in seasons
         )
         if not has_any_time_data:
-            issues.append("No time window data found in any record")
+            errors.append("No time window data found in any record")
         
         # Check if too many seasons are completely missing (not "entfällt", just empty)
-        # This suggests extraction failure rather than legitimate empty data
+        # This is just a warning - many DNOs legitimately use null/None for empty seasons
         if total_season_slots > 0 and completely_missing > 0:
             missing_rate = completely_missing / total_season_slots
             if missing_rate > 0.5:
-                issues.append(
-                    f"{completely_missing}/{total_season_slots} season slots are completely empty "
-                    f"(not 'entfällt') - extraction may be incomplete"
+                warnings.append(
+                    f"{completely_missing}/{total_season_slots} season slots are empty "
+                    f"(null instead of 'entfällt') - may be incomplete extraction"
                 )
         
-        return issues
+        return errors, warnings

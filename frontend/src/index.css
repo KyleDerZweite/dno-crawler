@@ -7,36 +7,45 @@
 @layer base {
   :root {
     --radius: 0.75rem;
-    
+
     /* Dark theme - Pangolin inspired with softer backgrounds */
-    --background: 240 6% 10%;     /* Softer dark - not true black */
-    --foreground: 0 0% 98%;       /* #fafafa */
-    
-    --card: 240 5% 13%;           /* Slightly elevated from background */
+    --background: 240 6% 10%;
+    /* Softer dark - not true black */
+    --foreground: 0 0% 98%;
+    /* #fafafa */
+
+    --card: 240 5% 13%;
+    /* Slightly elevated from background */
     --card-foreground: 0 0% 98%;
 
     --popover: 240 5% 13%;
     --popover-foreground: 0 0% 98%;
 
-    --primary: 262 83% 58%;       /* #8b5cf6 - Violet 500 */
+    --primary: 262 83% 58%;
+    /* #8b5cf6 - Violet 500 */
     --primary-foreground: 0 0% 100%;
 
-    --secondary: 240 5% 17%;      /* Subtle elevation */
+    --secondary: 240 5% 17%;
+    /* Subtle elevation */
     --secondary-foreground: 0 0% 98%;
 
     --muted: 240 5% 17%;
     --muted-foreground: 240 5% 64%;
 
-    --accent: 262 83% 58%;        /* Violet accent */
+    --accent: 262 83% 58%;
+    /* Violet accent */
     --accent-foreground: 0 0% 100%;
-    
-    --success: 152 69% 45%;       /* Emerald */
+
+    --success: 152 69% 45%;
+    /* Emerald */
     --success-foreground: 0 0% 100%;
 
-    --warning: 38 92% 50%;        /* Amber */
+    --warning: 38 92% 50%;
+    /* Amber */
     --warning-foreground: 0 0% 0%;
 
-    --error: 0 84% 60%;           /* Red */
+    --error: 0 84% 60%;
+    /* Red */
     --error-foreground: 0 0% 100%;
 
     --destructive: 0 84% 60%;
@@ -44,23 +53,30 @@
 
     --border: 240 4% 20%;
     --input: 240 4% 20%;
-    --ring: 262 83% 58%;          /* Violet ring */
-    
+    --ring: 262 83% 58%;
+    /* Violet ring */
+
     /* Sidebar - same as card for unified look */
     --sidebar: 240 5% 11%;
     --sidebar-foreground: 240 5% 64%;
-    --sidebar-primary: 262 83% 58%;   /* Violet */
+    --sidebar-primary: 262 83% 58%;
+    /* Violet */
     --sidebar-primary-foreground: 0 0% 100%;
     --sidebar-accent: 240 5% 17%;
     --sidebar-accent-foreground: 0 0% 98%;
     --sidebar-border: 240 4% 18%;
 
     /* Chart colors */
-    --chart-1: 262 83% 58%;       /* Violet primary */
-    --chart-2: 152 69% 45%;       /* Emerald */
-    --chart-3: 217 91% 60%;       /* Blue */
-    --chart-4: 43 96% 56%;        /* Gold */
-    --chart-5: 0 72% 51%;         /* Red */
+    --chart-1: 262 83% 58%;
+    /* Violet primary */
+    --chart-2: 152 69% 45%;
+    /* Emerald */
+    --chart-3: 217 91% 60%;
+    /* Blue */
+    --chart-4: 43 96% 56%;
+    /* Gold */
+    --chart-5: 0 72% 51%;
+    /* Red */
   }
 }
 
@@ -68,18 +84,23 @@
   * {
     @apply border-border;
   }
-  
+
   html {
     font-family: 'Inter', ui-sans-serif, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
   }
-  
+
   body {
     @apply bg-background text-foreground;
   }
-  
-  h1, h2, h3, h4, h5, h6 {
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
     font-family: 'Space Grotesk', 'Inter', sans-serif;
     letter-spacing: -0.025em;
   }
@@ -98,7 +119,8 @@
 ::-webkit-scrollbar-thumb {
   background: hsl(var(--muted));
   border-radius: 5px;
-  border: 2px solid hsl(var(--background)); /* Creates padding effect */
+  border: 2px solid hsl(var(--background));
+  /* Creates padding effect */
 }
 
 ::-webkit-scrollbar-thumb:hover {
@@ -109,7 +131,7 @@
   .text-success {
     color: hsl(var(--success));
   }
-  
+
   .bg-success {
     background-color: hsl(var(--success));
   }
@@ -134,11 +156,11 @@
   .nav-item {
     @apply flex items-center rounded-md transition-colors px-2 py-2;
   }
-  
+
   .nav-item-active {
     @apply bg-secondary font-medium text-foreground;
   }
-  
+
   .nav-item-inactive {
     @apply text-muted-foreground hover:bg-secondary/80 hover:text-foreground;
   }

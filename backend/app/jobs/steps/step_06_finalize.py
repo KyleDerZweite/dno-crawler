@@ -69,10 +69,13 @@ class FinalizeStep(BaseStep):
         auto_flagged = ctx.get("auto_flagged", False)
         auto_flag_reason = ctx.get("auto_flag_reason")
         
+        # Check for force_override flag (from bulk extraction)
+        force_override = ctx.get("force_override", False)
+        
         if job.data_type == "hlzf":
-            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason)
+            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason, force_override)
         elif job.data_type == "netzentgelte":
-            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason)
+            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason, force_override)
         else:
             logger.warning("unknown_data_type", data_type=job.data_type)
         
@@ -117,6 +120,47 @@ class FinalizeStep(BaseStep):
             source = "cache"
         
         return f"Saved {saved_count} records from {source}"
+    
+    def _parse_german_float(self, value: str | float | None) -> float | None:
+        """
+        Parse a number that may be in German format (comma as decimal separator).
+        
+        Handles:
+        - '6,69' -> 6.69 (German decimal)
+        - '1.234,56' -> 1234.56 (German thousands + decimal)
+        - '6.69' -> 6.69 (already correct format)
+        - 6.69 -> 6.69 (already a float)
+        - None -> None
+        - '' -> None
+        """
+        if value is None:
+            return None
+        
+        # If already a number, return it
+        if isinstance(value, (int, float)):
+            return float(value)
+        
+        # Convert to string and clean
+        value = str(value).strip()
+        if not value:
+            return None
+        
+        # Handle German number format:
+        # In German: 1.234,56 means 1234.56 (dot for thousands, comma for decimal)
+        # In English: 1,234.56 means 1234.56 (comma for thousands, dot for decimal)
+        
+        # Check if it's German format (contains comma as decimal separator)
+        if ',' in value:
+            # Remove any dots (thousands separators in German)
+            value = value.replace('.', '')
+            # Replace comma with dot for decimal
+            value = value.replace(',', '.')
+        
+        try:
+            return float(value)
+        except ValueError:
+            logger.warning("parse_german_float_failed", value=value)
+            return None
     
     def _normalize_voltage_level(self, raw: str) -> str:
         """
@@ -250,8 +294,13 @@ class FinalizeStep(BaseStep):
         source_meta: dict | None = None,
         auto_flagged: bool = False,
         auto_flag_reason: str | None = None,
+        force_override: bool = False,
     ) -> int:
-        """Save HLZF records with upsert logic."""
+        """Save HLZF records with upsert logic.
+        
+        Args:
+            force_override: If True, override even verified records. If False, skip verified records.
+        """
         saved = 0
         source_meta = source_meta or {}
         
@@ -275,6 +324,11 @@ class FinalizeStep(BaseStep):
             existing = result.scalar_one_or_none()
             
             if existing:
+                # Skip verified records unless force_override is set
+                if existing.verification_status == "verified" and not force_override:
+                    logger.debug("hlzf_skip_verified", voltage_level=voltage_level, year=year)
+                    continue
+                
                 # Update existing record - always overwrite with new values (including null)
                 if "winter" in record:
                     existing.winter = self._normalize_hlzf_time(record.get("winter"))
@@ -327,8 +381,13 @@ class FinalizeStep(BaseStep):
         source_meta: dict | None = None,
         auto_flagged: bool = False,
         auto_flag_reason: str | None = None,
+        force_override: bool = False,
     ) -> int:
-        """Save Netzentgelte records with upsert logic."""
+        """Save Netzentgelte records with upsert logic.
+        
+        Args:
+            force_override: If True, override even verified records. If False, skip verified records.
+        """
         saved = 0
         source_meta = source_meta or {}
         
@@ -358,15 +417,20 @@ class FinalizeStep(BaseStep):
             leistung_u2500 = record.get("leistung_unter_2500h")
             
             if existing:
+                # Skip verified records unless force_override is set
+                if existing.verification_status == "verified" and not force_override:
+                    logger.debug("netzentgelte_skip_verified", voltage_level=voltage_level, year=year)
+                    continue
+                
                 # Update existing record
                 if arbeit is not None:
-                    existing.arbeit = float(arbeit)
+                    existing.arbeit = self._parse_german_float(arbeit)
                 if leistung is not None:
-                    existing.leistung = float(leistung)
+                    existing.leistung = self._parse_german_float(leistung)
                 if arbeit_u2500 is not None:
-                    existing.arbeit_unter_2500h = float(arbeit_u2500)
+                    existing.arbeit_unter_2500h = self._parse_german_float(arbeit_u2500)
                 if leistung_u2500 is not None:
-                    existing.leistung_unter_2500h = float(leistung_u2500)
+                    existing.leistung_unter_2500h = self._parse_german_float(leistung_u2500)
                 # Update extraction source (overwrite with new extraction)
                 existing.extraction_source = source_meta.get("source")
                 existing.extraction_model = source_meta.get("model")
@@ -382,10 +446,10 @@ class FinalizeStep(BaseStep):
                     dno_id=dno_id,
                     year=year,
                     voltage_level=voltage_level,
-                    arbeit=float(arbeit) if arbeit else None,
-                    leistung=float(leistung) if leistung else None,
-                    arbeit_unter_2500h=float(arbeit_u2500) if arbeit_u2500 else None,
-                    leistung_unter_2500h=float(leistung_u2500) if leistung_u2500 else None,
+                    arbeit=self._parse_german_float(arbeit),
+                    leistung=self._parse_german_float(leistung),
+                    arbeit_unter_2500h=self._parse_german_float(arbeit_u2500),
+                    leistung_unter_2500h=self._parse_german_float(leistung_u2500),
                     extraction_source=source_meta.get("source"),
                     extraction_model=source_meta.get("model"),
                     extraction_source_format=source_meta.get("source_format"),
