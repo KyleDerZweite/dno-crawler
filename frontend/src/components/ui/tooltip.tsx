@@ -3,7 +3,12 @@ import { Tooltip } from "@base-ui/react"
 
 import { cn } from "@/lib/utils"
 
-const TooltipProvider = ({ children }: { children: React.ReactNode }) => (
+interface TooltipProviderProps {
+    children: React.ReactNode
+    delayDuration?: number
+}
+
+const TooltipProvider = ({ children }: TooltipProviderProps) => (
     <>{children}</>
 )
 
@@ -29,12 +34,16 @@ const TooltipTrigger = React.forwardRef<HTMLButtonElement, TooltipTriggerProps>(
 )
 TooltipTrigger.displayName = "TooltipTrigger"
 
+interface TooltipContentProps extends Omit<React.ComponentPropsWithoutRef<typeof Tooltip.Popup>, 'side'> {
+    side?: "top" | "right" | "bottom" | "left"
+}
+
 const TooltipContent = React.forwardRef<
     HTMLDivElement,
-    React.ComponentPropsWithoutRef<typeof Tooltip.Popup>
->(({ className, children, ...props }, ref) => (
+    TooltipContentProps
+>(({ className, children, side, ...props }, ref) => (
     <Tooltip.Portal>
-        <Tooltip.Positioner>
+        <Tooltip.Positioner side={side}>
             <Tooltip.Popup
                 ref={ref}
                 className={cn(

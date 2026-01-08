@@ -1,10 +1,19 @@
+/**
+ * DNODetailPage - Refactored to use extracted components
+ * 
+ * This page displays detailed information about a DNO including:
+ * - Header with navigation and actions
+ * - Statistics cards
+ * - Data tables (Netzentgelte, HLZF)
+ * - Files and jobs panel
+ * - Import/Export functionality
+ */
+
 import { useParams, Link, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type Netzentgelte, type HLZF, type Job } from "@/lib/api";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import {
     Dialog,
     DialogContent,
@@ -12,63 +21,50 @@ import {
     DialogFooter,
     DialogHeader,
     DialogTitle,
-    DialogTrigger,
 } from "@/components/ui/dialog";
 import {
     ArrowLeft,
-    Building,
-    Database,
-    ExternalLink,
-    Globe,
-    RefreshCw,
     Loader2,
-    Calendar,
     Zap,
     Clock,
-    CheckCircle,
-    XCircle,
-    AlertCircle,
-    Trash2,
-    FileDown,
-    MoreVertical,
-    Pencil,
-    Check,
-    ChevronDown,
-    ChevronUp,
     Upload,
-    Info,
     Download,
     FolderInput,
+    Check,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
 import { cn } from "@/lib/utils";
 import { useAuth } from "@/lib/use-auth";
 import { useState, useMemo, useRef, useEffect } from "react";
-import { VerificationBadge } from "@/components/verification-badge";
-import { ExtractionSourceBadge } from "@/components/extraction-source-badge";
-import { SmartDropdown } from "@/components/SmartDropdown";
 
-// Crawl configuration - matching SearchPage defaults
-const AVAILABLE_YEARS = [2026, 2025, 2024, 2023, 2022];
-const DEFAULT_CRAWL_YEARS = [2025, 2024];
+// Import extracted components
+import {
+    CrawlDialog,
+    EditDNODialog,
+    DeleteDNODialog,
+    NetzentgelteTable,
+    HLZFTable,
+    EditRecordDialog,
+    FilesJobsPanel,
+    DNOHeader,
+    SourceDataAccordion,
+} from "@/features/dno-detail";
+
+// Import extracted hooks
+import { useDataFilters, useDataCompleteness } from "@/features/dno-detail";
 
 export function DNODetailPage() {
     const { id } = useParams<{ id: string }>();
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { toast } = useToast();
+    const { isAdmin } = useAuth();
 
-    // Filter state - will be set dynamically based on available data
-    const [yearFilter, setYearFilter] = useState<number[]>([]);
-    const [yearFilterInitialized, setYearFilterInitialized] = useState(false);
-    const [voltageLevelFilter, setVoltageLevelFilter] = useState<string[]>([]);
-
-    // Dropdown menu state
+    // Dropdown menu state for tables
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
-    const menuRef = useRef<HTMLDivElement>(null);
 
-    // Edit modal state
+    // Edit record modal state
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editModalType, setEditModalType] = useState<'netzentgelte' | 'hlzf'>('netzentgelte');
     const [editRecord, setEditRecord] = useState<{
@@ -81,33 +77,12 @@ export function DNODetailPage() {
         herbst?: string;
     } | null>(null);
 
-    // Crawl dialog state
-    const [crawlDialogOpen, setCrawlDialogOpen] = useState(false);
-    const [crawlYears, setCrawlYears] = useState<number[]>(DEFAULT_CRAWL_YEARS);
-    const [crawlDataType, setCrawlDataType] = useState<'all' | 'netzentgelte' | 'hlzf'>('all');
-    const [crawlJobType, setCrawlJobType] = useState<'full' | 'crawl' | 'extract'>('full');
-    const [showAdvancedCrawl, setShowAdvancedCrawl] = useState(false);
-
-    // Edit DNO metadata dialog state
+    // Dialog states
     const [editDNOOpen, setEditDNOOpen] = useState(false);
-    const [editDNOData, setEditDNOData] = useState({
-        name: '',
-        region: '',
-        website: '',
-        description: '',
-        phone: '',
-        email: '',
-        contact_address: '',
-    });
-
-    // Delete DNO dialog state
     const [deleteDNOOpen, setDeleteDNOOpen] = useState(false);
-
-    // More details collapse state
-    const [showMoreDetails, setShowMoreDetails] = useState(false);
-
-    // Upload dialog state
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
+
+    // Upload state
     const [uploadResults, setUploadResults] = useState<Array<{
         filename: string;
         success: boolean;
@@ -118,9 +93,8 @@ export function DNODetailPage() {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
-    // Import/Export state
     const [exportDataTypes, setExportDataTypes] = useState<string[]>(["netzentgelte", "hlzf"]);
-    const [exportYears, setExportYears] = useState<number[]>([]);
+    const [exportYears] = useState<number[]>([]);
     const [isExporting, setIsExporting] = useState(false);
     const [importDialogOpen, setImportDialogOpen] = useState(false);
     const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
@@ -132,49 +106,38 @@ export function DNODetailPage() {
     const [isImporting, setIsImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
-    // Files & Jobs tab state
-    const [filesJobsTab, setFilesJobsTab] = useState<"files" | "jobs">("files");
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const [_showMoreDetails] = useState(false);
 
-    // Close menu when clicking outside
-    useEffect(() => {
-        const handleClickOutside = (event: MouseEvent) => {
-            if (menuRef.current && !menuRef.current.contains(event.target as Node)) {
-                setOpenMenuId(null);
-            }
-        };
-        document.addEventListener("mousedown", handleClickOutside);
-        return () => document.removeEventListener("mousedown", handleClickOutside);
-    }, []);
+    // ===== DATA FETCHING =====
 
-    // Fetch DNO details first (works with both slug and numeric ID)
+    // Fetch DNO details
     const { data: dnoResponse, isLoading: dnoLoading, error: dnoError } = useQuery({
         queryKey: ["dno", id],
         queryFn: () => api.dnos.get(id!),
         enabled: !!id,
-        staleTime: 0, // Always consider data stale
-        refetchOnMount: 'always', // Always refetch when component mounts
+        staleTime: 0,
+        refetchOnMount: 'always',
     });
 
-    // Get the numeric ID from the response (handles both slug and ID access)
-    const numericId = dnoResponse?.data?.id;
+    const dno = dnoResponse?.data;
+    const numericId = dno?.id;
 
-    // Redirect slug URLs to numeric ID URLs for consistency
+    // Redirect slug URLs to numeric ID URLs
     useEffect(() => {
-        if (numericId && id && !id.match(/^\d+$/) && numericId !== id) {
-            // User accessed via slug, redirect to numeric ID
+        if (numericId && id && !id.match(/^\d+$/) && String(numericId) !== id) {
             navigate(`/dnos/${numericId}`, { replace: true });
         }
     }, [numericId, id, navigate]);
 
-    // Fetch DNO crawl jobs (poll when active) - use numeric ID
+    // Fetch jobs (with polling)
     const { data: jobsResponse, isLoading: jobsLoading } = useQuery({
         queryKey: ["dno-jobs", numericId],
-        queryFn: () => api.dnos.getJobs(numericId!, 20),
+        queryFn: () => api.dnos.getJobs(String(numericId), 20),
         enabled: !!numericId,
         staleTime: 0,
         refetchOnMount: 'always',
         refetchInterval: (query) => {
-            // Poll every 3s while there are active jobs
             const jobs = query.state.data?.data || [];
             const hasActiveJobs = jobs.some((job: { status: string }) =>
                 job.status === "pending" || job.status === "running"
@@ -183,47 +146,70 @@ export function DNODetailPage() {
         },
     });
 
-    // Check if there are active jobs (for data refresh)
-    const hasActiveJobs = useMemo(() => {
-        const jobs = jobsResponse?.data || [];
-        return jobs.some((job: { status: string }) =>
+    const jobs: Job[] = (jobsResponse?.data || []) as Job[];
+    const hasActiveJobs = useMemo(() =>
+        jobs.some((job: { status: string }) =>
             job.status === "pending" || job.status === "running"
-        );
-    }, [jobsResponse?.data]);
+        ),
+        [jobs]
+    );
 
-    // Fetch DNO data (netzentgelte, hlzf) - use numeric ID
+    // Fetch DNO data (netzentgelte, hlzf)
     const { data: dataResponse, isLoading: dataLoading, refetch: refetchData } = useQuery({
         queryKey: ["dno-data", numericId],
-        queryFn: () => api.dnos.getData(numericId!),
-        enabled: !!numericId,
-        staleTime: 0,
-        refetchOnMount: 'always',
-        refetchInterval: hasActiveJobs ? 5000 : false, // Poll every 5s while jobs are active
-    });
-
-    // Fetch available files - also refresh when jobs are active - use numeric ID
-    const { data: filesResponse } = useQuery({
-        queryKey: ["dno-files", numericId],
-        queryFn: () => api.dnos.getFiles(numericId!),
+        queryFn: () => api.dnos.getData(String(numericId)),
         enabled: !!numericId,
         staleTime: 0,
         refetchOnMount: 'always',
         refetchInterval: hasActiveJobs ? 5000 : false,
     });
 
+    const dnoData = dataResponse?.data;
+    const netzentgelte = dnoData?.netzentgelte || [];
+    const hlzf = dnoData?.hlzf || [];
+
+    // Fetch files
+    const { data: filesResponse } = useQuery({
+        queryKey: ["dno-files", numericId],
+        queryFn: () => api.dnos.getFiles(String(numericId)),
+        enabled: !!numericId,
+        staleTime: 0,
+        refetchOnMount: 'always',
+        refetchInterval: hasActiveJobs ? 5000 : false,
+    });
+
+    const files = filesResponse?.data || [];
+
+    // ===== CUSTOM HOOKS =====
+
+    // Use the extracted filter hook
+    const {
+        yearFilter,
+        voltageLevelFilter,
+        filterOptions,
+        toggleYearFilter,
+        toggleVoltageLevelFilter,
+        filteredNetzentgelte,
+        filteredHLZF,
+    } = useDataFilters({ netzentgelte, hlzf });
+
+    // Use the extracted completeness hook
+    const dataCompleteness = useDataCompleteness({ netzentgelte, hlzf });
+
+    // ===== MUTATIONS =====
+
+    // Trigger crawl mutation
     const triggerCrawlMutation = useMutation({
         mutationFn: async ({ years, dataType, jobType }: {
             years: number[];
             dataType: 'all' | 'netzentgelte' | 'hlzf';
             jobType: 'full' | 'crawl' | 'extract';
         }) => {
-            // When 'all' is selected, create separate jobs for netzentgelte and hlzf
             const typesToCrawl = dataType === 'all' ? ['netzentgelte', 'hlzf'] as const : [dataType];
             const results = [];
-
             for (const year of years) {
                 for (const type of typesToCrawl) {
-                    const result = await api.dnos.triggerCrawl(numericId!, {
+                    const result = await api.dnos.triggerCrawl(String(numericId), {
                         year,
                         data_type: type,
                         job_type: jobType,
@@ -242,458 +228,87 @@ export function DNODetailPage() {
                 description: `${jobCount} job${jobCount > 1 ? 's' : ''} queued for years: ${variables.years.join(', ')}`,
             });
             queryClient.invalidateQueries({ queryKey: ["dno-jobs", numericId] });
-            setCrawlDialogOpen(false);
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof AxiosError
-                    ? error.response?.data?.detail ?? error.message
-                    : error instanceof Error
-                        ? error.message
-                        : "Unknown error";
-            toast({
-                variant: "destructive",
-                title: "Failed to trigger crawl",
-                description: message,
-            });
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to trigger crawl", description: message });
         },
     });
 
-    // Calculate total job count based on years and data type selection
-    const crawlJobCount = crawlYears.length * (crawlDataType === 'all' ? 2 : 1);
-
-    // Toggle year in crawl selection
-    const toggleCrawlYear = (year: number) => {
-        setCrawlYears((prev) => {
-            if (prev.includes(year)) {
-                if (prev.length === 1) return prev; // keep at least one
-                return prev.filter((y) => y !== year);
-            }
-            return [...prev, year].sort((a, b) => b - a);
-        });
-    };
-
-    // Handle file upload
-    const handleFileUpload = async (files: FileList | null) => {
-        if (!files || files.length === 0 || !numericId) return;
-
-        setIsUploading(true);
-        setUploadResults([]);
-
-        const results: typeof uploadResults = [];
-
-        for (const file of Array.from(files)) {
-            try {
-                const response = await api.dnos.uploadFile(numericId, file);
-                if (response.success) {
-                    results.push({
-                        filename: file.name,
-                        success: true,
-                        message: `Saved as ${response.data.filename}`,
-                        detected_type: response.data.detected_type,
-                        detected_year: response.data.detected_year,
-                    });
-                } else {
-                    results.push({
-                        filename: file.name,
-                        success: false,
-                        message: response.message || response.data?.hint || 'Detection failed',
-                    });
-                }
-            } catch {
-                results.push({
-                    filename: file.name,
-                    success: false,
-                    message: 'Upload failed',
-                });
-            }
-        }
-
-        setUploadResults(results);
-        setIsUploading(false);
-
-        // Refresh files list
-        queryClient.invalidateQueries({ queryKey: ["dno-files", numericId] });
-        queryClient.invalidateQueries({ queryKey: ["dno", numericId] });
-
-        // Show toast for results
-        const successCount = results.filter(r => r.success).length;
-        if (successCount > 0) {
-            toast({
-                title: "Files Uploaded",
-                description: `${successCount} of ${results.length} file(s) uploaded successfully`,
-            });
-        }
-    };
-
-    // Handle export
-    const handleExport = async () => {
-        if (!numericId) return;
-        setIsExporting(true);
-        try {
-            const blob = await api.dnos.exportData(String(numericId), {
-                data_types: exportDataTypes,
-                years: exportYears.length > 0 ? exportYears : undefined,
-                include_metadata: true,
-            });
-            // Create download link
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${dnoResponse?.data?.slug || "dno"}-export-${new Date().toISOString().slice(0, 10)}.json`;
-            document.body.appendChild(a);
-            a.click();
-            document.body.removeChild(a);
-            window.URL.revokeObjectURL(url);
-            toast({ title: "Export Complete", description: "JSON file downloaded successfully" });
-        } catch (error) {
-            const message = error instanceof AxiosError
-                ? error.response?.data?.detail ?? error.message
-                : "Export failed";
-            toast({ variant: "destructive", title: "Export Failed", description: message });
-        } finally {
-            setIsExporting(false);
-        }
-    };
-
-    // Handle import file selection
-    const handleImportFileSelect = async (files: FileList | null) => {
-        if (!files || files.length === 0) return;
-        const file = files[0];
-        setImportFileName(file.name);
-        try {
-            const text = await file.text();
-            const json = JSON.parse(text);
-            setImportData({
-                netzentgelte: json.netzentgelte || [],
-                hlzf: json.hlzf || [],
-            });
-            setImportDialogOpen(true);
-        } catch {
-            toast({ variant: "destructive", title: "Invalid JSON", description: "Could not parse the selected file" });
-        }
-    };
-
-    // Handle import submit
-    const handleImportSubmit = async () => {
-        if (!numericId || !importData) return;
-        setIsImporting(true);
-        try {
-            const result = await api.dnos.importData(String(numericId), {
-                mode: importMode,
-                netzentgelte: importData.netzentgelte as never[],
-                hlzf: importData.hlzf as never[],
-            });
-            toast({
-                title: "Import Complete",
-                description: result.message || "Data imported successfully",
-            });
-            setImportDialogOpen(false);
-            setImportData(null);
-            setImportFileName("");
-            // Refresh data
-            queryClient.invalidateQueries({ queryKey: ["dno-data", numericId] });
-        } catch (error) {
-            const message = error instanceof AxiosError
-                ? error.response?.data?.detail ?? error.message
-                : "Import failed";
-            toast({ variant: "destructive", title: "Import Failed", description: message });
-        } finally {
-            setIsImporting(false);
-        }
-    };
-
-    const dno = dnoResponse?.data;
-    const dnoData = dataResponse?.data;
-    const jobs = jobsResponse?.data || [];
-    const files = filesResponse?.data || [];
-
-
-    // Get admin status
-    const { isAdmin } = useAuth();
-
-    // Get unique years and voltage levels for filter options
-    const filterOptions = useMemo(() => {
-        const years = new Set<number>();
-        const voltageLevels = new Set<string>();
-
-        dnoData?.netzentgelte?.forEach(item => {
-            years.add(item.year);
-            if (item.voltage_level) voltageLevels.add(item.voltage_level);
-        });
-        dnoData?.hlzf?.forEach(item => {
-            years.add(item.year);
-            if (item.voltage_level) voltageLevels.add(item.voltage_level);
-        });
-
-        return {
-            years: Array.from(years).sort((a, b) => b - a),
-            voltageLevels: Array.from(voltageLevels).sort(),
-        };
-    }, [dnoData]);
-
-    // Set initial year filter based on available data
-    // Priority: 2024 if available, otherwise latest year, or only year if just one
-    useEffect(() => {
-        if (yearFilterInitialized || filterOptions.years.length === 0) return;
-
-        const availableYears = filterOptions.years;
-        let defaultYear: number;
-
-        if (availableYears.includes(2024)) {
-            // Prefer 2024 if available
-            defaultYear = 2024;
-        } else if (availableYears.length === 1) {
-            // Only one year available, use it
-            defaultYear = availableYears[0];
-        } else {
-            // Use the latest year (array is sorted desc)
-            defaultYear = availableYears[0];
-        }
-
-        setYearFilter([defaultYear]);
-        setYearFilterInitialized(true);
-    }, [filterOptions.years, yearFilterInitialized]);
-
-    // Calculate data completeness dynamically
-    // 50% weight for Netzentgelte + 50% weight for HLZF
-    // Based on actual years and voltage levels present (not fixed 50 datapoints)
-    const dataCompleteness = useMemo(() => {
-        const netzentgelte = dnoData?.netzentgelte || [];
-        const hlzf = dnoData?.hlzf || [];
-
-        // Get unique years that have any data
-        const allYears = new Set<number>();
-        netzentgelte.forEach(item => allYears.add(item.year));
-        hlzf.forEach(item => allYears.add(item.year));
-        const yearsCount = allYears.size || 1; // At least 1 to avoid division by zero
-
-        // Determine voltage levels this DNO actually uses (based on existing data)
-        const voltageLevels = new Set<string>();
-        netzentgelte.forEach(item => voltageLevels.add(item.voltage_level));
-        hlzf.forEach(item => voltageLevels.add(item.voltage_level));
-
-        // If no data yet, assume standard 5 levels for expected
-        const levelsCount = voltageLevels.size || 5;
-
-        // Expected = levels × years for each data type
-        const expectedPerType = levelsCount * yearsCount;
-
-        // Helper to check if a value is "real" data (not null, "-", or "N/A")
-        const isValidValue = (v: unknown): boolean => {
-            if (v === null || v === undefined) return false;
-            const str = String(v).trim().toLowerCase();
-            return str !== "-" && str !== "n/a" && str !== "" && str !== "null";
-        };
-
-        // Count Netzentgelte records with actual price data
-        let netzentgelteValid = 0;
-        netzentgelte.forEach(item => {
-            const hasLeistung = isValidValue(item.leistung);
-            const hasArbeit = isValidValue(item.arbeit);
-            const hasLeistungUnter = isValidValue(item.leistung_unter_2500h);
-            const hasArbeitUnter = isValidValue(item.arbeit_unter_2500h);
-            if (hasLeistung || hasArbeit || hasLeistungUnter || hasArbeitUnter) {
-                netzentgelteValid++;
-            }
-        });
-
-        // Count HLZF records with actual time data
-        let hlzfValid = 0;
-        hlzf.forEach(item => {
-            const hasWinter = isValidValue(item.winter);
-            const hasHerbst = isValidValue(item.herbst);
-            const hasFruehling = isValidValue(item.fruehling);
-            const hasSommer = isValidValue(item.sommer);
-            if (hasWinter || hasHerbst || hasFruehling || hasSommer) {
-                hlzfValid++;
-            }
-        });
-
-        // Calculate percentages for each type (capped at 100%)
-        const netzentgeltePercent = expectedPerType > 0
-            ? Math.min((netzentgelteValid / expectedPerType) * 100, 100)
-            : 0;
-        const hlzfPercent = expectedPerType > 0
-            ? Math.min((hlzfValid / expectedPerType) * 100, 100)
-            : 0;
-
-        // Weighted average: 50% Netzentgelte + 50% HLZF
-        const totalPercent = (netzentgeltePercent + hlzfPercent) / 2;
-
-        return {
-            total: netzentgelteValid + hlzfValid,
-            expected: expectedPerType * 2, // Total expected for both types
-            percentage: totalPercent,
-            netzentgelte: {
-                valid: netzentgelteValid,
-                expected: expectedPerType,
-                percentage: netzentgeltePercent,
-            },
-            hlzf: {
-                valid: hlzfValid,
-                expected: expectedPerType,
-                percentage: hlzfPercent,
-            },
-            years: yearsCount,
-            voltageLevels: levelsCount,
-        };
-    }, [dnoData?.netzentgelte, dnoData?.hlzf]);
-
-    // Apply filters to data
-    const filteredNetzentgelte = useMemo(() => {
-        if (!dnoData?.netzentgelte) return [];
-        return dnoData.netzentgelte.filter(item => {
-            if (yearFilter.length > 0 && !yearFilter.includes(item.year)) return false;
-            if (voltageLevelFilter.length > 0 && !voltageLevelFilter.includes(item.voltage_level)) return false;
-            return true;
-        });
-    }, [dnoData?.netzentgelte, yearFilter, voltageLevelFilter]);
-
-    const filteredHLZF = useMemo(() => {
-        if (!dnoData?.hlzf) return [];
-        return dnoData.hlzf.filter(item => {
-            if (yearFilter.length > 0 && !yearFilter.includes(item.year)) return false;
-            if (voltageLevelFilter.length > 0 && !voltageLevelFilter.includes(item.voltage_level)) return false;
-            return true;
-        });
-    }, [dnoData?.hlzf, yearFilter, voltageLevelFilter]);
-
-    // Toggle filter functions
-    const toggleYearFilter = (year: number) => {
-        setYearFilter(prev =>
-            prev.includes(year)
-                ? prev.filter(y => y !== year)
-                : [...prev, year]
-        );
-    };
-
-    // Delete Netzentgelte mutation
+    // Delete mutations
     const deleteNetzentgelteMutation = useMutation({
-        mutationFn: (recordId: number) => api.dnos.deleteNetzentgelte(numericId!, recordId),
+        mutationFn: (recordId: number) => api.dnos.deleteNetzentgelte(String(numericId), recordId),
         onSuccess: () => {
-            toast({
-                title: "Record deleted",
-                description: "The Netzentgelte record has been deleted",
-            });
+            toast({ title: "Record deleted", description: "The Netzentgelte record has been deleted" });
             refetchData();
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof AxiosError
-                    ? error.response?.data?.detail ?? error.message
-                    : error instanceof Error
-                        ? error.message
-                        : "Unknown error";
-            toast({
-                variant: "destructive",
-                title: "Failed to delete record",
-                description: message,
-            });
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to delete record", description: message });
         },
     });
 
-    // Delete HLZF mutation
     const deleteHLZFMutation = useMutation({
-        mutationFn: (recordId: number) => api.dnos.deleteHLZF(numericId!, recordId),
+        mutationFn: (recordId: number) => api.dnos.deleteHLZF(String(numericId), recordId),
         onSuccess: () => {
-            toast({
-                title: "Record deleted",
-                description: "The HLZF record has been deleted",
-            });
+            toast({ title: "Record deleted", description: "The HLZF record has been deleted" });
             refetchData();
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof AxiosError
-                    ? error.response?.data?.detail ?? error.message
-                    : error instanceof Error
-                        ? error.message
-                        : "Unknown error";
-            toast({
-                variant: "destructive",
-                title: "Failed to delete record",
-                description: message,
-            });
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to delete record", description: message });
         },
     });
 
-    const handleDeleteNetzentgelte = (recordId: number) => {
-        if (confirm("Are you sure you want to delete this record?")) {
-            deleteNetzentgelteMutation.mutate(recordId);
-        }
-    };
-
-    const handleDeleteHLZF = (recordId: number) => {
-        if (confirm("Are you sure you want to delete this record?")) {
-            deleteHLZFMutation.mutate(recordId);
-        }
-    };
-
-    // Update Netzentgelte mutation
+    // Update mutations
     const updateNetzentgelteMutation = useMutation({
         mutationFn: (data: { id: number; leistung?: number; arbeit?: number }) =>
-            api.dnos.updateNetzentgelte(numericId!, data.id, { leistung: data.leistung, arbeit: data.arbeit }),
+            api.dnos.updateNetzentgelte(String(numericId), data.id, { leistung: data.leistung, arbeit: data.arbeit }),
         onSuccess: () => {
-            toast({
-                title: "Record updated",
-                description: "The Netzentgelte record has been updated",
-            });
+            toast({ title: "Record updated", description: "The Netzentgelte record has been updated" });
             setEditModalOpen(false);
             setEditRecord(null);
             refetchData();
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof AxiosError
-                    ? error.response?.data?.detail ?? error.message
-                    : error instanceof Error
-                        ? error.message
-                        : "Unknown error";
-            toast({
-                variant: "destructive",
-                title: "Failed to update record",
-                description: message,
-            });
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to update record", description: message });
         },
     });
 
-    // Update HLZF mutation
     const updateHLZFMutation = useMutation({
         mutationFn: (data: { id: number; winter?: string; fruehling?: string; sommer?: string; herbst?: string }) =>
-            api.dnos.updateHLZF(numericId!, data.id, { winter: data.winter, fruehling: data.fruehling, sommer: data.sommer, herbst: data.herbst }),
+            api.dnos.updateHLZF(String(numericId), data.id, { winter: data.winter, fruehling: data.fruehling, sommer: data.sommer, herbst: data.herbst }),
         onSuccess: () => {
-            toast({
-                title: "Record updated",
-                description: "The HLZF record has been updated",
-            });
+            toast({ title: "Record updated", description: "The HLZF record has been updated" });
             setEditModalOpen(false);
             setEditRecord(null);
             refetchData();
         },
         onError: (error: unknown) => {
-            const message =
-                error instanceof AxiosError
-                    ? error.response?.data?.detail ?? error.message
-                    : error instanceof Error
-                        ? error.message
-                        : "Unknown error";
-            toast({
-                variant: "destructive",
-                title: "Failed to update record",
-                description: message,
-            });
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Unknown error";
+            toast({ variant: "destructive", title: "Failed to update record", description: message });
         },
     });
 
-    // Update DNO metadata mutation
+    // Update DNO mutation
     const updateDNOMutation = useMutation({
-        mutationFn: (data: { name?: string; region?: string; website?: string; description?: string }) =>
-            api.dnos.updateDNO(numericId!, data),
+        mutationFn: (data: { name?: string; region?: string; website?: string; description?: string; phone?: string; email?: string; contact_address?: string }) =>
+            api.dnos.updateDNO(String(numericId), data),
         onSuccess: () => {
             toast({ title: "DNO updated", description: "Metadata saved successfully" });
             setEditDNOOpen(false);
-            queryClient.invalidateQueries({ queryKey: ["dno", numericId] });
+            queryClient.invalidateQueries({ queryKey: ["dno", id] });
         },
         onError: (error: unknown) => {
             const message = error instanceof AxiosError
@@ -705,7 +320,7 @@ export function DNODetailPage() {
 
     // Delete DNO mutation
     const deleteDNOMutation = useMutation({
-        mutationFn: () => api.dnos.deleteDNO(numericId!),
+        mutationFn: () => api.dnos.deleteDNO(String(numericId)),
         onSuccess: () => {
             toast({ title: "DNO deleted", description: "DNO and all associated data have been permanently deleted" });
             setDeleteDNOOpen(false);
@@ -720,32 +335,26 @@ export function DNODetailPage() {
         },
     });
 
-    // Toggle voltage level filter
-    const toggleVoltageLevelFilter = (level: string) => {
-        setVoltageLevelFilter(prev =>
-            prev.includes(level)
-                ? prev.filter(l => l !== level)
-                : [...prev, level]
-        );
-    };
+    // ===== HANDLERS =====
 
-    // Open edit modal for Netzentgelte
-    const handleEditNetzentgelte = (item: { id: number; leistung?: number; arbeit?: number }) => {
+    const handleEditNetzentgelte = (item: Netzentgelte) => {
         setEditModalType('netzentgelte');
-        setEditRecord({ id: item.id, leistung: item.leistung, arbeit: item.arbeit });
+        setEditRecord({ id: item.id, leistung: item.leistung ?? undefined, arbeit: item.arbeit ?? undefined });
         setEditModalOpen(true);
-        setOpenMenuId(null);
     };
 
-    // Open edit modal for HLZF
-    const handleEditHLZF = (item: { id: number; winter?: string | null; fruehling?: string | null; sommer?: string | null; herbst?: string | null }) => {
+    const handleEditHLZF = (item: HLZF) => {
         setEditModalType('hlzf');
-        setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
+        setEditRecord({
+            id: item.id,
+            winter: item.winter || '',
+            fruehling: item.fruehling || '',
+            sommer: item.sommer || '',
+            herbst: item.herbst || ''
+        });
         setEditModalOpen(true);
-        setOpenMenuId(null);
     };
 
-    // Handle modal save
     const handleSaveEdit = () => {
         if (!editRecord) return;
 
@@ -765,6 +374,117 @@ export function DNODetailPage() {
             });
         }
     };
+
+    const handleFileUpload = async (files: FileList | null) => {
+        if (!files || files.length === 0 || !numericId) return;
+        setIsUploading(true);
+        setUploadResults([]);
+
+        const results: typeof uploadResults = [];
+        for (const file of Array.from(files)) {
+            try {
+                const response = await api.dnos.uploadFile(String(numericId), file);
+                if (response.success) {
+                    results.push({
+                        filename: file.name,
+                        success: true,
+                        message: `Saved as ${response.data.filename}`,
+                        detected_type: response.data.detected_type,
+                        detected_year: response.data.detected_year,
+                    });
+                } else {
+                    results.push({
+                        filename: file.name,
+                        success: false,
+                        message: response.message || 'Detection failed',
+                    });
+                }
+            } catch {
+                results.push({ filename: file.name, success: false, message: 'Upload failed' });
+            }
+        }
+
+        setUploadResults(results);
+        setIsUploading(false);
+        queryClient.invalidateQueries({ queryKey: ["dno-files", numericId] });
+
+        const successCount = results.filter(r => r.success).length;
+        if (successCount > 0) {
+            toast({ title: "Files Uploaded", description: `${successCount} of ${results.length} file(s) uploaded successfully` });
+        }
+    };
+
+    const handleExport = async () => {
+        if (!numericId) return;
+        setIsExporting(true);
+        try {
+            const blob = await api.dnos.exportData(String(numericId), {
+                data_types: exportDataTypes,
+                years: exportYears.length > 0 ? exportYears : undefined,
+                include_metadata: true,
+            });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${dno?.slug || "dno"}-export-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast({ title: "Export Complete", description: "JSON file downloaded successfully" });
+        } catch (error) {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Export failed";
+            toast({ variant: "destructive", title: "Export Failed", description: message });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    const handleImportFileSelect = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        setImportFileName(file.name);
+
+        try {
+            const text = await file.text();
+            const data = JSON.parse(text);
+            setImportData({
+                netzentgelte: data.netzentgelte || [],
+                hlzf: data.hlzf || [],
+            });
+            setImportDialogOpen(true);
+        } catch {
+            toast({ variant: "destructive", title: "Invalid File", description: "Could not parse JSON file" });
+        }
+    };
+
+    const handleImport = async () => {
+        if (!numericId || !importData) return;
+        setIsImporting(true);
+        try {
+            await api.dnos.importData(String(numericId), {
+                // Cast to any since import data comes from JSON file and may not match exact types
+                netzentgelte: importData.netzentgelte as [],
+                hlzf: importData.hlzf as [],
+                mode: importMode,
+            });
+            toast({ title: "Import Complete", description: "Data imported successfully" });
+            setImportDialogOpen(false);
+            setImportData(null);
+            refetchData();
+        } catch (error) {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Import failed";
+            toast({ variant: "destructive", title: "Import Failed", description: message });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
+    // ===== LOADING & ERROR STATES =====
 
     if (dnoLoading) {
         return (
@@ -790,397 +510,30 @@ export function DNODetailPage() {
         );
     }
 
-    const getStatusIcon = (status: string) => {
-        switch (status) {
-            case "completed":
-                return <CheckCircle className="h-4 w-4 text-success" />;
-            case "failed":
-                return <XCircle className="h-4 w-4 text-destructive" />;
-            case "running":
-                return <Loader2 className="h-4 w-4 text-primary animate-spin" />;
-            case "pending":
-                return <Clock className="h-4 w-4 text-muted-foreground" />;
-            default:
-                return <AlertCircle className="h-4 w-4 text-muted-foreground" />;
-        }
-    };
-
-    const getStatusBadge = (status: string) => {
-        const variants: Record<string, string> = {
-            completed: "bg-success/10 text-success border-success/20",
-            failed: "bg-destructive/10 text-destructive border-destructive/20",
-            running: "bg-primary/10 text-primary border-primary/20",
-            pending: "bg-muted text-muted-foreground border-muted",
-            cancelled: "bg-muted text-muted-foreground border-muted",
-        };
-        return (
-            <Badge variant="outline" className={cn("font-medium", variants[status] || variants.pending)}>
-                {status}
-            </Badge>
-        );
-    };
+    // ===== RENDER =====
 
     return (
         <div className="space-y-6">
-            {/* Header */}
-            <div className="flex items-start justify-between">
-                <div className="space-y-2">
-                    <Link to="/dnos" className="inline-flex items-center text-sm text-muted-foreground hover:text-foreground transition-colors">
-                        <ArrowLeft className="mr-2 h-4 w-4" />
-                        Back to DNOs
-                    </Link>
-                    <div className="flex items-center gap-3">
-                        <div className="p-3 rounded-xl bg-primary/10 text-primary">
-                            <Database className="h-6 w-6" />
-                        </div>
-                        <div>
-                            <h1 className="text-2xl font-bold text-foreground">{dno.name}</h1>
-                            {dno.region && (
-                                <p className="text-muted-foreground">{dno.region}</p>
-                            )}
-                        </div>
-                    </div>
-                </div>
-                <div className="flex gap-2">
-                    {dno.website && (
-                        <Button variant="outline" asChild>
-                            <a href={dno.website} target="_blank" rel="noopener noreferrer">
-                                <ExternalLink className="mr-2 h-4 w-4" />
-                                Website
-                            </a>
-                        </Button>
-                    )}
-                    {isAdmin() && (
-                        <Button
-                            variant="outline"
-                            className="border-destructive text-destructive hover:bg-destructive/10"
-                            onClick={() => setDeleteDNOOpen(true)}
-                        >
-                            <Trash2 className="mr-2 h-4 w-4" />
-                            Delete
-                        </Button>
-                    )}
-                    {isAdmin() && (
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setEditDNOData({
-                                    name: dno.name || '',
-                                    region: dno.region || '',
-                                    website: dno.website || '',
-                                    description: dno.description || '',
-                                    phone: dno.phone || '',
-                                    email: dno.email || '',
-                                    contact_address: dno.contact_address || '',
-                                });
-                                setEditDNOOpen(true);
-                            }}
-                        >
-                            <Pencil className="mr-2 h-4 w-4" />
-                            Edit
-                        </Button>
-                    )}
-                    <Dialog open={crawlDialogOpen} onOpenChange={setCrawlDialogOpen}>
-                        <DialogTrigger asChild>
-                            <Button disabled={dno.crawlable === false && !dno.has_local_files}>
-                                <RefreshCw className="mr-2 h-4 w-4" />
-                                Trigger Crawl
-                            </Button>
-                        </DialogTrigger>
-                        <DialogContent className="sm:max-w-md">
-                            <DialogHeader>
-                                <DialogTitle>Trigger Crawl for {dno.name}</DialogTitle>
-                                <DialogDescription>
-                                    Select years and data types to crawl. One job will be created per year.
-                                </DialogDescription>
-                            </DialogHeader>
+            {/* Header with navigation and actions */}
+            <DNOHeader
+                dno={dno}
+                isAdmin={isAdmin()}
+                onEditClick={() => setEditDNOOpen(true)}
+                onDeleteClick={() => setDeleteDNOOpen(true)}
+            />
 
-                            {/* Year Selection */}
-                            <div className="space-y-3">
-                                <label className="text-sm font-medium">Years to crawl</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {AVAILABLE_YEARS.map((year) => {
-                                        const isSelected = crawlYears.includes(year);
-                                        return (
-                                            <button
-                                                key={year}
-                                                type="button"
-                                                onClick={() => toggleCrawlYear(year)}
-                                                className={cn(
-                                                    "flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors",
-                                                    isSelected
-                                                        ? "bg-primary text-primary-foreground border-primary"
-                                                        : "bg-background border-input hover:bg-muted"
-                                                )}
-                                            >
-                                                <div className={cn(
-                                                    "w-4 h-4 rounded border flex items-center justify-center",
-                                                    isSelected
-                                                        ? "bg-primary-foreground/20 border-primary-foreground/50"
-                                                        : "border-current opacity-50"
-                                                )}>
-                                                    {isSelected && <Check className="w-3 h-3" />}
-                                                </div>
-                                                {year}
-                                            </button>
-                                        );
-                                    })}
-                                </div>
-                            </div>
-
-                            {/* Advanced Options (Collapsible) */}
-                            <div className="border rounded-lg overflow-hidden">
-                                <button
-                                    type="button"
-                                    onClick={() => setShowAdvancedCrawl(!showAdvancedCrawl)}
-                                    className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm"
-                                >
-                                    <span className="font-medium">Advanced Options</span>
-                                    {showAdvancedCrawl ? (
-                                        <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                                    ) : (
-                                        <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                                    )}
-                                </button>
-                                {showAdvancedCrawl && (
-                                    <div className="p-3 border-t space-y-4">
-                                        {/* Job Type Selection */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Job Type</label>
-                                            <div className="flex flex-wrap gap-2">
-                                                {([
-                                                    { value: 'full', label: 'Full Pipeline', desc: 'Crawl + Extract' },
-                                                    { value: 'crawl', label: 'Crawl Only', desc: 'Download file' },
-                                                    { value: 'extract', label: 'Extract Only', desc: 'Process existing file' },
-                                                ] as const).map((opt) => (
-                                                    <button
-                                                        key={opt.value}
-                                                        type="button"
-                                                        onClick={() => setCrawlJobType(opt.value)}
-                                                        className={cn(
-                                                            "flex flex-col items-start px-3 py-2 rounded-md border text-sm transition-colors",
-                                                            crawlJobType === opt.value
-                                                                ? "bg-primary text-primary-foreground border-primary"
-                                                                : "bg-background border-input hover:bg-muted"
-                                                        )}
-                                                    >
-                                                        <span className="font-medium">{opt.label}</span>
-                                                        <span className={cn(
-                                                            "text-xs",
-                                                            crawlJobType === opt.value
-                                                                ? "text-primary-foreground/70"
-                                                                : "text-muted-foreground"
-                                                        )}>{opt.desc}</span>
-                                                    </button>
-                                                ))}
-                                            </div>
-                                            {crawlJobType === 'extract' && (
-                                                <p className="text-xs text-muted-foreground flex items-center gap-1">
-                                                    <Info className="w-3 h-3" />
-                                                    Requires an existing downloaded file for the selected year/type
-                                                </p>
-                                            )}
-                                        </div>
-
-                                        {/* Data Type Selection */}
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Data Type</label>
-                                            <div className="flex gap-2">
-                                                {(['all', 'netzentgelte', 'hlzf'] as const).map((type) => (
-                                                    <button
-                                                        key={type}
-                                                        type="button"
-                                                        onClick={() => setCrawlDataType(type)}
-                                                        className={cn(
-                                                            "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
-                                                            crawlDataType === type
-                                                                ? "bg-primary text-primary-foreground border-primary"
-                                                                : "bg-background border-input hover:bg-muted"
-                                                        )}
-                                                    >
-                                                        {type === 'all' ? 'All' : type === 'netzentgelte' ? 'Netzentgelte' : 'HLZF'}
-                                                    </button>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-                            </div>
-
-                            <DialogFooter className="gap-2 sm:gap-0">
-                                <Button
-                                    variant="outline"
-                                    onClick={() => setCrawlDialogOpen(false)}
-                                >
-                                    Cancel
-                                </Button>
-                                <Button
-                                    onClick={() => triggerCrawlMutation.mutate({
-                                        years: crawlYears,
-                                        dataType: crawlDataType,
-                                        jobType: crawlJobType,
-                                    })}
-                                    disabled={triggerCrawlMutation.isPending || crawlYears.length === 0}
-                                >
-                                    {triggerCrawlMutation.isPending ? (
-                                        <>
-                                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                            Creating jobs...
-                                        </>
-                                    ) : (
-                                        <>
-                                            Start {crawlJobCount} {crawlJobType === 'full' ? '' : crawlJobType + ' '}Job{crawlJobCount > 1 ? 's' : ''}
-                                        </>
-                                    )}
-                                </Button>
-                            </DialogFooter>
-                        </DialogContent>
-                    </Dialog>
-
-                    {/* Show crawlability warning */}
-                    {dno.crawlable === false && (
-                        <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20">
-                            <AlertCircle className="mr-1 h-3 w-3" />
-                            {dno.crawl_blocked_reason === 'cloudflare' ? 'Cloudflare Protected' :
-                                dno.crawl_blocked_reason === 'robots_disallow_all' ? 'Blocked by robots.txt' :
-                                    dno.crawl_blocked_reason || 'Not Crawlable'}
-                            {dno.has_local_files && ' (Local files available)'}
-                        </Badge>
-                    )}
-
-                    {/* Edit DNO Dialog - Admin Only */}
-                    {isAdmin() && (
-                        <Dialog open={editDNOOpen} onOpenChange={setEditDNOOpen}>
-                            <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                    <DialogTitle>Edit DNO</DialogTitle>
-                                    <DialogDescription>
-                                        Update metadata for {dno.name}
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <div className="grid gap-4 py-4">
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium">Name</label>
-                                        <Input
-                                            type="text"
-                                            value={editDNOData.name}
-                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, name: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium">Region</label>
-                                        <Input
-                                            type="text"
-                                            value={editDNOData.region}
-                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, region: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium">Website</label>
-                                        <Input
-                                            type="url"
-                                            value={editDNOData.website}
-                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, website: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium">Description</label>
-                                        <Input
-                                            type="text"
-                                            value={editDNOData.description}
-                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, description: e.target.value }))}
-                                        />
-                                    </div>
-                                    <div className="grid grid-cols-2 gap-4">
-                                        <div className="grid gap-2">
-                                            <label className="text-sm font-medium">Phone</label>
-                                            <Input
-                                                type="text"
-                                                value={editDNOData.phone}
-                                                onChange={(e) => setEditDNOData(prev => ({ ...prev, phone: e.target.value }))}
-                                            />
-                                        </div>
-                                        <div className="grid gap-2">
-                                            <label className="text-sm font-medium">Email</label>
-                                            <Input
-                                                type="email"
-                                                value={editDNOData.email}
-                                                onChange={(e) => setEditDNOData(prev => ({ ...prev, email: e.target.value }))}
-                                            />
-                                        </div>
-                                    </div>
-                                    <div className="grid gap-2">
-                                        <label className="text-sm font-medium">Contact Address</label>
-                                        <Input
-                                            type="text"
-                                            value={editDNOData.contact_address}
-                                            onChange={(e) => setEditDNOData(prev => ({ ...prev, contact_address: e.target.value }))}
-                                        />
-                                    </div>
-                                </div>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setEditDNOOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        onClick={() => updateDNOMutation.mutate(editDNOData)}
-                                        disabled={updateDNOMutation.isPending}
-                                    >
-                                        {updateDNOMutation.isPending ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Saving...
-                                            </>
-                                        ) : (
-                                            "Save Changes"
-                                        )}
-                                    </Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
-                    )}
-
-                    {/* Delete DNO Dialog - Admin Only */}
-                    {isAdmin() && (
-                        <Dialog open={deleteDNOOpen} onOpenChange={setDeleteDNOOpen}>
-                            <DialogContent className="sm:max-w-md">
-                                <DialogHeader>
-                                    <DialogTitle className="text-destructive">Delete DNO</DialogTitle>
-                                    <DialogDescription>
-                                        Are you sure you want to permanently delete <strong>{dno.name}</strong>?
-                                        This will also delete all associated Netzentgelte, HLZF data, and crawl jobs.
-                                        This action cannot be undone.
-                                    </DialogDescription>
-                                </DialogHeader>
-                                <DialogFooter>
-                                    <Button variant="outline" onClick={() => setDeleteDNOOpen(false)}>
-                                        Cancel
-                                    </Button>
-                                    <Button
-                                        variant="destructive"
-                                        onClick={() => deleteDNOMutation.mutate()}
-                                        disabled={deleteDNOMutation.isPending}
-                                    >
-                                        {deleteDNOMutation.isPending ? (
-                                            <>
-                                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                                                Deleting...
-                                            </>
-                                        ) : (
-                                            <>
-                                                <Trash2 className="mr-2 h-4 w-4" />
-                                                Delete Permanently
-                                            </>
-                                        )}
-                                    </Button>
-                                </DialogFooter>
-                            </DialogContent>
-                        </Dialog>
-                    )}
-                </div>
+            {/* Crawl Dialog */}
+            <div className="flex gap-2">
+                <CrawlDialog
+                    dnoName={dno.name}
+                    crawlable={dno.crawlable !== false}
+                    hasLocalFiles={!!dno.has_local_files}
+                    onTrigger={(params) => triggerCrawlMutation.mutate(params)}
+                    isPending={triggerCrawlMutation.isPending}
+                />
             </div>
 
-            {/* Info Cards */}
+            {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <Card className="p-4">
                     <div className="flex items-center gap-3">
@@ -1189,7 +542,7 @@ export function DNODetailPage() {
                         </div>
                         <div>
                             <p className="text-sm text-muted-foreground">Netzentgelte Records</p>
-                            <p className="text-2xl font-bold">{dnoData?.netzentgelte?.length || 0}</p>
+                            <p className="text-2xl font-bold">{netzentgelte.length}</p>
                         </div>
                     </div>
                 </Card>
@@ -1200,13 +553,13 @@ export function DNODetailPage() {
                         </div>
                         <div>
                             <p className="text-sm text-muted-foreground">HLZF Records</p>
-                            <p className="text-2xl font-bold">{dnoData?.hlzf?.length || 0}</p>
+                            <p className="text-2xl font-bold">{hlzf.length}</p>
                         </div>
                     </div>
                 </Card>
                 <Card
                     className="p-4 cursor-help"
-                    title={`Data Completeness Breakdown:\n\nNetzentgelte: ${dataCompleteness.netzentgelte.percentage.toFixed(0)}% (${dataCompleteness.netzentgelte.valid}/${dataCompleteness.netzentgelte.expected})\nHLZF: ${dataCompleteness.hlzf.percentage.toFixed(0)}% (${dataCompleteness.hlzf.valid}/${dataCompleteness.hlzf.expected})\n\nBased on ${dataCompleteness.voltageLevels} voltage levels × ${dataCompleteness.years} years`}
+                    title={`Data Completeness: ${dataCompleteness.percentage.toFixed(0)}%\n\nNetzentgelte: ${dataCompleteness.netzentgelte.percentage.toFixed(0)}%\nHLZF: ${dataCompleteness.hlzf.percentage.toFixed(0)}%`}
                 >
                     <div className="flex items-center gap-3">
                         <div className="relative">
@@ -1248,22 +601,9 @@ export function DNODetailPage() {
                 </Card>
             </div>
 
-            {/* DNO Details */}
+            {/* DNO Details Card */}
             <Card className="p-4">
-                <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-sm font-semibold text-muted-foreground">Details</h2>
-                    {/* Enrichment Status Badge */}
-                    {dno.enrichment_status && dno.enrichment_status !== 'completed' && (
-                        <Badge variant={dno.enrichment_status === 'processing' ? 'default' : 'outline'} className="text-xs">
-                            {dno.enrichment_status === 'processing' && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
-                            {dno.enrichment_status === 'pending' ? 'Enrichment Pending' :
-                                dno.enrichment_status === 'processing' ? 'Enriching...' :
-                                    dno.enrichment_status === 'failed' ? 'Enrichment Failed' : ''}
-                        </Badge>
-                    )}
-                </div>
-
-                {/* Primary Info - Always Visible */}
+                <h2 className="text-sm font-semibold text-muted-foreground mb-3">Details</h2>
                 <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
                     <div className="flex justify-between sm:block">
                         <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Slug</dt>
@@ -1285,314 +625,27 @@ export function DNODetailPage() {
                             </dd>
                         </div>
                     )}
-                    {dno.contact_address && (
-                        <div className="flex justify-between sm:block sm:col-span-2">
-                            <dt className="text-muted-foreground inline sm:inline-block sm:w-20">Address</dt>
-                            <dd className="inline">{dno.contact_address}</dd>
-                        </div>
-                    )}
                 </dl>
 
-                {/* More Details Button */}
-                <button
-                    onClick={() => setShowMoreDetails(!showMoreDetails)}
-                    className="flex items-center gap-2 mt-4 text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                    <Info className="h-4 w-4" />
-                    <span>{showMoreDetails ? 'Hide Details' : 'More Details'}</span>
-                    {showMoreDetails ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                </button>
-
-                {/* Collapsible More Details Section */}
-                {showMoreDetails && (
-                    <div className="mt-4 pt-4 border-t border-border space-y-4">
-                        {/* Source Availability Badges */}
-                        <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs text-muted-foreground">Data Sources:</span>
-                            <Badge variant={dno.has_mastr ? 'default' : 'outline'} className={cn("text-xs", dno.has_mastr && "bg-blue-500")}>
-                                MaStR {dno.has_mastr ? '✓' : '–'}
-                            </Badge>
-                            <Badge variant={dno.has_vnb ? 'default' : 'outline'} className={cn("text-xs", dno.has_vnb && "bg-green-500")}>
-                                VNB Digital {dno.has_vnb ? '✓' : '–'}
-                            </Badge>
-                            <Badge variant={dno.has_bdew ? 'default' : 'outline'} className={cn("text-xs", dno.has_bdew && "bg-purple-500")}>
-                                BDEW {dno.has_bdew ? '✓' : '–'}
-                            </Badge>
-                        </div>
-
-                        {/* MaStR Data Section */}
-                        {dno.mastr_data && (
-                            <div className="rounded-lg border border-blue-200 bg-blue-50/50 dark:border-blue-800 dark:bg-blue-950/20 p-3">
-                                <h4 className="text-xs font-semibold text-blue-700 dark:text-blue-300 mb-2 flex items-center gap-1">
-                                    <Database className="h-3 w-3" /> MaStR (Marktstammdatenregister)
-                                </h4>
-                                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                                    <div className="flex justify-between sm:block">
-                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">MaStR Nr.</dt>
-                                        <dd className="font-mono inline text-xs">{dno.mastr_data.mastr_nr}</dd>
-                                    </div>
-                                    {dno.mastr_data.acer_code && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">ACER Code</dt>
-                                            <dd className="font-mono inline text-xs">{dno.mastr_data.acer_code}</dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.region && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Region</dt>
-                                            <dd className="inline text-xs">{dno.mastr_data.region}</dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.marktrollen && dno.mastr_data.marktrollen.length > 0 && (
-                                        <div className="flex justify-between sm:block sm:col-span-full">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Market Roles</dt>
-                                            <dd className="inline">
-                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
-                                                    {dno.mastr_data.marktrollen.map((role, idx) => (
-                                                        <Badge key={idx} variant="outline" className="text-xs">{role}</Badge>
-                                                    ))}
-                                                </div>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.is_active !== undefined && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Status</dt>
-                                            <dd className="inline">
-                                                <Badge variant={dno.mastr_data.is_active ? 'default' : 'secondary'} className="text-xs">
-                                                    {dno.mastr_data.is_active ? 'Active' : 'Inactive'}
-                                                </Badge>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.closed_network && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Network</dt>
-                                            <dd className="inline">
-                                                <Badge variant="outline" className="text-xs">Closed Network</Badge>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.registration_date && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Registered</dt>
-                                            <dd className="inline text-xs">{new Date(dno.mastr_data.registration_date).toLocaleDateString('de-DE')}</dd>
-                                        </div>
-                                    )}
-                                    {dno.mastr_data.contact_address && (
-                                        <div className="flex justify-between sm:block sm:col-span-full">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
-                                            <dd className="inline text-xs">{dno.mastr_data.contact_address}</dd>
-                                        </div>
-                                    )}
-                                </dl>
-                            </div>
-                        )}
-
-                        {/* VNB Digital Data Section */}
-                        {dno.vnb_data && (
-                            <div className="rounded-lg border border-green-200 bg-green-50/50 dark:border-green-800 dark:bg-green-950/20 p-3">
-                                <h4 className="text-xs font-semibold text-green-700 dark:text-green-300 mb-2 flex items-center gap-1">
-                                    <Globe className="h-3 w-3" /> VNB Digital
-                                </h4>
-                                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                                    <div className="flex justify-between sm:block">
-                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">VNB ID</dt>
-                                        <dd className="font-mono inline text-xs">{dno.vnb_data.vnb_id}</dd>
-                                    </div>
-                                    {dno.vnb_data.official_name && (
-                                        <div className="flex justify-between sm:block sm:col-span-2">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Official Name</dt>
-                                            <dd className="inline text-xs">{dno.vnb_data.official_name}</dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.homepage_url && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Website</dt>
-                                            <dd className="inline">
-                                                <a href={dno.vnb_data.homepage_url} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline text-xs">
-                                                    {new URL(dno.vnb_data.homepage_url).hostname}
-                                                </a>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.phone && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Phone</dt>
-                                            <dd className="inline">
-                                                <a href={`tel:${dno.vnb_data.phone}`} className="text-primary hover:underline text-xs">{dno.vnb_data.phone}</a>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.email && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Email</dt>
-                                            <dd className="inline">
-                                                <a href={`mailto:${dno.vnb_data.email}`} className="text-primary hover:underline text-xs">{dno.vnb_data.email}</a>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.address && (
-                                        <div className="flex justify-between sm:block sm:col-span-full">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
-                                            <dd className="inline text-xs">{dno.vnb_data.address}</dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.types && dno.vnb_data.types.length > 0 && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Types</dt>
-                                            <dd className="inline">
-                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
-                                                    {dno.vnb_data.types.map((t, idx) => (
-                                                        <Badge key={idx} variant="outline" className="text-xs">{t}</Badge>
-                                                    ))}
-                                                </div>
-                                            </dd>
-                                        </div>
-                                    )}
-                                    {dno.vnb_data.voltage_types && dno.vnb_data.voltage_types.length > 0 && (
-                                        <div className="flex justify-between sm:block">
-                                            <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Voltage</dt>
-                                            <dd className="inline">
-                                                <div className="flex flex-wrap gap-1 mt-1 sm:mt-0 sm:inline-flex">
-                                                    {dno.vnb_data.voltage_types.map((v, idx) => (
-                                                        <Badge key={idx} variant="outline" className="text-xs">{v}</Badge>
-                                                    ))}
-                                                </div>
-                                            </dd>
-                                        </div>
-                                    )}
-                                </dl>
-                            </div>
-                        )}
-
-                        {/* BDEW Data Section */}
-                        {dno.bdew_data && dno.bdew_data.length > 0 && (
-                            <div className="rounded-lg border border-purple-200 bg-purple-50/50 dark:border-purple-800 dark:bg-purple-950/20 p-3">
-                                <h4 className="text-xs font-semibold text-purple-700 dark:text-purple-300 mb-2 flex items-center gap-1">
-                                    <Building className="h-3 w-3" /> BDEW Codes ({dno.bdew_data.length})
-                                </h4>
-                                <div className="space-y-3">
-                                    {dno.bdew_data.map((bdew, idx) => (
-                                        <dl key={idx} className={cn(
-                                            "grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm",
-                                            idx > 0 && "pt-3 border-t border-purple-200 dark:border-purple-800"
-                                        )}>
-                                            <div className="flex justify-between sm:block">
-                                                <dt className="text-muted-foreground inline sm:inline-block sm:w-24">BDEW Code</dt>
-                                                <dd className="font-mono inline text-xs">{bdew.bdew_code}</dd>
-                                            </div>
-                                            {bdew.market_function && (
-                                                <div className="flex justify-between sm:block">
-                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Market Role</dt>
-                                                    <dd className="inline">
-                                                        <Badge variant="outline" className={cn(
-                                                            "text-xs",
-                                                            bdew.market_function === 'Netzbetreiber' && "border-purple-400 text-purple-700 dark:text-purple-300"
-                                                        )}>
-                                                            {bdew.market_function}
-                                                        </Badge>
-                                                    </dd>
-                                                </div>
-                                            )}
-                                            {bdew.is_grid_operator && (
-                                                <div className="flex justify-between sm:block">
-                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Grid Op.</dt>
-                                                    <dd className="inline">
-                                                        <Badge variant="default" className="text-xs bg-purple-500">Grid Operator</Badge>
-                                                    </dd>
-                                                </div>
-                                            )}
-                                            {bdew.contact_email && (
-                                                <div className="flex justify-between sm:block">
-                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Email</dt>
-                                                    <dd className="inline">
-                                                        <a href={`mailto:${bdew.contact_email}`} className="text-primary hover:underline text-xs">{bdew.contact_email}</a>
-                                                    </dd>
-                                                </div>
-                                            )}
-                                            {bdew.contact_phone && (
-                                                <div className="flex justify-between sm:block">
-                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Phone</dt>
-                                                    <dd className="inline">
-                                                        <a href={`tel:${bdew.contact_phone}`} className="text-primary hover:underline text-xs">{bdew.contact_phone}</a>
-                                                    </dd>
-                                                </div>
-                                            )}
-                                            {(bdew.street || bdew.city) && (
-                                                <div className="flex justify-between sm:block sm:col-span-full">
-                                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Address</dt>
-                                                    <dd className="inline text-xs">
-                                                        {[bdew.street, bdew.zip_code, bdew.city].filter(Boolean).join(', ')}
-                                                    </dd>
-                                                </div>
-                                            )}
-                                        </dl>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-
-                        {/* General Info Section */}
-                        <div className="rounded-lg border border-border p-3">
-                            <h4 className="text-xs font-semibold text-muted-foreground mb-2 flex items-center gap-1">
-                                <Info className="h-3 w-3" /> General
-                            </h4>
-                            <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-4 gap-y-2 text-sm">
-                                {/* Crawlability */}
-                                <div className="flex justify-between sm:block">
-                                    <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Crawlable</dt>
-                                    <dd className="inline">
-                                        {dno.crawlable ? (
-                                            <Badge variant="default" className="text-xs bg-green-500">
-                                                <CheckCircle className="h-3 w-3 mr-1" /> Yes
-                                            </Badge>
-                                        ) : (
-                                            <Badge variant="destructive" className="text-xs">
-                                                <XCircle className="h-3 w-3 mr-1" /> No
-                                                {dno.crawl_blocked_reason && ` (${dno.crawl_blocked_reason})`}
-                                            </Badge>
-                                        )}
-                                    </dd>
-                                </div>
-
-                                {/* Source & Timestamps */}
-                                {dno.source && (
-                                    <div className="flex justify-between sm:block">
-                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Source</dt>
-                                        <dd className="inline">
-                                            <Badge variant="outline" className="text-xs">{dno.source}</Badge>
-                                        </dd>
-                                    </div>
-                                )}
-                                {dno.created_at && (
-                                    <div className="flex justify-between sm:block">
-                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Created</dt>
-                                        <dd className="inline text-xs">{new Date(dno.created_at).toLocaleString('de-DE')}</dd>
-                                    </div>
-                                )}
-                                {dno.updated_at && (
-                                    <div className="flex justify-between sm:block">
-                                        <dt className="text-muted-foreground inline sm:inline-block sm:w-24">Updated</dt>
-                                        <dd className="inline text-xs">{new Date(dno.updated_at).toLocaleString('de-DE')}</dd>
-                                    </div>
-                                )}
-                            </dl>
-                        </div>
-                    </div>
-                )}
+                {/* Source Data Accordion */}
+                <div className="mt-4 pt-4 border-t">
+                    <SourceDataAccordion
+                        hasMastr={!!dno.has_mastr}
+                        hasVnb={!!dno.has_vnb}
+                        hasBdew={!!dno.has_bdew}
+                        mastrData={dno.mastr_data}
+                        vnbData={dno.vnb_data}
+                        bdewData={dno.bdew_data}
+                    />
+                </div>
             </Card>
 
-            {/* Filters */}
+            {/* Filter Controls */}
             <Card className="p-4">
                 <div className="flex flex-wrap items-center gap-4">
-                    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                        <Database className="h-4 w-4" />
-                        <span>Filters:</span>
-                    </div>
                     <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">Year:</span>
-                        <div className="flex gap-1">
+                        <div className="flex flex-wrap gap-1">
                             {filterOptions.years.map(year => (
                                 <button
                                     key={year}
@@ -1608,9 +661,6 @@ export function DNODetailPage() {
                                 </button>
                             ))}
                         </div>
-                        {yearFilter.length === 0 && (
-                            <span className="text-xs text-muted-foreground italic">All years</span>
-                        )}
                     </div>
                     {filterOptions.voltageLevels.length > 0 && (
                         <div className="flex items-center gap-2">
@@ -1631,295 +681,36 @@ export function DNODetailPage() {
                                     </button>
                                 ))}
                             </div>
-                            {voltageLevelFilter.length > 0 && (
-                                <button
-                                    onClick={() => setVoltageLevelFilter([])}
-                                    className="text-xs text-muted-foreground hover:text-foreground"
-                                >
-                                    Clear
-                                </button>
-                            )}
                         </div>
                     )}
                 </div>
             </Card>
 
-            {/* Netzentgelte Data */}
-            <Card className="p-6 min-h-[320px]">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-blue-500" />
-                    Netzentgelte
-                </h2>
-                {dataLoading ? (
-                    <div className="flex justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : filteredNetzentgelte.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Year</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Voltage Level</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"≥ 2.500 h/a"}</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"< 2.500 h/a"}</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" rowSpan={2}>Status</th>
-                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-16" rowSpan={2}></th>}
-                                </tr>
-                                <tr className="border-b text-xs">
-                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground border-l border-border/50">Leistung (€/kW)</th>
-                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground">Arbeit (ct/kWh)</th>
-                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground border-l border-border/50">Leistung (€/kW)</th>
-                                    <th className="text-right py-1 px-3 font-normal text-muted-foreground">Arbeit (ct/kWh)</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredNetzentgelte.map((item) => (
-                                    <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                                        <td className="py-2 px-3">{item.year}</td>
-                                        <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
-                                        <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                            <span className="select-all">{item.leistung?.toFixed(2) || "-"}</span>
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono">
-                                            <span className="select-all">{item.arbeit?.toFixed(3) || "-"}</span>
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                            <span className="select-all">{item.leistung_unter_2500h?.toFixed(2) || item.leistung?.toFixed(2) || "-"}</span>
-                                        </td>
-                                        <td className="py-2 px-3 text-right font-mono">
-                                            <span className="select-all">{item.arbeit_unter_2500h?.toFixed(3) || item.arbeit?.toFixed(3) || "-"}</span>
-                                        </td>
-                                        <td className="py-2 px-3 text-center">
-                                            <div className="flex items-center justify-center gap-1">
-                                                <ExtractionSourceBadge
-                                                    source={item.extraction_source}
-                                                    model={item.extraction_model}
-                                                    sourceFormat={item.extraction_source_format}
-                                                    lastEditedBy={item.last_edited_by}
-                                                    lastEditedAt={item.last_edited_at}
-                                                    compact
-                                                />
-                                                <VerificationBadge
-                                                    status={item.verification_status || "unverified"}
-                                                    verifiedBy={item.verified_by}
-                                                    verifiedAt={item.verified_at}
-                                                    flaggedBy={item.flagged_by}
-                                                    flaggedAt={item.flagged_at}
-                                                    flagReason={item.flag_reason}
-                                                    recordId={item.id}
-                                                    recordType="netzentgelte"
-                                                    dnoId={numericId!}
-                                                    compact
-                                                />
-                                            </div>
-                                        </td>
-                                        {isAdmin() && (
-                                            <td className="py-2 px-3 text-right">
-                                                <SmartDropdown
-                                                    trigger={
-                                                        <Button
-                                                            variant="ghost"
-                                                            size="sm"
-                                                            className="h-7 w-7 p-0"
-                                                        >
-                                                            <MoreVertical className="h-4 w-4" />
-                                                        </Button>
-                                                    }
-                                                    isOpen={openMenuId === `netz-${item.id}`}
-                                                    onOpenChange={(isOpen) => setOpenMenuId(isOpen ? `netz-${item.id}` : null)}
-                                                    className="bg-popover border rounded-md shadow-md py-1"
-                                                >
-                                                    <button
-                                                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                                                        onClick={() => {
-                                                            setOpenMenuId(null);
-                                                            handleEditNetzentgelte(item);
-                                                        }}
-                                                    >
-                                                        <Pencil className="h-3.5 w-3.5" /> Edit
-                                                    </button>
-                                                    <button
-                                                        className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
-                                                        onClick={() => {
-                                                            setOpenMenuId(null);
-                                                            handleDeleteNetzentgelte(item.id);
-                                                        }}
-                                                    >
-                                                        <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                    </button>
-                                                </SmartDropdown>
-                                            </td>
-                                        )}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground text-center py-8">No Netzentgelte data available</p>
-                )}
-            </Card>
+            {/* Netzentgelte Table */}
+            <NetzentgelteTable
+                data={filteredNetzentgelte}
+                isLoading={dataLoading}
+                dnoId={String(numericId)}
+                isAdmin={isAdmin()}
+                onEdit={handleEditNetzentgelte}
+                onDelete={(recordId) => deleteNetzentgelteMutation.mutate(recordId)}
+                openMenuId={openMenuId}
+                onMenuOpenChange={setOpenMenuId}
+            />
 
-            {/* HLZF Data */}
-            <Card className="p-6 min-h-[320px]">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Clock className="h-5 w-5 text-purple-500" />
-                    HLZF (Hochlastzeitfenster)
-                </h2>
-                {dataLoading ? (
-                    <div className="flex justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : filteredHLZF.length > 0 ? (
-                    <div className="overflow-x-auto">
-                        <table className="w-full text-sm table-fixed">
-                            <thead>
-                                <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground w-16">Year</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground w-20">Voltage Level</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Winter</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Frühling</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Sommer</th>
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Herbst</th>
-                                    <th className="text-center py-2 px-3 font-medium text-muted-foreground w-24">Status</th>
-                                    {isAdmin() && <th className="text-right py-2 px-3 font-medium text-muted-foreground w-12"></th>}
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {filteredHLZF.map((item) => {
-                                    // Selectable time component
-                                    const SelectableTime = ({ value }: { value: string }) => {
-                                        const handleClick = (e: React.MouseEvent<HTMLSpanElement>) => {
-                                            e.stopPropagation();
-                                            e.preventDefault();
-                                            const selection = window.getSelection();
-                                            const range = document.createRange();
-                                            range.selectNodeContents(e.currentTarget);
-                                            selection?.removeAllRanges();
-                                            selection?.addRange(range);
-                                        };
-                                        return (
-                                            <span
-                                                className="cursor-text hover:bg-primary/20 rounded px-0.5"
-                                                onClick={handleClick}
-                                                onMouseDown={(e) => e.stopPropagation()}
-                                                style={{ userSelect: 'text' }}
-                                            >
-                                                {value}
-                                            </span>
-                                        );
-                                    };
+            {/* HLZF Table */}
+            <HLZFTable
+                data={filteredHLZF}
+                isLoading={dataLoading}
+                dnoId={numericId!}
+                isAdmin={isAdmin()}
+                onEdit={handleEditHLZF}
+                onDelete={(recordId) => deleteHLZFMutation.mutate(recordId)}
+                openMenuId={openMenuId}
+                onMenuOpenChange={setOpenMenuId}
+            />
 
-                                    // Render time ranges from parsed backend array
-                                    const renderTimeRanges = (
-                                        ranges: { start: string; end: string }[] | null | undefined,
-                                        rawValue: string | null | undefined
-                                    ): React.ReactNode => {
-                                        // Use parsed ranges if available
-                                        if (ranges && ranges.length > 0) {
-                                            return (
-                                                <div className="space-y-0.5" style={{ userSelect: 'none' }}>
-                                                    {ranges.map((range, idx) => (
-                                                        <div key={idx} className="text-sm whitespace-nowrap flex items-center">
-                                                            <SelectableTime value={range.start} />
-                                                            <span className="text-muted-foreground px-1" style={{ userSelect: 'none' }}>–</span>
-                                                            <SelectableTime value={range.end} />
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            );
-                                        }
-
-                                        // Fallback: show raw value or dash
-                                        if (!rawValue || rawValue === "-" || rawValue.toLowerCase() === "entfällt") {
-                                            return <span className="text-muted-foreground">-</span>;
-                                        }
-
-                                        return <span className="text-sm">{rawValue}</span>;
-                                    };
-
-                                    return (
-                                        <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
-                                            <td className="py-2 px-3">{item.year}</td>
-                                            <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.winter_ranges, item.winter)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.fruehling_ranges, item.fruehling)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.sommer_ranges, item.sommer)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.herbst_ranges, item.herbst)}</td>
-                                            <td className="py-2 px-3 text-center">
-                                                <div className="flex items-center justify-center gap-1">
-                                                    <ExtractionSourceBadge
-                                                        source={item.extraction_source}
-                                                        model={item.extraction_model}
-                                                        sourceFormat={item.extraction_source_format}
-                                                        lastEditedBy={item.last_edited_by}
-                                                        lastEditedAt={item.last_edited_at}
-                                                        compact
-                                                    />
-                                                    <VerificationBadge
-                                                        status={item.verification_status || "unverified"}
-                                                        verifiedBy={item.verified_by}
-                                                        verifiedAt={item.verified_at}
-                                                        flaggedBy={item.flagged_by}
-                                                        flaggedAt={item.flagged_at}
-                                                        flagReason={item.flag_reason}
-                                                        recordId={item.id}
-                                                        recordType="hlzf"
-                                                        dnoId={numericId!}
-                                                        compact
-                                                    />
-                                                </div>
-                                            </td>
-                                            {isAdmin() && (
-                                                <td className="py-2 px-3 text-right">
-                                                    <SmartDropdown
-                                                        trigger={
-                                                            <Button
-                                                                variant="ghost"
-                                                                size="sm"
-                                                                className="h-7 w-7 p-0"
-                                                            >
-                                                                <MoreVertical className="h-4 w-4" />
-                                                            </Button>
-                                                        }
-                                                        isOpen={openMenuId === `hlzf-${item.id}`}
-                                                        onOpenChange={(isOpen) => setOpenMenuId(isOpen ? `hlzf-${item.id}` : null)}
-                                                        className="bg-popover border rounded-md shadow-md py-1"
-                                                    >
-                                                        <button
-                                                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2"
-                                                            onClick={() => {
-                                                                setOpenMenuId(null);
-                                                                handleEditHLZF(item);
-                                                            }}
-                                                        >
-                                                            <Pencil className="h-3.5 w-3.5" /> Edit
-                                                        </button>
-                                                        <button
-                                                            className="w-full px-3 py-1.5 text-sm text-left hover:bg-muted flex items-center gap-2 text-destructive"
-                                                            onClick={() => {
-                                                                setOpenMenuId(null);
-                                                                handleDeleteHLZF(item.id);
-                                                            }}
-                                                        >
-                                                            <Trash2 className="h-3.5 w-3.5" /> Delete
-                                                        </button>
-                                                    </SmartDropdown>
-                                                </td>
-                                            )}
-                                        </tr>
-                                    );
-                                })}
-                            </tbody>
-                        </table>
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground text-center py-8">No HLZF data available</p>
-                )}
-            </Card>
-
-            {/* Import / Export Data */}
+            {/* Import/Export Section */}
             <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
                     <FolderInput className="h-5 w-5 text-purple-500" />
@@ -1936,92 +727,29 @@ export function DNODetailPage() {
                             <div>
                                 <label className="text-sm font-medium mb-2 block">Data Types</label>
                                 <div className="flex gap-2">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (exportDataTypes.includes("netzentgelte")) {
-                                                setExportDataTypes(exportDataTypes.filter(t => t !== "netzentgelte"));
-                                            } else {
-                                                setExportDataTypes([...exportDataTypes, "netzentgelte"]);
-                                            }
-                                        }}
-                                        className={cn(
-                                            "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors",
-                                            exportDataTypes.includes("netzentgelte")
-                                                ? "bg-primary text-primary-foreground border-primary"
-                                                : "bg-background border-input hover:bg-muted"
-                                        )}
-                                    >
-                                        <div className={cn(
-                                            "w-4 h-4 rounded border flex items-center justify-center",
-                                            exportDataTypes.includes("netzentgelte")
-                                                ? "bg-primary-foreground/20 border-primary-foreground/50"
-                                                : "border-current opacity-50"
-                                        )}>
-                                            {exportDataTypes.includes("netzentgelte") && <Check className="w-3 h-3" />}
-                                        </div>
-                                        Netzentgelte
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            if (exportDataTypes.includes("hlzf")) {
-                                                setExportDataTypes(exportDataTypes.filter(t => t !== "hlzf"));
-                                            } else {
-                                                setExportDataTypes([...exportDataTypes, "hlzf"]);
-                                            }
-                                        }}
-                                        className={cn(
-                                            "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors",
-                                            exportDataTypes.includes("hlzf")
-                                                ? "bg-primary text-primary-foreground border-primary"
-                                                : "bg-background border-input hover:bg-muted"
-                                        )}
-                                    >
-                                        <div className={cn(
-                                            "w-4 h-4 rounded border flex items-center justify-center",
-                                            exportDataTypes.includes("hlzf")
-                                                ? "bg-primary-foreground/20 border-primary-foreground/50"
-                                                : "border-current opacity-50"
-                                        )}>
-                                            {exportDataTypes.includes("hlzf") && <Check className="w-3 h-3" />}
-                                        </div>
-                                        HLZF
-                                    </button>
+                                    {["netzentgelte", "hlzf"].map(type => (
+                                        <button
+                                            key={type}
+                                            type="button"
+                                            onClick={() => {
+                                                if (exportDataTypes.includes(type)) {
+                                                    setExportDataTypes(exportDataTypes.filter(t => t !== type));
+                                                } else {
+                                                    setExportDataTypes([...exportDataTypes, type]);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors",
+                                                exportDataTypes.includes(type)
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background border-input hover:bg-muted"
+                                            )}
+                                        >
+                                            {exportDataTypes.includes(type) && <Check className="h-3 w-3" />}
+                                            {type === "netzentgelte" ? "Netzentgelte" : "HLZF"}
+                                        </button>
+                                    ))}
                                 </div>
-                            </div>
-                            <div>
-                                <label className="text-sm font-medium mb-2 block">Years (optional)</label>
-                                <div className="flex flex-wrap gap-2">
-                                    {filterOptions.years.length > 0 ? (
-                                        filterOptions.years.map((year) => (
-                                            <button
-                                                key={year}
-                                                type="button"
-                                                onClick={() => {
-                                                    if (exportYears.includes(year)) {
-                                                        setExportYears(exportYears.filter(y => y !== year));
-                                                    } else {
-                                                        setExportYears([...exportYears, year]);
-                                                    }
-                                                }}
-                                                className={cn(
-                                                    "px-2 py-1 text-xs rounded border transition-colors",
-                                                    exportYears.includes(year)
-                                                        ? "bg-primary text-primary-foreground border-primary"
-                                                        : "bg-background border-input hover:bg-muted"
-                                                )}
-                                            >
-                                                {year}
-                                            </button>
-                                        ))
-                                    ) : (
-                                        <p className="text-xs text-muted-foreground">No data available yet</p>
-                                    )}
-                                </div>
-                                {filterOptions.years.length > 0 && exportYears.length === 0 && (
-                                    <p className="text-xs text-muted-foreground mt-1">All years selected by default</p>
-                                )}
                             </div>
                             <Button
                                 onClick={handleExport}
@@ -2029,11 +757,16 @@ export function DNODetailPage() {
                                 className="w-full"
                             >
                                 {isExporting ? (
-                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                        Exporting...
+                                    </>
                                 ) : (
-                                    <Download className="mr-2 h-4 w-4" />
+                                    <>
+                                        <Download className="mr-2 h-4 w-4" />
+                                        Export Selected Data
+                                    </>
                                 )}
-                                Download JSON
                             </Button>
                         </div>
                     </div>
@@ -2045,7 +778,7 @@ export function DNODetailPage() {
                             Import from JSON
                         </h3>
                         <div
-                            className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                            className="border-2 border-dashed rounded-lg p-6 text-center cursor-pointer hover:border-primary/50 transition-colors"
                             onClick={() => importFileRef.current?.click()}
                         >
                             <input
@@ -2065,215 +798,109 @@ export function DNODetailPage() {
                 </div>
             </Card>
 
-            {/* Files & Jobs - Tabbed Section */}
-            <Card className="p-6">
-                {/* Tab Header */}
-                <div className="flex items-center justify-between mb-4">
-                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
-                        <button
-                            onClick={() => setFilesJobsTab("files")}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
-                                filesJobsTab === "files"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            <FileDown className="h-4 w-4 text-orange-500" />
-                            Source Files
-                            {files.length > 0 && (
-                                <Badge variant="secondary" className="ml-1 text-xs">
-                                    {files.length}
-                                </Badge>
-                            )}
-                        </button>
-                        <button
-                            onClick={() => setFilesJobsTab("jobs")}
-                            className={cn(
-                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
-                                filesJobsTab === "jobs"
-                                    ? "bg-background text-foreground shadow-sm"
-                                    : "text-muted-foreground hover:text-foreground"
-                            )}
-                        >
-                            <Calendar className="h-4 w-4 text-green-500" />
-                            Recent Jobs
-                            {jobs.length > 0 && (
-                                <Badge variant="secondary" className="ml-1 text-xs">
-                                    {jobs.length}
-                                </Badge>
-                            )}
-                        </button>
-                    </div>
-                    {filesJobsTab === "files" && (
-                        <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => setUploadDialogOpen(true)}
-                        >
-                            <Upload className="mr-2 h-4 w-4" />
-                            Upload Files
-                        </Button>
-                    )}
-                </div>
+            {/* Files & Jobs Panel */}
+            <FilesJobsPanel
+                files={files}
+                jobs={jobs}
+                jobsLoading={jobsLoading}
+                onUploadClick={() => setUploadDialogOpen(true)}
+            />
 
-                {/* Tab Content */}
-                {filesJobsTab === "files" ? (
-                    // Source Files Content
-                    files.length > 0 ? (
-                        <div className="space-y-2">
-                            {files.map((file, index) => (
-                                <div
-                                    key={index}
-                                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        <div className="p-2 rounded bg-orange-500/10 text-orange-500">
-                                            <FileDown className="h-4 w-4" />
-                                        </div>
-                                        <div>
-                                            <p className="font-medium text-sm">{file.name}</p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {(file.size / 1024).toFixed(0)} KB
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        asChild
-                                    >
-                                        <a href={`${import.meta.env.VITE_API_URL}${file.path}`} download={file.name}>
-                                            <FileDown className="mr-2 h-3 w-3" />
-                                            Download
-                                        </a>
-                                    </Button>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-muted-foreground text-center py-8">No source files available</p>
-                    )
-                ) : (
-                    // Recent Crawl Jobs Content
-                    jobsLoading ? (
-                        <div className="flex justify-center py-8">
-                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                        </div>
-                    ) : jobs.length > 0 ? (
-                        <div className="space-y-2">
-                            {jobs.map((job) => (
-                                <div
-                                    key={job.id}
-                                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                                >
-                                    <div className="flex items-center gap-3">
-                                        {getStatusIcon(job.status)}
-                                        <div>
-                                            <p className="font-medium flex items-center gap-2">
-                                                {job.year} - {job.data_type}
-                                                {job.job_type && job.job_type !== 'full' && (
-                                                    <Badge variant="outline" className="text-xs">
-                                                        {job.job_type === 'crawl' ? 'Crawl Only' : 'Extract Only'}
-                                                    </Badge>
-                                                )}
-                                            </p>
-                                            <p className="text-xs text-muted-foreground">
-                                                {new Date(job.created_at).toLocaleString()}
-                                            </p>
-                                        </div>
-                                    </div>
-                                    <div className="flex items-center gap-3">
-                                        {job.status === "running" && (
-                                            <span className="text-sm text-muted-foreground">{job.progress}%</span>
-                                        )}
-                                        {getStatusBadge(job.status)}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <p className="text-muted-foreground text-center py-8">No crawl jobs yet</p>
-                    )
-                )}
-            </Card>
+            {/* ===== DIALOGS ===== */}
+
+            {/* Edit DNO Dialog */}
+            <EditDNODialog
+                open={editDNOOpen}
+                onOpenChange={setEditDNOOpen}
+                dnoName={dno.name}
+                initialData={{
+                    name: dno.name || '',
+                    region: dno.region || '',
+                    website: dno.website || '',
+                    description: dno.description || '',
+                    phone: dno.phone || '',
+                    email: dno.email || '',
+                    contact_address: dno.contact_address || '',
+                }}
+                onSave={(data) => updateDNOMutation.mutate(data)}
+                isPending={updateDNOMutation.isPending}
+            />
+
+            {/* Delete DNO Dialog */}
+            <DeleteDNODialog
+                open={deleteDNOOpen}
+                onOpenChange={setDeleteDNOOpen}
+                dnoName={dno.name}
+                onConfirm={() => deleteDNOMutation.mutate()}
+                isPending={deleteDNOMutation.isPending}
+            />
+
+            {/* Edit Record Dialog */}
+            <EditRecordDialog
+                open={editModalOpen}
+                onOpenChange={setEditModalOpen}
+                recordType={editModalType}
+                editData={editRecord}
+                onDataChange={setEditRecord}
+                onSave={handleSaveEdit}
+                isPending={updateNetzentgelteMutation.isPending || updateHLZFMutation.isPending}
+            />
 
             {/* Upload Dialog */}
             <Dialog open={uploadDialogOpen} onOpenChange={setUploadDialogOpen}>
                 <DialogContent className="sm:max-w-md">
                     <DialogHeader>
-                        <DialogTitle>Upload Files for {dno.name}</DialogTitle>
+                        <DialogTitle>Upload Source Files</DialogTitle>
                         <DialogDescription>
-                            Drop files here. The system will automatically detect the data type and year from the filename.
+                            Upload PDF or Excel files containing Netzentgelte or HLZF data.
                         </DialogDescription>
                     </DialogHeader>
-
-                    {/* File Input */}
-                    <div
-                        className="border-2 border-dashed rounded-lg p-8 text-center hover:border-primary/50 transition-colors cursor-pointer"
-                        onClick={() => fileInputRef.current?.click()}
-                    >
-                        <input
-                            type="file"
-                            multiple
-                            accept=".pdf,.xlsx,.html,.csv"
-                            onChange={(e) => handleFileUpload(e.target.files)}
-                            className="hidden"
-                            ref={fileInputRef}
-                        />
-                        <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-2" />
-                        <p className="text-sm font-medium">Click to choose files</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Supports PDF, XLSX, HTML, CSV
-                        </p>
-                    </div>
-
-                    {/* Upload Progress */}
-                    {isUploading && (
-                        <div className="flex items-center justify-center gap-2 py-4">
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                            <span className="text-sm">Uploading...</span>
-                        </div>
-                    )}
-
-                    {/* Upload Results */}
-                    {uploadResults.length > 0 && (
-                        <div className="space-y-2 max-h-48 overflow-y-auto">
-                            {uploadResults.map((result, idx) => (
-                                <div
-                                    key={idx}
-                                    className={cn(
-                                        "flex items-start gap-2 p-2 rounded text-sm",
-                                        result.success ? "bg-green-500/10" : "bg-red-500/10"
-                                    )}
-                                >
-                                    {result.success ? (
-                                        <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 shrink-0" />
-                                    ) : (
-                                        <XCircle className="h-4 w-4 text-red-600 mt-0.5 shrink-0" />
-                                    )}
-                                    <div className="min-w-0">
-                                        <p className="font-medium truncate">{result.filename}</p>
-                                        <p className="text-xs text-muted-foreground">{result.message}</p>
-                                        {result.success && result.detected_type && (
-                                            <p className="text-xs text-muted-foreground">
-                                                Detected: {result.detected_type} {result.detected_year}
-                                            </p>
-                                        )}
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    )}
-
-                    <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setUploadDialogOpen(false);
-                                setUploadResults([]);
-                            }}
+                    <div className="space-y-4">
+                        <div
+                            className="border-2 border-dashed rounded-lg p-8 text-center cursor-pointer hover:border-primary/50 transition-colors"
+                            onClick={() => fileInputRef.current?.click()}
                         >
+                            <input
+                                type="file"
+                                accept=".pdf,.xlsx,.xls"
+                                multiple
+                                onChange={(e) => handleFileUpload(e.target.files)}
+                                className="hidden"
+                                ref={fileInputRef}
+                            />
+                            <Upload className="mx-auto h-8 w-8 text-muted-foreground mb-3" />
+                            <p className="font-medium">Drop files or click to browse</p>
+                            <p className="text-sm text-muted-foreground mt-1">
+                                Supports PDF and Excel files
+                            </p>
+                        </div>
+                        {isUploading && (
+                            <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Uploading...
+                            </div>
+                        )}
+                        {uploadResults.length > 0 && (
+                            <div className="space-y-2">
+                                {uploadResults.map((result, i) => (
+                                    <div
+                                        key={i}
+                                        className={cn(
+                                            "p-3 rounded-lg text-sm",
+                                            result.success
+                                                ? "bg-green-500/10 text-green-700 dark:text-green-300"
+                                                : "bg-red-500/10 text-red-700 dark:text-red-300"
+                                        )}
+                                    >
+                                        <p className="font-medium">{result.filename}</p>
+                                        <p className="text-xs opacity-80">{result.message}</p>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                    <DialogFooter>
+                        <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
                             Close
                         </Button>
                     </DialogFooter>
@@ -2282,207 +909,73 @@ export function DNODetailPage() {
 
             {/* Import Preview Dialog */}
             <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
-                        <DialogTitle>Import Data Preview</DialogTitle>
+                        <DialogTitle>Import Data</DialogTitle>
                         <DialogDescription>
-                            Review the data before importing to {dno.name}
+                            Importing from: {importFileName}
                         </DialogDescription>
                     </DialogHeader>
-
-                    {importData && (
-                        <div className="space-y-4">
-                            <div className="p-3 rounded-lg bg-muted/50 space-y-2">
-                                <p className="text-sm">
-                                    <strong>File:</strong> {importFileName}
-                                </p>
-                                <p className="text-sm">
-                                    <strong>Netzentgelte records:</strong> {importData.netzentgelte.length}
-                                </p>
-                                <p className="text-sm">
-                                    <strong>HLZF records:</strong> {importData.hlzf.length}
-                                </p>
+                    <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div className="p-3 bg-muted rounded-lg">
+                                <p className="font-medium">Netzentgelte</p>
+                                <p className="text-2xl font-bold">{importData?.netzentgelte.length || 0}</p>
+                                <p className="text-xs text-muted-foreground">records</p>
                             </div>
-
-                            <div>
-                                <label className="text-sm font-medium mb-2 block">Import Mode</label>
-                                <div className="flex gap-4">
-                                    <label className="flex items-center gap-2 text-sm">
-                                        <input
-                                            type="radio"
-                                            checked={importMode === "merge"}
-                                            onChange={() => setImportMode("merge")}
-                                        />
-                                        Merge (add/update)
-                                    </label>
-                                    <label className="flex items-center gap-2 text-sm text-amber-600">
-                                        <input
-                                            type="radio"
-                                            checked={importMode === "replace"}
-                                            onChange={() => setImportMode("replace")}
-                                        />
-                                        Replace (delete then insert)
-                                    </label>
-                                </div>
-                                {importMode === "replace" && (
-                                    <p className="text-xs text-amber-600 mt-1">
-                                        ⚠️ Replace mode will delete existing data for the imported years
-                                    </p>
-                                )}
+                            <div className="p-3 bg-muted rounded-lg">
+                                <p className="font-medium">HLZF</p>
+                                <p className="text-2xl font-bold">{importData?.hlzf.length || 0}</p>
+                                <p className="text-xs text-muted-foreground">records</p>
                             </div>
                         </div>
-                    )}
-
+                        <div>
+                            <label className="text-sm font-medium mb-2 block">Import Mode</label>
+                            <div className="flex gap-2">
+                                <button
+                                    type="button"
+                                    onClick={() => setImportMode("merge")}
+                                    className={cn(
+                                        "flex-1 px-3 py-2 text-sm rounded-md border transition-colors",
+                                        importMode === "merge"
+                                            ? "bg-primary text-primary-foreground border-primary"
+                                            : "bg-background border-input hover:bg-muted"
+                                    )}
+                                >
+                                    Merge (Add/Update)
+                                </button>
+                                <button
+                                    type="button"
+                                    onClick={() => setImportMode("replace")}
+                                    className={cn(
+                                        "flex-1 px-3 py-2 text-sm rounded-md border transition-colors",
+                                        importMode === "replace"
+                                            ? "bg-destructive text-destructive-foreground border-destructive"
+                                            : "bg-background border-input hover:bg-muted"
+                                    )}
+                                >
+                                    Replace All
+                                </button>
+                            </div>
+                        </div>
+                    </div>
                     <DialogFooter>
-                        <Button
-                            variant="outline"
-                            onClick={() => {
-                                setImportDialogOpen(false);
-                                setImportData(null);
-                                setImportFileName("");
-                            }}
-                        >
+                        <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
                             Cancel
                         </Button>
-                        <Button
-                            onClick={handleImportSubmit}
-                            disabled={isImporting || !importData}
-                        >
+                        <Button onClick={handleImport} disabled={isImporting}>
                             {isImporting ? (
-                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                <>
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                    Importing...
+                                </>
                             ) : (
-                                <Check className="mr-2 h-4 w-4" />
+                                "Import Data"
                             )}
-                            Import Data
                         </Button>
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Edit Modal */}
-            {editModalOpen && editRecord && (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={() => setEditModalOpen(false)}>
-                    <div className="bg-background border rounded-lg shadow-lg p-6 w-full max-w-md" onClick={(e) => e.stopPropagation()}>
-                        <h3 className="text-lg font-semibold mb-4">
-                            {editModalType === 'netzentgelte' ? 'Edit Netzentgelte' : 'Edit HLZF'}
-                        </h3>
-
-                        {editModalType === 'netzentgelte' ? (
-                            <div className="space-y-4">
-                                <div>
-                                    <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Leistung (€/kW)</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="number"
-                                            step="0.01"
-                                            className="w-full h-10 px-3 py-2 border rounded-md bg-background ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                            value={editRecord.leistung ?? ''}
-                                            onChange={(e) => setEditRecord({ ...editRecord, leistung: e.target.value ? parseFloat(e.target.value) : undefined })}
-                                            placeholder="0.00"
-                                        />
-                                        <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                type="button"
-                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
-                                                onClick={() => setEditRecord({ ...editRecord, leistung: (editRecord.leistung || 0) + 1 })}
-                                            >
-                                                <ChevronUp className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
-                                                onClick={() => setEditRecord({ ...editRecord, leistung: Math.max(0, (editRecord.leistung || 0) - 1) })}
-                                            >
-                                                <ChevronDown className="h-3 w-3" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1.5 text-muted-foreground">Arbeit (ct/kWh)</label>
-                                    <div className="relative group">
-                                        <input
-                                            type="number"
-                                            step="0.001"
-                                            className="w-full h-10 px-3 py-2 border rounded-md bg-background ring-offset-background transition-all focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                                            value={editRecord.arbeit ?? ''}
-                                            onChange={(e) => setEditRecord({ ...editRecord, arbeit: e.target.value ? parseFloat(e.target.value) : undefined })}
-                                            placeholder="0.000"
-                                        />
-                                        <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button
-                                                type="button"
-                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
-                                                onClick={() => setEditRecord({ ...editRecord, arbeit: (editRecord.arbeit || 0) + 0.1 })}
-                                            >
-                                                <ChevronUp className="h-3 w-3" />
-                                            </button>
-                                            <button
-                                                type="button"
-                                                className="p-0.5 hover:bg-muted rounded text-muted-foreground"
-                                                onClick={() => setEditRecord({ ...editRecord, arbeit: Math.max(0, (editRecord.arbeit || 0) - 0.1) })}
-                                            >
-                                                <ChevronDown className="h-3 w-3" />
-                                            </button>
-                                        </div>
-                                    </div>
-                                </div>
-                            </div>
-                        ) : (
-                            <div className="space-y-4">
-                                <p className="text-sm text-muted-foreground mb-2">Enter time ranges (comma-separated, e.g., "08:00 - 12:00, 17:00 - 19:00")</p>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Winter</label>
-                                    <Input
-                                        type="text"
-                                        value={editRecord.winter ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, winter: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Frühling</label>
-                                    <Input
-                                        type="text"
-                                        value={editRecord.fruehling ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, fruehling: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Sommer</label>
-                                    <Input
-                                        type="text"
-                                        value={editRecord.sommer ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, sommer: e.target.value })}
-                                    />
-                                </div>
-                                <div>
-                                    <label className="block text-sm font-medium mb-1">Herbst</label>
-                                    <Input
-                                        type="text"
-                                        value={editRecord.herbst ?? ''}
-                                        onChange={(e) => setEditRecord({ ...editRecord, herbst: e.target.value })}
-                                    />
-                                </div>
-                            </div>
-                        )}
-
-                        <div className="flex justify-end gap-2 mt-6">
-                            <Button variant="outline" onClick={() => setEditModalOpen(false)}>
-                                Cancel
-                            </Button>
-                            <Button
-                                onClick={handleSaveEdit}
-                                disabled={updateNetzentgelteMutation.isPending || updateHLZFMutation.isPending}
-                            >
-                                {(updateNetzentgelteMutation.isPending || updateHLZFMutation.isPending) ? (
-                                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                                ) : null}
-                                Save
-                            </Button>
-                        </div>
-                    </div>
-                </div>
-            )}
         </div>
     );
 }
