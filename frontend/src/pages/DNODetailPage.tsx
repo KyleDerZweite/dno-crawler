@@ -132,6 +132,9 @@ export function DNODetailPage() {
     const [isImporting, setIsImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
+    // Files & Jobs tab state
+    const [filesJobsTab, setFilesJobsTab] = useState<"files" | "jobs">("files");
+
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -2062,55 +2065,136 @@ export function DNODetailPage() {
                 </div>
             </Card>
 
-            {/* Source Files */}
+            {/* Files & Jobs - Tabbed Section */}
             <Card className="p-6">
+                {/* Tab Header */}
                 <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-lg font-semibold flex items-center gap-2">
-                        <FileDown className="h-5 w-5 text-orange-500" />
-                        Source Files
-                    </h2>
-                    <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setUploadDialogOpen(true)}
-                    >
-                        <Upload className="mr-2 h-4 w-4" />
-                        Upload Files
-                    </Button>
+                    <div className="flex gap-1 p-1 bg-muted rounded-lg">
+                        <button
+                            onClick={() => setFilesJobsTab("files")}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                                filesJobsTab === "files"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <FileDown className="h-4 w-4 text-orange-500" />
+                            Source Files
+                            {files.length > 0 && (
+                                <Badge variant="secondary" className="ml-1 text-xs">
+                                    {files.length}
+                                </Badge>
+                            )}
+                        </button>
+                        <button
+                            onClick={() => setFilesJobsTab("jobs")}
+                            className={cn(
+                                "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
+                                filesJobsTab === "jobs"
+                                    ? "bg-background text-foreground shadow-sm"
+                                    : "text-muted-foreground hover:text-foreground"
+                            )}
+                        >
+                            <Calendar className="h-4 w-4 text-green-500" />
+                            Recent Jobs
+                            {jobs.length > 0 && (
+                                <Badge variant="secondary" className="ml-1 text-xs">
+                                    {jobs.length}
+                                </Badge>
+                            )}
+                        </button>
+                    </div>
+                    {filesJobsTab === "files" && (
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => setUploadDialogOpen(true)}
+                        >
+                            <Upload className="mr-2 h-4 w-4" />
+                            Upload Files
+                        </Button>
+                    )}
                 </div>
-                {files.length > 0 ? (
-                    <div className="space-y-2">
-                        {files.map((file, index) => (
-                            <div
-                                key={index}
-                                className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
-                            >
-                                <div className="flex items-center gap-3">
-                                    <div className="p-2 rounded bg-orange-500/10 text-orange-500">
-                                        <FileDown className="h-4 w-4" />
+
+                {/* Tab Content */}
+                {filesJobsTab === "files" ? (
+                    // Source Files Content
+                    files.length > 0 ? (
+                        <div className="space-y-2">
+                            {files.map((file, index) => (
+                                <div
+                                    key={index}
+                                    className="flex items-center justify-between p-3 border rounded-lg hover:bg-muted/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        <div className="p-2 rounded bg-orange-500/10 text-orange-500">
+                                            <FileDown className="h-4 w-4" />
+                                        </div>
+                                        <div>
+                                            <p className="font-medium text-sm">{file.name}</p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {(file.size / 1024).toFixed(0)} KB
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className="font-medium text-sm">{file.name}</p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {(file.size / 1024).toFixed(0)} KB
-                                        </p>
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        asChild
+                                    >
+                                        <a href={`${import.meta.env.VITE_API_URL}${file.path}`} download={file.name}>
+                                            <FileDown className="mr-2 h-3 w-3" />
+                                            Download
+                                        </a>
+                                    </Button>
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground text-center py-8">No source files available</p>
+                    )
+                ) : (
+                    // Recent Crawl Jobs Content
+                    jobsLoading ? (
+                        <div className="flex justify-center py-8">
+                            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                        </div>
+                    ) : jobs.length > 0 ? (
+                        <div className="space-y-2">
+                            {jobs.map((job) => (
+                                <div
+                                    key={job.id}
+                                    className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
+                                >
+                                    <div className="flex items-center gap-3">
+                                        {getStatusIcon(job.status)}
+                                        <div>
+                                            <p className="font-medium flex items-center gap-2">
+                                                {job.year} - {job.data_type}
+                                                {job.job_type && job.job_type !== 'full' && (
+                                                    <Badge variant="outline" className="text-xs">
+                                                        {job.job_type === 'crawl' ? 'Crawl Only' : 'Extract Only'}
+                                                    </Badge>
+                                                )}
+                                            </p>
+                                            <p className="text-xs text-muted-foreground">
+                                                {new Date(job.created_at).toLocaleString()}
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        {job.status === "running" && (
+                                            <span className="text-sm text-muted-foreground">{job.progress}%</span>
+                                        )}
+                                        {getStatusBadge(job.status)}
                                     </div>
                                 </div>
-                                <Button
-                                    variant="outline"
-                                    size="sm"
-                                    asChild
-                                >
-                                    <a href={`${import.meta.env.VITE_API_URL}${file.path}`} download={file.name}>
-                                        <FileDown className="mr-2 h-3 w-3" />
-                                        Download
-                                    </a>
-                                </Button>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground text-center py-8">No source files available</p>
+                            ))}
+                        </div>
+                    ) : (
+                        <p className="text-muted-foreground text-center py-8">No crawl jobs yet</p>
+                    )
                 )}
             </Card>
 
@@ -2274,53 +2358,6 @@ export function DNODetailPage() {
                     </DialogFooter>
                 </DialogContent>
             </Dialog>
-
-            {/* Recent Crawl Jobs */}
-            <Card className="p-6">
-                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                    <Calendar className="h-5 w-5 text-green-500" />
-                    Recent Crawl Jobs
-                </h2>
-                {jobsLoading ? (
-                    <div className="flex justify-center py-8">
-                        <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
-                    </div>
-                ) : jobs.length > 0 ? (
-                    <div className="space-y-2">
-                        {jobs.map((job) => (
-                            <div
-                                key={job.id}
-                                className="flex items-center justify-between p-3 rounded-lg border border-border hover:bg-muted/50 transition-colors"
-                            >
-                                <div className="flex items-center gap-3">
-                                    {getStatusIcon(job.status)}
-                                    <div>
-                                        <p className="font-medium flex items-center gap-2">
-                                            {job.year} - {job.data_type}
-                                            {job.job_type && job.job_type !== 'full' && (
-                                                <Badge variant="outline" className="text-xs">
-                                                    {job.job_type === 'crawl' ? 'Crawl Only' : 'Extract Only'}
-                                                </Badge>
-                                            )}
-                                        </p>
-                                        <p className="text-xs text-muted-foreground">
-                                            {new Date(job.created_at).toLocaleString()}
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3">
-                                    {job.status === "running" && (
-                                        <span className="text-sm text-muted-foreground">{job.progress}%</span>
-                                    )}
-                                    {getStatusBadge(job.status)}
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                ) : (
-                    <p className="text-muted-foreground text-center py-8">No crawl jobs yet</p>
-                )}
-            </Card>
 
             {/* Edit Modal */}
             {editModalOpen && editRecord && (
