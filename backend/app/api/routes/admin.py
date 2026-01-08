@@ -340,7 +340,7 @@ async def list_cached_files(
 
 class BulkExtractRequest(BaseModel):
     """Request model for bulk extraction."""
-    mode: Literal["flagged_only", "default", "force_override"]
+    mode: Literal["flagged_only", "default", "force_override", "no_data_and_failed"]
     data_types: list[str] = ["netzentgelte", "hlzf"]
     years: list[int] | None = None
     formats: list[str] | None = None  # Filter by file format (pdf, html, etc.)
@@ -353,6 +353,7 @@ class BulkExtractPreview(BaseModel):
     total_files: int
     will_extract: int
     protected_verified: int  # Files with verified data that WON'T be touched (unless force)
+    failed_jobs: int  # Files with failed extraction jobs
     will_override_verified: int  # Files with verified data that WILL be overridden (force mode)
     flagged: int
     no_data: int
@@ -372,6 +373,7 @@ async def preview_bulk_extract(
     - flagged_only: Only files where existing data has verification_status = 'flagged'
     - default: Files with no data OR verification_status != 'verified'
     - force_override: ALL files (including verified)
+    - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     downloads_path = Path(storage_path) / "downloads"
@@ -387,6 +389,7 @@ async def preview_bulk_extract(
                 flagged=0,
                 no_data=0,
                 unverified=0,
+                failed_jobs=0,
                 files=[],
             ).model_dump(),
         )
@@ -405,6 +408,7 @@ async def preview_bulk_extract(
     flagged = 0
     no_data = 0
     unverified = 0
+    failed_jobs = 0
     files_to_process = []
     
     for dno_dir in downloads_path.iterdir():
@@ -461,6 +465,17 @@ async def preview_bulk_extract(
             has_flagged = any(s == "flagged" for s in statuses)
             has_data = len(statuses) > 0
             
+            # Check if there's a failed job for this file
+            failed_job_query = select(CrawlJobModel.id).where(
+                and_(
+                    CrawlJobModel.dno_id == dno_info["id"],
+                    CrawlJobModel.year == file_info["year"],
+                    CrawlJobModel.data_type == file_info["data_type"],
+                    CrawlJobModel.status == "failed",
+                )
+            ).limit(1)
+            has_failed_job = await db.scalar(failed_job_query) is not None
+            
             # Determine if this file should be extracted based on mode
             should_extract = False
             
@@ -490,6 +505,13 @@ async def preview_bulk_extract(
                     flagged += 1
                 else:
                     unverified += 1
+            elif request.mode == "no_data_and_failed":
+                if not has_data:
+                    should_extract = True
+                    no_data += 1
+                elif has_failed_job:
+                    should_extract = True
+                    failed_jobs += 1
             
             if should_extract:
                 will_extract += 1
@@ -497,6 +519,7 @@ async def preview_bulk_extract(
                 file_info["has_verified"] = has_verified
                 file_info["has_flagged"] = has_flagged
                 file_info["has_data"] = has_data
+                file_info["has_failed_job"] = has_failed_job
                 files_to_process.append(file_info)
     
     return APIResponse(
@@ -509,6 +532,7 @@ async def preview_bulk_extract(
             "flagged": flagged,
             "no_data": no_data,
             "unverified": unverified,
+            "failed_jobs": failed_jobs,
             "files": files_to_process,
         },
     )
@@ -528,6 +552,7 @@ async def trigger_bulk_extract(
     - flagged_only: Only re-extract files where data is flagged
     - default: Extract files with no data, flagged, or unverified (skip verified)
     - force_override: Extract all files, including verified (adds force_override to context)
+    - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
     # First get the preview to know what to extract
     storage_path = os.environ.get("STORAGE_PATH", "/data")
@@ -606,6 +631,19 @@ async def trigger_bulk_extract(
                 has_flagged = any(s == "flagged" for s in statuses)
                 has_data = len(statuses) > 0
                 
+                # Check if there's a failed job for this file (for no_data_and_failed mode)
+                has_failed_job = False
+                if request.mode == "no_data_and_failed":
+                    failed_job_query = select(CrawlJobModel.id).where(
+                        and_(
+                            CrawlJobModel.dno_id == dno_info["id"],
+                            CrawlJobModel.year == file_info["year"],
+                            CrawlJobModel.data_type == file_info["data_type"],
+                            CrawlJobModel.status == "failed",
+                        )
+                    ).limit(1)
+                    has_failed_job = await db.scalar(failed_job_query) is not None
+                
                 # Determine if this file should be extracted based on mode
                 should_extract = False
                 
@@ -615,6 +653,8 @@ async def trigger_bulk_extract(
                     should_extract = not has_data or has_flagged or not has_verified
                 elif request.mode == "force_override":
                     should_extract = True
+                elif request.mode == "no_data_and_failed":
+                    should_extract = not has_data or has_failed_job
                 
                 if not should_extract:
                     continue

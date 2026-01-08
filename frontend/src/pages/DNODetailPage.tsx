@@ -37,6 +37,8 @@ import {
     ChevronUp,
     Upload,
     Info,
+    Download,
+    FolderInput,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -116,6 +118,20 @@ export function DNODetailPage() {
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
+    // Import/Export state
+    const [exportDataTypes, setExportDataTypes] = useState<string[]>(["netzentgelte", "hlzf"]);
+    const [exportYears, setExportYears] = useState<number[]>([]);
+    const [isExporting, setIsExporting] = useState(false);
+    const [importDialogOpen, setImportDialogOpen] = useState(false);
+    const [importMode, setImportMode] = useState<"merge" | "replace">("merge");
+    const [importData, setImportData] = useState<{
+        netzentgelte: unknown[];
+        hlzf: unknown[];
+    } | null>(null);
+    const [importFileName, setImportFileName] = useState<string>("");
+    const [isImporting, setIsImporting] = useState(false);
+    const importFileRef = useRef<HTMLInputElement>(null);
+
     // Close menu when clicking outside
     useEffect(() => {
         const handleClickOutside = (event: MouseEvent) => {
@@ -193,8 +209,8 @@ export function DNODetailPage() {
     });
 
     const triggerCrawlMutation = useMutation({
-        mutationFn: async ({ years, dataType, jobType }: { 
-            years: number[]; 
+        mutationFn: async ({ years, dataType, jobType }: {
+            years: number[];
             dataType: 'all' | 'netzentgelte' | 'hlzf';
             jobType: 'full' | 'crawl' | 'extract';
         }) => {
@@ -204,8 +220,8 @@ export function DNODetailPage() {
 
             for (const year of years) {
                 for (const type of typesToCrawl) {
-                    const result = await api.dnos.triggerCrawl(numericId!, { 
-                        year, 
+                    const result = await api.dnos.triggerCrawl(numericId!, {
+                        year,
                         data_type: type,
                         job_type: jobType,
                     });
@@ -216,8 +232,8 @@ export function DNODetailPage() {
         },
         onSuccess: (results, variables) => {
             const jobCount = results.length;
-            const jobTypeLabel = variables.jobType === 'full' ? 'Full' : 
-                                 variables.jobType === 'crawl' ? 'Crawl' : 'Extract';
+            const jobTypeLabel = variables.jobType === 'full' ? 'Full' :
+                variables.jobType === 'crawl' ? 'Crawl' : 'Extract';
             toast({
                 title: `${jobTypeLabel} job${jobCount > 1 ? 's' : ''} triggered`,
                 description: `${jobCount} job${jobCount > 1 ? 's' : ''} queued for years: ${variables.years.join(', ')}`,
@@ -307,10 +323,88 @@ export function DNODetailPage() {
         }
     };
 
+    // Handle export
+    const handleExport = async () => {
+        if (!numericId) return;
+        setIsExporting(true);
+        try {
+            const blob = await api.dnos.exportData(String(numericId), {
+                data_types: exportDataTypes,
+                years: exportYears.length > 0 ? exportYears : undefined,
+                include_metadata: true,
+            });
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = `${dnoResponse?.data?.slug || "dno"}-export-${new Date().toISOString().slice(0, 10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+            toast({ title: "Export Complete", description: "JSON file downloaded successfully" });
+        } catch (error) {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Export failed";
+            toast({ variant: "destructive", title: "Export Failed", description: message });
+        } finally {
+            setIsExporting(false);
+        }
+    };
+
+    // Handle import file selection
+    const handleImportFileSelect = async (files: FileList | null) => {
+        if (!files || files.length === 0) return;
+        const file = files[0];
+        setImportFileName(file.name);
+        try {
+            const text = await file.text();
+            const json = JSON.parse(text);
+            setImportData({
+                netzentgelte: json.netzentgelte || [],
+                hlzf: json.hlzf || [],
+            });
+            setImportDialogOpen(true);
+        } catch {
+            toast({ variant: "destructive", title: "Invalid JSON", description: "Could not parse the selected file" });
+        }
+    };
+
+    // Handle import submit
+    const handleImportSubmit = async () => {
+        if (!numericId || !importData) return;
+        setIsImporting(true);
+        try {
+            const result = await api.dnos.importData(String(numericId), {
+                mode: importMode,
+                netzentgelte: importData.netzentgelte as never[],
+                hlzf: importData.hlzf as never[],
+            });
+            toast({
+                title: "Import Complete",
+                description: result.message || "Data imported successfully",
+            });
+            setImportDialogOpen(false);
+            setImportData(null);
+            setImportFileName("");
+            // Refresh data
+            queryClient.invalidateQueries({ queryKey: ["dno-data", numericId] });
+        } catch (error) {
+            const message = error instanceof AxiosError
+                ? error.response?.data?.detail ?? error.message
+                : "Import failed";
+            toast({ variant: "destructive", title: "Import Failed", description: message });
+        } finally {
+            setIsImporting(false);
+        }
+    };
+
     const dno = dnoResponse?.data;
     const dnoData = dataResponse?.data;
     const jobs = jobsResponse?.data || [];
     const files = filesResponse?.data || [];
+
 
     // Get admin status
     const { isAdmin } = useAuth();
@@ -339,10 +433,10 @@ export function DNODetailPage() {
     // Priority: 2024 if available, otherwise latest year, or only year if just one
     useEffect(() => {
         if (yearFilterInitialized || filterOptions.years.length === 0) return;
-        
+
         const availableYears = filterOptions.years;
         let defaultYear: number;
-        
+
         if (availableYears.includes(2024)) {
             // Prefer 2024 if available
             defaultYear = 2024;
@@ -353,7 +447,7 @@ export function DNODetailPage() {
             // Use the latest year (array is sorted desc)
             defaultYear = availableYears[0];
         }
-        
+
         setYearFilter([defaultYear]);
         setYearFilterInitialized(true);
     }, [filterOptions.years, yearFilterInitialized]);
@@ -800,8 +894,8 @@ export function DNODetailPage() {
                                                         <span className="font-medium">{opt.label}</span>
                                                         <span className={cn(
                                                             "text-xs",
-                                                            crawlJobType === opt.value 
-                                                                ? "text-primary-foreground/70" 
+                                                            crawlJobType === opt.value
+                                                                ? "text-primary-foreground/70"
                                                                 : "text-muted-foreground"
                                                         )}>{opt.desc}</span>
                                                     </button>
@@ -814,7 +908,7 @@ export function DNODetailPage() {
                                                 </p>
                                             )}
                                         </div>
-                                        
+
                                         {/* Data Type Selection */}
                                         <div className="space-y-2">
                                             <label className="text-sm font-medium">Data Type</label>
@@ -848,8 +942,8 @@ export function DNODetailPage() {
                                     Cancel
                                 </Button>
                                 <Button
-                                    onClick={() => triggerCrawlMutation.mutate({ 
-                                        years: crawlYears, 
+                                    onClick={() => triggerCrawlMutation.mutate({
+                                        years: crawlYears,
                                         dataType: crawlDataType,
                                         jobType: crawlJobType,
                                     })}
@@ -1084,12 +1178,12 @@ export function DNODetailPage() {
                         <Badge variant={dno.enrichment_status === 'processing' ? 'default' : 'outline'} className="text-xs">
                             {dno.enrichment_status === 'processing' && <Loader2 className="h-3 w-3 mr-1 animate-spin" />}
                             {dno.enrichment_status === 'pending' ? 'Enrichment Pending' :
-                             dno.enrichment_status === 'processing' ? 'Enriching...' :
-                             dno.enrichment_status === 'failed' ? 'Enrichment Failed' : ''}
+                                dno.enrichment_status === 'processing' ? 'Enriching...' :
+                                    dno.enrichment_status === 'failed' ? 'Enrichment Failed' : ''}
                         </Badge>
                     )}
                 </div>
-                
+
                 {/* Primary Info - Always Visible */}
                 <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-x-6 gap-y-2 text-sm">
                     <div className="flex justify-between sm:block">
@@ -1382,7 +1476,7 @@ export function DNODetailPage() {
                                         )}
                                     </dd>
                                 </div>
-                                
+
                                 {/* Source & Timestamps */}
                                 {dno.source && (
                                     <div className="flex justify-between sm:block">
@@ -1880,6 +1974,205 @@ export function DNODetailPage() {
                 </DialogContent>
             </Dialog>
 
+            {/* Import / Export Data */}
+            <Card className="p-6">
+                <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+                    <FolderInput className="h-5 w-5 text-purple-500" />
+                    Import / Export Data
+                </h2>
+                <div className="grid md:grid-cols-2 gap-6">
+                    {/* Export Side */}
+                    <div className="space-y-4">
+                        <h3 className="font-medium flex items-center gap-2">
+                            <Download className="h-4 w-4" />
+                            Export as JSON
+                        </h3>
+                        <div className="space-y-3">
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Data Types</label>
+                                <div className="flex gap-3">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportDataTypes.includes("netzentgelte")}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setExportDataTypes([...exportDataTypes, "netzentgelte"]);
+                                                } else {
+                                                    setExportDataTypes(exportDataTypes.filter(t => t !== "netzentgelte"));
+                                                }
+                                            }}
+                                            className="rounded border-input"
+                                        />
+                                        Netzentgelte
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="checkbox"
+                                            checked={exportDataTypes.includes("hlzf")}
+                                            onChange={(e) => {
+                                                if (e.target.checked) {
+                                                    setExportDataTypes([...exportDataTypes, "hlzf"]);
+                                                } else {
+                                                    setExportDataTypes(exportDataTypes.filter(t => t !== "hlzf"));
+                                                }
+                                            }}
+                                            className="rounded border-input"
+                                        />
+                                        HLZF
+                                    </label>
+                                </div>
+                            </div>
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Years (optional)</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {AVAILABLE_YEARS.map((year) => (
+                                        <button
+                                            key={year}
+                                            type="button"
+                                            onClick={() => {
+                                                if (exportYears.includes(year)) {
+                                                    setExportYears(exportYears.filter(y => y !== year));
+                                                } else {
+                                                    setExportYears([...exportYears, year]);
+                                                }
+                                            }}
+                                            className={cn(
+                                                "px-2 py-1 text-xs rounded border transition-colors",
+                                                exportYears.includes(year)
+                                                    ? "bg-primary text-primary-foreground border-primary"
+                                                    : "bg-background border-input hover:bg-muted"
+                                            )}
+                                        >
+                                            {year}
+                                        </button>
+                                    ))}
+                                </div>
+                                {exportYears.length === 0 && (
+                                    <p className="text-xs text-muted-foreground mt-1">All years selected by default</p>
+                                )}
+                            </div>
+                            <Button
+                                onClick={handleExport}
+                                disabled={isExporting || exportDataTypes.length === 0}
+                                className="w-full"
+                            >
+                                {isExporting ? (
+                                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : (
+                                    <Download className="mr-2 h-4 w-4" />
+                                )}
+                                Download JSON
+                            </Button>
+                        </div>
+                    </div>
+
+                    {/* Import Side */}
+                    <div className="space-y-4">
+                        <h3 className="font-medium flex items-center gap-2">
+                            <Upload className="h-4 w-4" />
+                            Import from JSON
+                        </h3>
+                        <div
+                            className="border-2 border-dashed rounded-lg p-6 text-center hover:border-primary/50 transition-colors cursor-pointer"
+                            onClick={() => importFileRef.current?.click()}
+                        >
+                            <input
+                                type="file"
+                                accept=".json"
+                                onChange={(e) => handleImportFileSelect(e.target.files)}
+                                className="hidden"
+                                ref={importFileRef}
+                            />
+                            <Upload className="mx-auto h-6 w-6 text-muted-foreground mb-2" />
+                            <p className="text-sm font-medium">Drop JSON file or click to browse</p>
+                            <p className="text-xs text-muted-foreground mt-1">
+                                Accepts exported JSON files
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </Card>
+
+            {/* Import Preview Dialog */}
+            <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+                <DialogContent className="sm:max-w-md">
+                    <DialogHeader>
+                        <DialogTitle>Import Data Preview</DialogTitle>
+                        <DialogDescription>
+                            Review the data before importing to {dno.name}
+                        </DialogDescription>
+                    </DialogHeader>
+
+                    {importData && (
+                        <div className="space-y-4">
+                            <div className="p-3 rounded-lg bg-muted/50 space-y-2">
+                                <p className="text-sm">
+                                    <strong>File:</strong> {importFileName}
+                                </p>
+                                <p className="text-sm">
+                                    <strong>Netzentgelte records:</strong> {importData.netzentgelte.length}
+                                </p>
+                                <p className="text-sm">
+                                    <strong>HLZF records:</strong> {importData.hlzf.length}
+                                </p>
+                            </div>
+
+                            <div>
+                                <label className="text-sm font-medium mb-2 block">Import Mode</label>
+                                <div className="flex gap-4">
+                                    <label className="flex items-center gap-2 text-sm">
+                                        <input
+                                            type="radio"
+                                            checked={importMode === "merge"}
+                                            onChange={() => setImportMode("merge")}
+                                        />
+                                        Merge (add/update)
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm text-amber-600">
+                                        <input
+                                            type="radio"
+                                            checked={importMode === "replace"}
+                                            onChange={() => setImportMode("replace")}
+                                        />
+                                        Replace (delete then insert)
+                                    </label>
+                                </div>
+                                {importMode === "replace" && (
+                                    <p className="text-xs text-amber-600 mt-1">
+                                        ⚠️ Replace mode will delete existing data for the imported years
+                                    </p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    <DialogFooter>
+                        <Button
+                            variant="outline"
+                            onClick={() => {
+                                setImportDialogOpen(false);
+                                setImportData(null);
+                                setImportFileName("");
+                            }}
+                        >
+                            Cancel
+                        </Button>
+                        <Button
+                            onClick={handleImportSubmit}
+                            disabled={isImporting || !importData}
+                        >
+                            {isImporting ? (
+                                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                                <Check className="mr-2 h-4 w-4" />
+                            )}
+                            Import Data
+                        </Button>
+                    </DialogFooter>
+                </DialogContent>
+            </Dialog>
+
             {/* Recent Crawl Jobs */}
             <Card className="p-6">
                 <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
@@ -1949,14 +2242,14 @@ export function DNODetailPage() {
                                             placeholder="0.00"
                                         />
                                         <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
+                                            <button
                                                 type="button"
                                                 className="p-0.5 hover:bg-muted rounded text-muted-foreground"
                                                 onClick={() => setEditRecord({ ...editRecord, leistung: (editRecord.leistung || 0) + 1 })}
                                             >
                                                 <ChevronUp className="h-3 w-3" />
                                             </button>
-                                            <button 
+                                            <button
                                                 type="button"
                                                 className="p-0.5 hover:bg-muted rounded text-muted-foreground"
                                                 onClick={() => setEditRecord({ ...editRecord, leistung: Math.max(0, (editRecord.leistung || 0) - 1) })}
@@ -1978,14 +2271,14 @@ export function DNODetailPage() {
                                             placeholder="0.000"
                                         />
                                         <div className="absolute right-1 top-1 flex flex-col gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                                            <button 
+                                            <button
                                                 type="button"
                                                 className="p-0.5 hover:bg-muted rounded text-muted-foreground"
                                                 onClick={() => setEditRecord({ ...editRecord, arbeit: (editRecord.arbeit || 0) + 0.1 })}
                                             >
                                                 <ChevronUp className="h-3 w-3" />
                                             </button>
-                                            <button 
+                                            <button
                                                 type="button"
                                                 className="p-0.5 hover:bg-muted rounded text-muted-foreground"
                                                 onClick={() => setEditRecord({ ...editRecord, arbeit: Math.max(0, (editRecord.arbeit || 0) - 0.1) })}

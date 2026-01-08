@@ -527,9 +527,9 @@ export const api = {
 
     async triggerCrawl(
       dno_id: string,
-      payload: { 
-        year: number; 
-        data_type?: 'all' | 'netzentgelte' | 'hlzf'; 
+      payload: {
+        year: number;
+        data_type?: 'all' | 'netzentgelte' | 'hlzf';
         priority?: number;
         job_type?: 'full' | 'crawl' | 'extract';
       }
@@ -692,6 +692,62 @@ export const api = {
       });
       return data;
     },
+
+    // Export/Import endpoints
+    async exportData(
+      dno_id: string,
+      params?: {
+        data_types?: string[];
+        years?: number[];
+        include_metadata?: boolean;
+      }
+    ): Promise<Blob> {
+      const response = await apiClient.get(`/dnos/${dno_id}/export`, {
+        params: {
+          data_types: params?.data_types,
+          years: params?.years,
+          include_metadata: params?.include_metadata ?? true,
+        },
+        responseType: "blob",
+      });
+      return response.data;
+    },
+
+    async importData(
+      dno_id: string,
+      payload: {
+        mode: "merge" | "replace";
+        netzentgelte?: Array<{
+          year: number;
+          voltage_level: string;
+          leistung?: number;
+          arbeit?: number;
+          leistung_unter_2500h?: number;
+          arbeit_unter_2500h?: number;
+          verification_status?: string;
+          extraction_source?: string;
+        }>;
+        hlzf?: Array<{
+          year: number;
+          voltage_level: string;
+          winter?: string;
+          fruehling?: string;
+          sommer?: string;
+          herbst?: string;
+          verification_status?: string;
+          extraction_source?: string;
+        }>;
+      }
+    ): Promise<
+      ApiResponse<{
+        netzentgelte: { created: number; updated: number };
+        hlzf: { created: number; updated: number };
+        mode: string;
+      }>
+    > {
+      const { data } = await apiClient.post(`/dnos/${dno_id}/import`, payload);
+      return data;
+    },
   },
 
   admin: {
@@ -759,7 +815,7 @@ export const api = {
     },
 
     async previewBulkExtract(options: {
-      mode: "flagged_only" | "default" | "force_override";
+      mode: "flagged_only" | "default" | "force_override" | "no_data_and_failed";
       data_types?: string[];
       years?: number[];
       formats?: string[];
@@ -773,6 +829,7 @@ export const api = {
         flagged: number;
         no_data: number;
         unverified: number;
+        failed_jobs: number;
         files: Array<{
           name: string;
           path: string;
@@ -786,6 +843,7 @@ export const api = {
           has_verified: boolean;
           has_flagged: boolean;
           has_data: boolean;
+          has_failed_job?: boolean;
         }>;
       }>
     > {
@@ -794,7 +852,7 @@ export const api = {
     },
 
     async triggerBulkExtract(options: {
-      mode: "flagged_only" | "default" | "force_override";
+      mode: "flagged_only" | "default" | "force_override" | "no_data_and_failed";
       data_types?: string[];
       years?: number[];
       formats?: string[];

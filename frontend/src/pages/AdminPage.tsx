@@ -311,7 +311,7 @@ function StatCard({ icon: Icon, title, value, color, bg, loading }: {
 // Cached Files & Bulk Extraction Section
 // ==============================================================================
 
-type ExtractMode = "flagged_only" | "default" | "force_override";
+type ExtractMode = "flagged_only" | "default" | "force_override" | "no_data_and_failed";
 
 function CachedFilesSection() {
   const queryClient = useQueryClient();
@@ -454,6 +454,12 @@ function CachedFilesSection() {
                         Flagged Only
                       </div>
                     </SelectItem>
+                    <SelectItem value="no_data_and_failed">
+                      <div className="flex items-center gap-2">
+                        <FileWarning className="h-4 w-4 text-orange-500" />
+                        No Data & Failed
+                      </div>
+                    </SelectItem>
                     <SelectItem value="default">
                       <div className="flex items-center gap-2">
                         <Zap className="h-4 w-4 text-blue-500" />
@@ -486,6 +492,9 @@ function CachedFilesSection() {
             <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
               {selectedMode === "flagged_only" && (
                 <span>Only re-extract files where data has been flagged as incorrect.</span>
+              )}
+              {selectedMode === "no_data_and_failed" && (
+                <span>Only extract files with <strong>no data</strong> or files where extraction previously <strong>failed</strong>.</span>
               )}
               {selectedMode === "default" && (
                 <span>Extract files with no data, flagged data, or unverified data. <strong>Verified data is protected.</strong></span>
@@ -688,6 +697,11 @@ function CachedFilesSection() {
               <div className={`p-3 rounded-lg text-sm ${selectedMode === "force_override" ? "bg-red-500/10 border border-red-500/30" : "bg-blue-500/10"}`}>
                 <strong>Mode: </strong>
                 {selectedMode === "flagged_only" && "Only re-extracting flagged data"}
+                {selectedMode === "no_data_and_failed" && (
+                  <span>
+                    Targeting {previewData.no_data} files with no data and {previewData.failed_jobs || 0} failed extractions
+                  </span>
+                )}
                 {selectedMode === "default" && "Default mode - verified data is protected"}
                 {selectedMode === "force_override" && (
                   <span className="text-red-500">
