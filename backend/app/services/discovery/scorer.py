@@ -5,9 +5,8 @@ Single scoring algorithm used by all discovery strategies.
 Ensures consistent ranking across sitemap and BFS discovery.
 """
 
-from app.services.web_crawler import get_keywords_for_data_type, NEGATIVE_KEYWORDS
 from app.services.discovery.base import FileType
-
+from app.services.web_crawler import NEGATIVE_KEYWORDS, get_keywords_for_data_type
 
 # File type scoring bonuses
 FILE_TYPE_SCORES = {
@@ -22,7 +21,7 @@ FILE_TYPE_SCORES = {
 def detect_file_type(url: str) -> FileType:
     """Detect file type from URL."""
     url_lower = url.lower()
-    
+
     if ".pdf" in url_lower or ".pdfx" in url_lower:
         return FileType.PDF
     elif ".xlsx" in url_lower:
@@ -31,7 +30,7 @@ def detect_file_type(url: str) -> FileType:
         return FileType.XLS
     elif ".docx" in url_lower or ".doc" in url_lower:
         return FileType.DOC
-    
+
     return FileType.UNKNOWN
 
 
@@ -55,15 +54,15 @@ def score_url(
     """
     url_lower = url.lower()
     link_text_lower = link_text.lower() if link_text else ""
-    
+
     score = 0.0
     keywords_found = []
     has_year = False
-    
+
     # File type bonus
     file_type = detect_file_type(url)
     score += FILE_TYPE_SCORES.get(file_type, 0)
-    
+
     # Positive keywords
     keywords = get_keywords_for_data_type(data_type)
     for kw in keywords:
@@ -76,13 +75,13 @@ def score_url(
             score += 5
             if kw not in keywords_found:
                 keywords_found.append(kw)
-    
+
     # Negative keywords
     neg_keywords = NEGATIVE_KEYWORDS.get(data_type, [])
     for neg_kw, penalty in neg_keywords:
         if neg_kw.lower() in url_lower or neg_kw.lower() in link_text_lower:
             score += penalty  # penalty is already negative
-    
+
     # Target year bonus
     if target_year:
         year_str = str(target_year)
@@ -92,7 +91,7 @@ def score_url(
         elif year_str in link_text:
             score += 10
             has_year = True
-    
+
     return score, keywords_found, has_year
 
 
@@ -110,7 +109,7 @@ def score_html_for_data(
         (score, years_found)
     """
     from app.services.html_content_detector import score_html_page_for_data
-    
+
     score, result = score_html_page_for_data(html_content, data_type, target_year)
-    
+
     return score, result.years_found

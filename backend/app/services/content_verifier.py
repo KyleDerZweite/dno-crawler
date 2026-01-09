@@ -15,7 +15,6 @@ import io
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any
 
 import httpx
 import structlog
@@ -107,14 +106,14 @@ STRUCTURE_PATTERNS = {
 
 class ContentVerifier:
     """Verifies content matches expected data type."""
-    
+
     # Maximum bytes to fetch for sniffing
     SNIFF_SIZE = 15 * 1024  # 15KB
-    
+
     def __init__(self, client: httpx.AsyncClient | None = None):
         self.client = client
         self.log = logger.bind(component="ContentVerifier")
-    
+
     async def verify_url(
         self,
         url: str,
@@ -137,7 +136,7 @@ class ContentVerifier:
         try:
             # Detect content type from URL
             content_type = self._detect_content_type(url)
-            
+
             # Fetch partial content
             content = await self._fetch_partial(url)
             if not content:
@@ -149,7 +148,7 @@ class ContentVerifier:
                     keywords_missing=[],
                     error="Failed to fetch content",
                 )
-            
+
             # Extract text based on content type
             text = await self._extract_text(content, content_type, url)
             if not text:
@@ -162,10 +161,10 @@ class ContentVerifier:
                     error="Could not extract text from content",
                     content_sample=content[:500].decode("utf-8", errors="replace") if content else None,
                 )
-            
+
             # Verify content against expected data type
             return self._verify_text(text, expected_data_type, expected_year)
-            
+
         except Exception as e:
             self.log.warning("verify_url_failed", url=url[:80], error=str(e))
             return VerificationResult(
@@ -176,7 +175,7 @@ class ContentVerifier:
                 keywords_missing=[],
                 error=str(e),
             )
-    
+
     def verify_text(
         self,
         text: str,
@@ -188,7 +187,7 @@ class ContentVerifier:
         This is the synchronous version for already-downloaded content.
         """
         return self._verify_text(text, expected_data_type, expected_year)
-    
+
     def _verify_text(
         self,
         text: str,
@@ -197,17 +196,17 @@ class ContentVerifier:
     ) -> VerificationResult:
         """Internal text verification logic."""
         text_lower = text.lower()
-        
+
         # Track keywords
         found_keywords: list[str] = []
         missing_keywords: list[str] = []
-        
+
         # Calculate scores
         positive_score = 0.0
         negative_score = 0.0
         structure_score = 0.0
         required_met = False
-        
+
         # Check required keywords (at least one group must have a match)
         required = REQUIRED_KEYWORDS.get(expected_data_type, [])
         for keyword_group in required:
@@ -219,64 +218,64 @@ class ContentVerifier:
                 break
             else:
                 missing_keywords.extend(keyword_group[:2])  # Only show first 2
-        
+
         # Count positive keywords
         positive = POSITIVE_KEYWORDS.get(expected_data_type, [])
         for kw in positive:
             if kw in text_lower:
                 found_keywords.append(kw)
                 positive_score += 1
-        
+
         # Count negative keywords (wrong data type markers)
         negative = NEGATIVE_KEYWORDS.get(expected_data_type, [])
         for kw in negative:
             if kw in text_lower:
                 negative_score += 2  # Heavier penalty
-        
+
         # Check structural patterns
         patterns = STRUCTURE_PATTERNS.get(expected_data_type, [])
         for pattern in patterns:
             if re.search(pattern, text_lower):
                 structure_score += 2
-        
+
         # Year validation (if expected)
         year_found = False
         if expected_year:
             if str(expected_year) in text:
                 year_found = True
                 positive_score += 2
-        
+
         # Calculate confidence
         total_positive = len(positive)
         if total_positive > 0:
             keyword_confidence = min(1.0, (positive_score / (total_positive * 0.3)))
         else:
             keyword_confidence = 0.5
-        
+
         structure_confidence = min(1.0, structure_score / (len(patterns) * 2)) if patterns else 0.5
-        
+
         # Penalty for negative keywords
         penalty = min(0.5, negative_score * 0.1)
-        
+
         # Combined confidence
         confidence = (keyword_confidence * 0.5 + structure_confidence * 0.5) - penalty
-        
+
         # Require required keywords for high confidence
         if not required_met:
             confidence = min(confidence, 0.3)
-        
+
         confidence = max(0.0, min(1.0, confidence))
-        
+
         # Determine detected data type (which type does this look like?)
         detected = self._detect_data_type(text_lower)
-        
+
         # Final verification decision
         is_verified = (
-            required_met and 
-            confidence >= 0.4 and 
+            required_met and
+            confidence >= 0.4 and
             (detected == expected_data_type or detected is None)
         )
-        
+
         self.log.debug(
             "verify_text_result",
             expected=expected_data_type,
@@ -286,7 +285,7 @@ class ContentVerifier:
             positive_count=len([k for k in found_keywords if k in positive]),
             is_verified=is_verified,
         )
-        
+
         return VerificationResult(
             is_verified=is_verified,
             confidence=confidence,
@@ -295,42 +294,42 @@ class ContentVerifier:
             keywords_missing=list(set(missing_keywords))[:5],
             content_sample=text[:500] if text else None,
         )
-    
+
     def _detect_data_type(self, text_lower: str) -> str | None:
         """Try to detect which data type the text represents."""
         netz_score = 0
         hlzf_score = 0
-        
+
         for kw in POSITIVE_KEYWORDS["netzentgelte"]:
             if kw in text_lower:
                 netz_score += 1
-        
+
         for kw in POSITIVE_KEYWORDS["hlzf"]:
             if kw in text_lower:
                 hlzf_score += 1
-        
+
         # Strong HLZF markers
         if "hochlastzeitfenster" in text_lower or "hlzf" in text_lower:
             hlzf_score += 5
-        
+
         # Strong Netzentgelte markers
         if "netzentgelt" in text_lower and "leistungspreis" in text_lower:
             netz_score += 5
-        
+
         if netz_score > hlzf_score and netz_score > 3:
             return "netzentgelte"
         elif hlzf_score > netz_score and hlzf_score > 3:
             return "hlzf"
-        
+
         return None
-    
+
     async def _fetch_partial(self, url: str) -> bytes | None:
         """Fetch partial content using Range header."""
         if not self.client:
             async with httpx.AsyncClient(timeout=15.0, follow_redirects=True) as client:
                 return await self._do_fetch_partial(client, url)
         return await self._do_fetch_partial(self.client, url)
-    
+
     async def _do_fetch_partial(self, client: httpx.AsyncClient, url: str) -> bytes | None:
         """Perform the actual partial fetch."""
         try:
@@ -340,15 +339,15 @@ class ContentVerifier:
                 headers={"Range": f"bytes=0-{self.SNIFF_SIZE - 1}"},
                 follow_redirects=True,
             )
-            
+
             if response.status_code in (200, 206):
                 return response.content[:self.SNIFF_SIZE]
-            
+
             return None
         except Exception as e:
             self.log.debug("fetch_partial_failed", url=url[:80], error=str(e))
             return None
-    
+
     def _detect_content_type(self, url: str) -> str:
         """Detect content type from URL."""
         url_lower = url.lower()
@@ -362,11 +361,11 @@ class ContentVerifier:
             return "image"
         else:
             return "html"
-    
+
     async def _extract_text(self, content: bytes, content_type: str, url: str) -> str | None:
         """Extract text from content based on type."""
         import asyncio
-        
+
         if content_type == "pdf":
             return await asyncio.to_thread(self._extract_pdf_text, content)
         elif content_type == "excel":
@@ -384,64 +383,64 @@ class ContentVerifier:
                 return content.decode("utf-8", errors="replace")
             except Exception:
                 return None
-    
+
     def _extract_pdf_text(self, content: bytes) -> str | None:
         """Extract text from PDF content."""
         try:
             import pdfplumber
-            
+
             pdf_file = io.BytesIO(content)
             text_parts = []
-            
+
             with pdfplumber.open(pdf_file) as pdf:
                 # Only read first few pages for sniffing
                 for page in pdf.pages[:3]:
                     page_text = page.extract_text()
                     if page_text:
                         text_parts.append(page_text)
-            
+
             return "\n".join(text_parts) if text_parts else None
         except Exception as e:
             self.log.debug("pdf_extract_failed", error=str(e))
             return None
-    
+
     def _extract_excel_text(self, content: bytes) -> str | None:
         """Extract text from Excel content."""
         try:
             import openpyxl
-            
+
             excel_file = io.BytesIO(content)
             wb = openpyxl.load_workbook(excel_file, read_only=True, data_only=True)
-            
+
             text_parts = []
             for sheet in wb.worksheets[:2]:  # First 2 sheets
                 for row in list(sheet.iter_rows(max_row=50)):  # First 50 rows
                     row_text = " ".join(str(cell.value or "") for cell in row)
                     if row_text.strip():
                         text_parts.append(row_text)
-            
+
             return "\n".join(text_parts) if text_parts else None
         except Exception as e:
             self.log.debug("excel_extract_failed", error=str(e))
             return None
-    
+
     def _extract_html_text(self, content: bytes) -> str | None:
         """Extract text from HTML content."""
         try:
             from bs4 import BeautifulSoup
-            
+
             soup = BeautifulSoup(content, "lxml")
-            
+
             # Remove script and style elements
             for script in soup(["script", "style", "nav", "footer", "header"]):
                 script.decompose()
-            
+
             # Get text
             text = soup.get_text(separator=" ", strip=True)
-            
+
             # Clean up whitespace
             text = re.sub(r'\s+', ' ', text)
-            
+
             return text if text else None
         except Exception as e:
             self.log.debug("html_extract_failed", error=str(e))
@@ -468,27 +467,27 @@ def score_for_data_type(url: str, data_type: str) -> float:
     """
     url_lower = url.lower()
     score = 0.0
-    
+
     if data_type == "netzentgelte":
         # Boost for netzentgelte-specific terms
         if any(term in url_lower for term in ["netzentgelt", "preisblatt", "entgelt", "tarif"]):
             score += 15
         if "leistungspreis" in url_lower or "arbeitspreis" in url_lower:
             score += 10
-            
+
         # Penalty for HLZF-related terms
         if any(term in url_lower for term in ["hochlast", "hlzf", "zeitfenster", "regelung"]):
             score -= 20
-            
+
     elif data_type == "hlzf":
         # Boost for HLZF-specific terms
         if any(term in url_lower for term in ["hochlast", "hlzf", "zeitfenster"]):
             score += 20
         if "regelung" in url_lower:
             score += 5
-            
+
         # Light penalty for pure pricing docs
         if "preisblatt" in url_lower and "hochlast" not in url_lower:
             score -= 10
-    
+
     return score

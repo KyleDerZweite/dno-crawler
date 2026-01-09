@@ -12,7 +12,6 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
 
-
 # ==============================================================================
 # Enums
 # ==============================================================================
@@ -203,34 +202,34 @@ class JobContext(BaseSchema):
     dno_slug: str
     dno_name: str
     dno_website: str | None = None
-    
+
     # Source profile (if exists)
     has_profile: bool = False
     profile_url_pattern: str | None = None
     profile_source_format: str | None = None
-    
+
     # Cached file path (if exists)
     cached_file: str | None = None
-    
+
     # Strategy (set in step_01)
     strategy: str = "bfs_crawl"  # use_cache | exact_url | pattern_match | bfs_crawl
-    
+
     # Discovery (set in step_01)
     found_url: str | None = None
     found_content_type: str | None = None
     discovered_via_pattern: str | None = None  # Which pattern found it
     pages_crawled: int = 0  # For metrics
     needs_headless_review: bool = False  # JS/SPA detection flag
-    
+
     # Downloaded file (set in step_03)
     downloaded_file: str | None = None
     file_format: str | None = None
-    
+
     # Extraction results (set in step_04)
     extracted_data: list[dict] | None = None
     extraction_notes: str | None = None
     extraction_confidence: float = 0.0
-    
+
     # Validation (set in step_05)
     is_valid: bool = False
     validation_issues: list[str] = Field(default_factory=list)

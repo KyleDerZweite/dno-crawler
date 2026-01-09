@@ -1,14 +1,14 @@
 """
 Custom exception classes for the DNO Crawler API
 """
-from typing import Any, Dict, Optional
+from typing import Any
 
 from fastapi import HTTPException, status
 
 
 class DNOCrawlerException(Exception):
     """Base exception class for DNO Crawler application"""
-    def __init__(self, message: str, details: Optional[Dict[str, Any]] = None):
+    def __init__(self, message: str, details: dict[str, Any] | None = None):
         self.message = message
         self.details = details or {}
         super().__init__(self.message)
@@ -54,7 +54,7 @@ def create_http_exception(
     status_code: int,
     message: str,
     error_type: str = "api_error",
-    details: Optional[Dict[str, Any]] = None
+    details: dict[str, Any] | None = None
 ) -> HTTPException:
     """Create a standardized HTTP exception"""
     content = {
@@ -85,7 +85,7 @@ def authorization_exception(message: str = "Insufficient permissions") -> HTTPEx
     )
 
 
-def validation_exception(message: str, field: Optional[str] = None) -> HTTPException:
+def validation_exception(message: str, field: str | None = None) -> HTTPException:
     """Create validation error response"""
     details = {"field": field} if field else {}
     return create_http_exception(

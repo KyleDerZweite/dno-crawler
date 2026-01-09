@@ -85,20 +85,21 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         )
     except Exception as e:
         # Don't catch application-level exceptions that should be handled by global handlers
-        from app.core.exceptions import DNOCrawlerException
         from fastapi.exceptions import HTTPException as FastAPIHTTPException
-        
+
+        from app.core.exceptions import DNOCrawlerException
+
         if isinstance(e, (DNOCrawlerException, FastAPIHTTPException)):
             if session:
                 await session.rollback()
             raise  # Re-raise to let global exception handlers handle it
-        
+
         logger.error("Unexpected database error", error=str(e))
         if session:
             await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {str(e)}"
+            detail=f"An unexpected error occurred: {e!s}"
         )
     finally:
         if session:

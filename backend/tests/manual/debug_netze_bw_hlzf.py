@@ -20,6 +20,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 # Load .env file BEFORE importing app modules
 from dotenv import load_dotenv
+
 env_file = Path(__file__).parent.parent.parent.parent / ".env"
 if env_file.exists():
     load_dotenv(env_file)
@@ -76,23 +77,22 @@ Return valid JSON with exactly 5 voltage level records:
 async def extract_pdf(file_path: Path, dno_name: str, year: int):
     """Extract HLZF data from a PDF file."""
     from app.services.extraction.ai_extractor import get_ai_extractor
-    from app.core.config import settings
-    
+
     print(f"\n📄 Processing: {file_path.name}")
     print(f"   DNO: {dno_name}, Year: {year}")
-    
+
     if not file_path.exists():
-        print(f"   ❌ File not found!")
+        print("   ❌ File not found!")
         return None
-    
+
     print(f"   Size: {file_path.stat().st_size:,} bytes")
-    
+
     # Check PDF content with PyMuPDF
     try:
         import fitz
         doc = fitz.open(file_path)
         print(f"   Pages: {len(doc)}")
-        
+
         # Extract text from all pages to see what the AI sees
         for page_num, page in enumerate(doc):
             text = page.get_text()
@@ -102,29 +102,29 @@ async def extract_pdf(file_path: Path, dno_name: str, year: int):
         doc.close()
     except Exception as e:
         print(f"   ⚠️  Could not read PDF with PyMuPDF: {e}")
-    
+
     # Build prompt
     prompt = build_hlzf_prompt(dno_name, year)
-    
-    print(f"\n🚀 Starting AI extraction...")
-    
+
+    print("\n🚀 Starting AI extraction...")
+
     try:
         extractor = get_ai_extractor()
         if extractor is None:
             print("   ❌ AI not configured")
             return None
-        
+
         result = await extractor.extract(file_path, prompt)
-        
-        print(f"\n✅ Extraction Result:")
+
+        print("\n✅ Extraction Result:")
         print(f"   Success: {result.get('success')}")
         print(f"   Notes: {result.get('notes', 'N/A')}")
         print(f"   Records: {len(result.get('data', []))}")
-        
+
         data = result.get("data", [])
         voltage_levels_found = [r.get("voltage_level") for r in data]
         print(f"   Voltage levels: {voltage_levels_found}")
-        
+
         # Print detailed records
         for i, record in enumerate(data, 1):
             print(f"\n   [{i}] {record.get('voltage_level', 'Unknown')}")
@@ -132,16 +132,16 @@ async def extract_pdf(file_path: Path, dno_name: str, year: int):
             print(f"       Frühjahr:  {record.get('fruehling', '-')}")
             print(f"       Sommer:    {record.get('sommer', '-')}")
             print(f"       Herbst:    {record.get('herbst', '-')}")
-        
+
         # Check for missing voltage levels
         expected = {"HS", "HS/MS", "MS", "MS/NS", "NS"}
         found = set(voltage_levels_found)
         missing = expected - found
         if missing:
             print(f"\n   ⚠️  MISSING voltage levels: {missing}")
-        
+
         return result
-        
+
     except Exception as e:
         print(f"\n❌ Extraction failed: {e}")
         import traceback
@@ -151,54 +151,54 @@ async def extract_pdf(file_path: Path, dno_name: str, year: int):
 
 async def main():
     from app.core.config import settings
-    
+
     print("\n" + "=" * 70)
     print("NETZE BW HLZF EXTRACTION DEBUG")
     print("=" * 70)
-    
-    print(f"\n📋 Configuration:")
+
+    print("\n📋 Configuration:")
     print(f"   AI_API_URL: {settings.ai_api_url}")
     print(f"   AI_MODEL:   {settings.ai_model}")
     print(f"   AI_ENABLED: {settings.ai_enabled}")
-    
+
     if not settings.ai_enabled:
         print("\n❌ AI is not enabled. Set AI_API_URL and AI_MODEL in .env")
         return
-    
+
     base_path = Path("/home/kyle/CodingProjects/dno-crawler/data/downloads/netze-bw-gmbh")
     dno_name = "Netze BW GmbH"
-    
+
     # Test both years
     files = [
         (base_path / "netze-bw-gmbh-hlzf-2024.pdf", 2024),
         (base_path / "netze-bw-gmbh-hlzf-2025.pdf", 2025),
     ]
-    
+
     all_results = []
     for file_path, year in files:
         result = await extract_pdf(file_path, dno_name, year)
         if result:
             all_results.append((year, result))
-    
+
     # Summary
     print("\n" + "=" * 70)
     print("SUMMARY")
     print("=" * 70)
-    
+
     total_records = sum(len(r.get("data", [])) for _, r in all_results)
     print(f"\nTotal records extracted: {total_records} (expected: 10)")
-    
+
     for year, result in all_results:
         data = result.get("data", [])
         voltage_levels = [r.get("voltage_level") for r in data]
         print(f"\n{year}: {len(data)} records - {voltage_levels}")
-        
+
         expected = {"HS", "HS/MS", "MS", "MS/NS", "NS"}
         found = set(voltage_levels)
         missing = expected - found
         if missing:
             print(f"   ⚠️  Missing: {missing}")
-    
+
     print("\n" + "=" * 70)
     print("DEBUG COMPLETE")
     print("=" * 70 + "\n")

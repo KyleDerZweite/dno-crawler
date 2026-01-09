@@ -26,7 +26,6 @@ TODO (Ideas for future enhancement - not required):
 
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 import structlog
@@ -47,7 +46,7 @@ class FullAddress:
     house_number: str
     postal_code: str
     city: str
-    
+
     @property
     def formatted(self) -> str:
         """Format as German address string."""
@@ -86,16 +85,16 @@ IMPRESSUM_PATHS = [
 
 class ImpressumExtractor:
     """Service for extracting full addresses from Impressum pages."""
-    
+
     def __init__(self, timeout: float = 10.0):
         self.timeout = timeout
         self.log = logger.bind(service="ImpressumExtractor")
-    
+
     async def extract_full_address(
         self,
         homepage_url: str,
         vnb_street: str,
-    ) -> Optional[FullAddress]:
+    ) -> FullAddress | None:
         """
         Extract full address from DNO's Impressum page.
         
@@ -107,10 +106,10 @@ class ImpressumExtractor:
             FullAddress with postal code + city, or None on failure
         """
         log = self.log.bind(homepage=homepage_url, vnb_street=vnb_street)
-        
+
         # Normalize homepage URL
         base_url = homepage_url.rstrip("/")
-        
+
         # Try common Impressum paths
         html = None
         for path in IMPRESSUM_PATHS:
@@ -119,14 +118,14 @@ class ImpressumExtractor:
             if html:
                 log.debug("Found Impressum page", url=impressum_url)
                 break
-        
+
         if not html:
             log.debug("No Impressum page found")
             return None
-        
+
         # Extract address
         result = self._extract_from_html(html, vnb_street)
-        
+
         if result:
             log.info(
                 "Extracted full address",
@@ -135,10 +134,10 @@ class ImpressumExtractor:
             )
         else:
             log.debug("Could not extract address from Impressum")
-        
+
         return result
-    
-    async def _fetch_page(self, url: str) -> Optional[str]:
+
+    async def _fetch_page(self, url: str) -> str | None:
         """Fetch page HTML, return None on error."""
         async with httpx.AsyncClient(
             follow_redirects=True,
@@ -154,7 +153,7 @@ class ImpressumExtractor:
                 return response.text
             except httpx.HTTPError:
                 return None
-    
+
     def _normalize_street(self, street: str) -> str:
         """Normalize street name for comparison."""
         s = street.lower().strip()
@@ -164,29 +163,29 @@ class ImpressumExtractor:
         s = re.sub(r"\s+", "", s)
         s = re.sub(r"[\-–]", "", s)
         return s
-    
-    def _extract_from_html(self, html: str, vnb_street: str) -> Optional[FullAddress]:
+
+    def _extract_from_html(self, html: str, vnb_street: str) -> FullAddress | None:
         """Extract address from HTML content."""
         soup = BeautifulSoup(html, "html.parser")
-        
+
         # Remove script and style elements
         for element in soup(["script", "style", "nav", "header"]):
             element.decompose()
-        
+
         # Get text content
         text = soup.get_text(separator="\n")
         lines = [line.strip() for line in text.split("\n") if line.strip()]
-        
+
         # Normalize VNB street for matching
         vnb_normalized = self._normalize_street(vnb_street)
-        
+
         # Find street line
         street_line_idx = None
         for idx, line in enumerate(lines):
             if self._normalize_street(line).startswith(vnb_normalized[:10]):
                 street_line_idx = idx
                 break
-        
+
         if street_line_idx is None:
             # Try partial match
             street_match = STREET_PATTERN.match(vnb_street)
@@ -196,26 +195,26 @@ class ImpressumExtractor:
                     if street_name in line.lower():
                         street_line_idx = idx
                         break
-        
+
         if street_line_idx is None:
             return None
-        
+
         # Look for postal code + city nearby
         search_range = lines[max(0, street_line_idx-2):street_line_idx+4]
-        
+
         postal_code = None
         city = None
-        
+
         for line in search_range:
             match = POSTAL_CITY_PATTERN.search(line)
             if match:
                 postal_code = match.group(1)
                 city = match.group(2).strip()
                 break
-        
+
         if not postal_code or not city:
             return None
-        
+
         # Extract street and house number from VNB address
         street_match = STREET_PATTERN.match(vnb_street)
         if street_match:
@@ -225,7 +224,7 @@ class ImpressumExtractor:
             parts = vnb_street.rsplit(" ", 1)
             street = parts[0] if len(parts) > 1 else vnb_street
             house_number = parts[1] if len(parts) > 1 else ""
-        
+
         return FullAddress(
             street=street,
             house_number=house_number,

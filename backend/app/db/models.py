@@ -32,7 +32,7 @@ from sqlalchemy import (
     String,
     Text,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSON, UUID
+from sqlalchemy.dialects.postgresql import JSON, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from sqlalchemy.sql import func
 
@@ -40,7 +40,7 @@ from app.core.models import JobStatus, VerificationStatus
 from app.db.database import Base
 
 if TYPE_CHECKING:
-    from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
+    from app.db.source_models import DNOBdewData, DNOMastrData, DNOVnbData
 
 
 class TimestampMixin:
@@ -80,7 +80,7 @@ class DNOModel(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
-    
+
     # -------------------------------------------------------------------------
     # Resolved/Display Fields (populated from source merge logic)
     # -------------------------------------------------------------------------
@@ -91,14 +91,14 @@ class DNOModel(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(255))  # Resolved email
     region: Mapped[str | None] = mapped_column(String(255), index=True)  # Bundesland
     description: Mapped[str | None] = mapped_column(Text)
-    
+
     # -------------------------------------------------------------------------
     # Quick-Access Keys (duplicated from source for fast lookups)
     # -------------------------------------------------------------------------
     mastr_nr: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
     vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
     primary_bdew_code: Mapped[str | None] = mapped_column(String(20), index=True)  # Netzbetreiber code
-    
+
     # -------------------------------------------------------------------------
     # Operational Status
     # -------------------------------------------------------------------------
@@ -106,14 +106,14 @@ class DNOModel(Base, TimestampMixin):
     crawl_locked_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source: Mapped[str] = mapped_column(String(20), default="seed")  # seed | user_discovery
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    
+
     # -------------------------------------------------------------------------
     # Enrichment Status (VNB lookup, robots.txt analysis)
     # -------------------------------------------------------------------------
     enrichment_status: Mapped[str | None] = mapped_column(String(20), default="pending")  # pending | processing | completed | failed
     last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     contact_address: Mapped[str | None] = mapped_column(Text)  # Resolved contact address
-    
+
     # -------------------------------------------------------------------------
     # Crawlability Info (from skeleton creation/robots.txt analysis)
     # -------------------------------------------------------------------------
@@ -133,7 +133,7 @@ class DNOModel(Base, TimestampMixin):
         cascade="all, delete-orphan",
     )
     vnb_data: Mapped[Optional["DNOVnbData"]] = relationship(
-        "DNOVnbData", 
+        "DNOVnbData",
         back_populates="dno",
         uselist=False,
         cascade="all, delete-orphan",
@@ -155,14 +155,14 @@ class DNOModel(Base, TimestampMixin):
     # -------------------------------------------------------------------------
     # Convenience Properties for Source Data Access
     # -------------------------------------------------------------------------
-    
+
     @property
     def display_name(self) -> str:
         """Get the best available name (prefers VNB official name)."""
         if self.vnb_data and self.vnb_data.official_name:
             return self.vnb_data.official_name
         return self.official_name or self.name
-    
+
     @property
     def display_website(self) -> str | None:
         """Get website (prefers VNB, falls back to BDEW)."""
@@ -173,49 +173,49 @@ class DNOModel(Base, TimestampMixin):
                 if bdew.website:
                     return bdew.website
         return self.website
-    
-    @property 
+
+    @property
     def display_phone(self) -> str | None:
         """Get phone (prefers VNB)."""
         if self.vnb_data and self.vnb_data.phone:
             return self.vnb_data.phone
         return self.phone
-    
+
     @property
     def display_email(self) -> str | None:
         """Get email (prefers VNB)."""
         if self.vnb_data and self.vnb_data.email:
             return self.vnb_data.email
         return self.email
-    
+
     @property
     def mastr_contact_address(self) -> str | None:
         """Get formatted contact address from MaStR data (fallback)."""
         if self.mastr_data:
             return self.mastr_data.contact_address
         return None
-    
+
     @property
     def address_components(self) -> dict | None:
         """Get structured address from MaStR data."""
         if self.mastr_data:
             return self.mastr_data.address_components
         return None
-    
+
     @property
     def marktrollen(self) -> list | None:
         """Get market roles from MaStR data."""
         if self.mastr_data:
             return self.mastr_data.marktrollen
         return None
-    
+
     @property
     def acer_code(self) -> str | None:
         """Get ACER code from MaStR data."""
         if self.mastr_data:
             return self.mastr_data.acer_code
         return None
-    
+
     @property
     def grid_operator_bdew_code(self) -> str | None:
         """Get the primary BDEW code for grid operator function."""
@@ -226,22 +226,22 @@ class DNOModel(Base, TimestampMixin):
             # Fallback to first code if no grid operator code
             return self.bdew_data[0].bdew_code if self.bdew_data else None
         return self.primary_bdew_code
-    
+
     @property
     def has_mastr(self) -> bool:
         """Check if MaStR data is available."""
         return self.mastr_data is not None
-    
+
     @property
     def has_vnb(self) -> bool:
         """Check if VNB Digital data is available."""
         return self.vnb_data is not None
-    
+
     @property
     def has_bdew(self) -> bool:
         """Check if BDEW data is available."""
         return bool(self.bdew_data)
-    
+
     @property
     def enrichment_sources(self) -> list[str]:
         """Get list of available enrichment sources."""
@@ -278,22 +278,22 @@ class LocationModel(Base, TimestampMixin):
     dno_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("dnos.id", ondelete="CASCADE"), index=True
     )
-    
+
     # Hash for uniqueness
     address_hash: Mapped[str] = mapped_column(String(64), unique=True, nullable=False)
-    
+
     # Address components
     street_clean: Mapped[str] = mapped_column(String(255), nullable=False)
     number_clean: Mapped[str | None] = mapped_column(String(20))
     zip_code: Mapped[str] = mapped_column(String(10), nullable=False)
     city: Mapped[str] = mapped_column(String(100), nullable=False)
-    
+
     # Coordinates
     latitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
     longitude: Mapped["Decimal"] = mapped_column(Numeric(9, 6), nullable=False)
-    
+
     source: Mapped[str] = mapped_column(String(50), default="vnb_digital")
-    
+
     dno: Mapped["DNOModel"] = relationship(back_populates="locations")
 
 
@@ -315,11 +315,11 @@ class NetzentgelteModel(Base, TimestampMixin):
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
-    
+
     # Prices (all in standard units: ct/kWh for arbeit, €/kW for leistung)
     arbeit: Mapped[float | None] = mapped_column(Float)  # Arbeitspreis ct/kWh
     leistung: Mapped[float | None] = mapped_column(Float)  # Leistungspreis €/kW
-    
+
     # Optional: prices for < 2500h usage
     arbeit_unter_2500h: Mapped[float | None] = mapped_column(Float)
     leistung_unter_2500h: Mapped[float | None] = mapped_column(Float)
@@ -328,7 +328,7 @@ class NetzentgelteModel(Base, TimestampMixin):
     extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
     extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
     extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
-    
+
     # Manual edit tracking
     last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
     last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -340,7 +340,7 @@ class NetzentgelteModel(Base, TimestampMixin):
     verified_by: Mapped[str | None] = mapped_column(String(255))  # Zitadel user sub
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     verification_notes: Mapped[str | None] = mapped_column(Text)
-    
+
     # Flagging (when users report data as wrong)
     flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
     flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -359,14 +359,14 @@ class HLZFModel(Base, TimestampMixin):
     __table_args__ = (
         Index("idx_hlzf_dno_year", "dno_id", "year"),
     )
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dno_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
-    
+
     # Time windows per season (e.g., "08:00-12:00, 17:00-20:00" or "entfällt")
     winter: Mapped[str | None] = mapped_column(Text)
     fruehling: Mapped[str | None] = mapped_column(Text)
@@ -377,7 +377,7 @@ class HLZFModel(Base, TimestampMixin):
     extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
     extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
     extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
-    
+
     # Manual edit tracking
     last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
     last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -388,7 +388,7 @@ class HLZFModel(Base, TimestampMixin):
     )
     verified_by: Mapped[str | None] = mapped_column(String(255))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    
+
     # Flagging (when users report data as wrong)
     flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
     flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -411,13 +411,13 @@ class DataSourceModel(Base, TimestampMixin):
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf
-    
+
     # Source info
     source_url: Mapped[str | None] = mapped_column(Text)
     file_path: Mapped[str | None] = mapped_column(Text)  # Local cache path
     file_hash: Mapped[str | None] = mapped_column(String(64))
     source_format: Mapped[str | None] = mapped_column(String(20))  # pdf | xlsx | html
-    
+
     # Extraction metadata
     extracted_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     extraction_method: Mapped[str | None] = mapped_column(String(50))  # gemini | ollama | regex
@@ -442,19 +442,19 @@ class CrawlPathPatternModel(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    
+
     # Pattern with {year} placeholder (e.g., "/downloads/{year}/strom/")
     path_pattern: Mapped[str] = mapped_column(String(500), unique=True, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf | both
-    
+
     # Stats
     success_count: Mapped[int] = mapped_column(Integer, default=0)
     fail_count: Mapped[int] = mapped_column(Integer, default=0)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    
+
     # JSON for DB portability (not ARRAY - SQLite compatible)
     successful_dno_slugs: Mapped[dict | None] = mapped_column(JSON)
-    
+
     @property
     def success_rate(self) -> float:
         """Calculate success rate for pattern prioritization."""
@@ -478,32 +478,32 @@ class DNOSourceProfile(Base, TimestampMixin):
         Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf
-    
+
     # Discovery info
     source_domain: Mapped[str | None] = mapped_column(String(255))  # e.g., "westnetz.de"
     source_format: Mapped[str | None] = mapped_column(String(20))  # pdf | xlsx | html | docx
-    
+
     # URL patterns for quick recrawl
     last_url: Mapped[str | None] = mapped_column(Text)  # Last successful URL
     url_pattern: Mapped[str | None] = mapped_column(Text)  # URL with {year} placeholder
-    
+
     # How this source was discovered (pattern_match | bfs_crawl | exact_url)
     discovery_method: Mapped[str | None] = mapped_column(String(50))
     # Which path pattern found this source
     discovered_via_pattern: Mapped[str | None] = mapped_column(Text)
-    
+
     # Extraction hints (for Gemini prompt context)
     extraction_hints: Mapped[dict | None] = mapped_column(JSON)
     # Examples:
     # {"page": 3, "table_name": "Preisblatt 1"}
     # {"sheet": "Niederspannung", "header_row": 4}
     # {"css_selector": "table.tariff-table"}
-    
+
     # Tracking
     last_success_year: Mapped[int | None] = mapped_column(Integer)
     last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
-    
+
     dno: Mapped["DNOModel"] = relationship(back_populates="source_profiles")
 
 
@@ -522,36 +522,36 @@ class CrawlJobModel(Base, TimestampMixin):
     """
 
     __tablename__ = "crawl_jobs"
-    
+
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dno_id: Mapped[int] = mapped_column(
         Integer, ForeignKey("dnos.id", ondelete="CASCADE")
     )
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    
+
     # Job type: 'crawl' (steps 0-3), 'extract' (steps 4-6), or 'full' (legacy all steps)
     job_type: Mapped[str] = mapped_column(String(20), default="full")
-    
+
     # Parent/child linking for split jobs
     parent_job_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True
     )
     child_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Updated when extract job is created
-    
+
     # Status
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
     progress: Mapped[int] = mapped_column(Integer, default=0)
     current_step: Mapped[str | None] = mapped_column(String(255))
     error_message: Mapped[str | None] = mapped_column(Text)
-    
+
     # Job context (shared state between steps)
     context: Mapped[dict | None] = mapped_column(JSON)
-    
+
     # Trigger info
     triggered_by: Mapped[str | None] = mapped_column(String(255))
     priority: Mapped[int] = mapped_column(Integer, default=5)
-    
+
     # Timestamps
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
@@ -559,7 +559,7 @@ class CrawlJobModel(Base, TimestampMixin):
     steps: Mapped[list["CrawlJobStepModel"]] = relationship(
         back_populates="job", cascade="all, delete-orphan"
     )
-    
+
     # Relationship to parent job (for extract jobs)
     parent_job: Mapped["CrawlJobModel | None"] = relationship(
         "CrawlJobModel",
@@ -580,11 +580,11 @@ class CrawlJobStepModel(Base, TimestampMixin):
     )
     step_name: Mapped[str] = mapped_column(String(255), nullable=False)
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
-    
+
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     duration_seconds: Mapped[int | None] = mapped_column(Integer)
-    
+
     # Step details (description while running, result when done)
     details: Mapped[dict | None] = mapped_column(JSON)
 
@@ -604,18 +604,18 @@ class QueryLogModel(Base):
     id: Mapped[UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid4)
     user_id: Mapped[str | None] = mapped_column(String(255))  # Zitadel user sub
     query_text: Mapped[str] = mapped_column(Text, nullable=False)
-    
+
     # Interpretation
     interpreted_dno: Mapped[str | None] = mapped_column(String(255))
     interpreted_year: Mapped[int | None] = mapped_column(Integer)
     interpreted_data_type: Mapped[str | None] = mapped_column(String(20))
-    
+
     # Results
     status: Mapped[str] = mapped_column(String(50), nullable=False)
     confidence: Mapped[float | None] = mapped_column(Float)
     response_time_ms: Mapped[int | None] = mapped_column(Integer)
     result_from_cache: Mapped[bool] = mapped_column(Boolean, default=False)
-    
+
     # Request metadata
     ip_address: Mapped[str | None] = mapped_column(String(45))
     user_agent: Mapped[str | None] = mapped_column(Text)

@@ -8,7 +8,7 @@ This runs on application/worker startup.
 """
 
 import json
-from datetime import datetime, UTC
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.db.models import DNOModel
-from app.db.source_models import DNOMastrData, DNOVnbData, DNOBdewData
+from app.db.source_models import DNOBdewData, DNOMastrData, DNOVnbData
 
 logger = structlog.get_logger()
 
@@ -48,6 +48,7 @@ def transform_csv_to_seed(csv_path: Path, out_path: Path) -> Path:
     and writes them to `out_path` as a JSON array.
     """
     import csv
+
     from app.services.vnb.skeleton import generate_slug
 
     records = []
@@ -144,7 +145,7 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int, str | None]:
 
     logger.info("Loading seed data", path=str(seed_file), enriched=seed_source == 'enriched')
 
-    with open(seed_file, 'r', encoding='utf-8') as f:
+    with open(seed_file, encoding='utf-8') as f:
         seed_data = json.load(f)
 
     logger.info("Loaded seed records", count=len(seed_data))
@@ -194,7 +195,7 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     Returns: 'inserted', 'updated', or 'skipped'
     """
     mastr_nr = record['mastr_nr']
-    
+
     # Check if DNO already exists by mastr_nr (eagerly load mastr_data to avoid lazy load in async)
     result = await db.execute(
         select(DNOModel)
@@ -202,14 +203,14 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         .where(DNOModel.mastr_nr == mastr_nr)
     )
     existing_dno = result.scalar_one_or_none()
-    
+
     if existing_dno:
         # Check if we should update (only if source data is newer or missing)
         if existing_dno.mastr_data:
             # Skip if already has MaStR data (don't overwrite)
             logger.debug("Skipping existing DNO with MaStR data", mastr_nr=mastr_nr)
             return 'skipped'
-        
+
         dno = existing_dno
         action = 'updated'
     else:
@@ -225,16 +226,16 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         db.add(dno)
         await db.flush()  # Get the ID
         action = 'inserted'
-    
+
     # Update core fields (resolved values)
     dno.name = record['name']
     dno.slug = record['slug']
     dno.region = record.get('region')
     dno.is_active = record.get('is_active', True)
-    
+
     # Create/update MaStR source data
     await upsert_mastr_data(db, dno, record)
-    
+
     # Create VNB data if present in enriched record
     if record.get('vnb_id'):
         await upsert_vnb_data(db, dno, record)
@@ -256,24 +257,24 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         await upsert_bdew_data(db, dno, record)
         # Update primary BDEW code on core
         dno.primary_bdew_code = record['bdew_code']
-    
+
     logger.debug(f"{action.capitalize()} DNO from seed", mastr_nr=mastr_nr, name=record['name'])
     return action
 
 
 async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:
     """Create or update MaStR source data for a DNO."""
-    
+
     # Check if MaStR data already exists via explicit query (avoids lazy loading)
     result = await db.execute(
         select(DNOMastrData).where(DNOMastrData.dno_id == dno.id)
     )
     mastr = result.scalar_one_or_none()
-    
+
     if mastr is None:
         mastr = DNOMastrData(dno_id=dno.id)
         db.add(mastr)
-    
+
     # Update fields
     mastr.mastr_nr = record['mastr_nr']
     mastr.registered_name = record['name']
@@ -293,21 +294,21 @@ async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, A
 
 async def upsert_vnb_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:
     """Create or update VNB Digital source data for a DNO."""
-    
+
     vnb_id = record.get('vnb_id')
     if not vnb_id:
         return
-    
+
     # Check if VNB data already exists via explicit query (avoids lazy loading)
     result = await db.execute(
         select(DNOVnbData).where(DNOVnbData.dno_id == dno.id)
     )
     vnb = result.scalar_one_or_none()
-    
+
     if vnb is None:
         vnb = DNOVnbData(dno_id=dno.id, vnb_id=str(vnb_id), name=record['name'])
         db.add(vnb)
-    
+
     # Update fields
     vnb.vnb_id = str(vnb_id)
     vnb.name = record['name']
@@ -319,17 +320,17 @@ async def upsert_vnb_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any
 
 async def upsert_bdew_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:
     """Create or update BDEW source data for a DNO."""
-    
+
     bdew_code = record.get('bdew_code')
     if not bdew_code:
         return
-    
+
     # Check if this BDEW code already exists
     result = await db.execute(
         select(DNOBdewData).where(DNOBdewData.bdew_code == bdew_code)
     )
     existing_bdew = result.scalar_one_or_none()
-    
+
     if existing_bdew:
         bdew = existing_bdew
     else:
@@ -339,7 +340,7 @@ async def upsert_bdew_data(db: AsyncSession, dno: DNOModel, record: dict[str, An
             company_name=record['name'],
         )
         db.add(bdew)
-    
+
     # Update fields
     bdew.bdew_internal_id = record.get('bdew_internal_id', 0)
     bdew.bdew_company_uid = record.get('bdew_company_uid', 0)
@@ -365,48 +366,48 @@ async def get_dnos_needing_enrichment(
         List of DNOModel instances needing enrichment.
     """
     query = select(DNOModel)
-    
+
     if source == 'vnb':
         # DNOs without VNB data
         query = query.outerjoin(DNOVnbData).where(DNOVnbData.id.is_(None))
     elif source == 'bdew':
         # DNOs without BDEW data
         query = query.outerjoin(DNOBdewData).where(DNOBdewData.id.is_(None))
-    
+
     query = query.order_by(DNOModel.id)
-    
+
     if limit:
         query = query.limit(limit)
-    
+
     result = await db.execute(query)
     return list(result.scalars().all())
 
 
 async def get_dno_enrichment_stats(db: AsyncSession) -> dict[str, int]:
     """Get statistics on DNO enrichment status."""
-    
+
     # Total DNOs
     total_result = await db.execute(select(DNOModel.id))
     total = len(list(total_result.scalars().all()))
-    
+
     # With MaStR data
     mastr_result = await db.execute(
         select(DNOModel.id).join(DNOMastrData)
     )
     with_mastr = len(list(mastr_result.scalars().all()))
-    
+
     # With VNB data
     vnb_result = await db.execute(
         select(DNOModel.id).join(DNOVnbData)
     )
     with_vnb = len(list(vnb_result.scalars().all()))
-    
+
     # With BDEW data
     bdew_result = await db.execute(
         select(DNOModel.id).join(DNOBdewData)
     )
     with_bdew = len(list(bdew_result.scalars().all()))
-    
+
     return {
         'total': total,
         'with_mastr': with_mastr,

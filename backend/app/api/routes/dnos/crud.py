@@ -6,17 +6,17 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, select, text, or_
+from sqlalchemy import delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, User as AuthUser
+from app.core.auth import User as AuthUser
+from app.core.auth import get_current_user
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, get_db
 
 from .schemas import CreateDNORequest, UpdateDNORequest
 from .utils import slugify
-
 
 router = APIRouter()
 
@@ -33,10 +33,10 @@ async def search_vnb(
     Returns matching VNBs with indicator if they already exist in our database.
     """
     from app.services.vnb import VNBDigitalClient
-    
+
     vnb_client = VNBDigitalClient(request_delay=0.5)
     vnb_results = await vnb_client.search_vnb(q)
-    
+
     # Check which VNBs already exist in our database
     suggestions = []
     for vnb in vnb_results:
@@ -44,7 +44,7 @@ async def search_vnb(
         existing_query = select(DNOModel).where(DNOModel.vnb_id == vnb.vnb_id)
         result = await db.execute(existing_query)
         existing_dno = result.scalar_one_or_none()
-        
+
         suggestions.append({
             "vnb_id": vnb.vnb_id,
             "name": vnb.name,
@@ -54,7 +54,7 @@ async def search_vnb(
             "existing_dno_id": str(existing_dno.id) if existing_dno else None,
             "existing_dno_slug": existing_dno.slug if existing_dno else None,
         })
-    
+
     return APIResponse(
         success=True,
         data={
@@ -75,16 +75,16 @@ async def get_vnb_details(
     Used when user selects a suggestion to auto-fill the form.
     """
     from app.services.vnb import VNBDigitalClient
-    
+
     vnb_client = VNBDigitalClient(request_delay=0.5)
     details = await vnb_client.get_vnb_details(vnb_id)
-    
+
     if not details:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"VNB with ID '{vnb_id}' not found",
         )
-    
+
     # Try to enrich address with postal code + city from Impressum
     enriched_address = details.address
     if details.homepage_url and details.address:
@@ -95,7 +95,7 @@ async def get_vnb_details(
         )
         if full_addr:
             enriched_address = full_addr.formatted
-    
+
     return APIResponse(
         success=True,
         data={
@@ -122,10 +122,10 @@ async def create_dno(
     If vnb_id is provided, validates against VNB Digital and fetches missing details.
     """
     from app.services.vnb import VNBDigitalClient
-    
+
     # Generate slug if not provided
     slug = request.slug if request.slug else slugify(request.name)
-    
+
     # Check for duplicate slug
     existing_query = select(DNOModel).where(DNOModel.slug == slug)
     result = await db.execute(existing_query)
@@ -134,7 +134,7 @@ async def create_dno(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"A DNO with slug '{slug}' already exists",
         )
-    
+
     # Check for duplicate vnb_id if provided
     if request.vnb_id:
         existing_vnb_query = select(DNOModel).where(DNOModel.vnb_id == request.vnb_id)
@@ -145,14 +145,14 @@ async def create_dno(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=f"A DNO with VNB ID '{request.vnb_id}' already exists: {existing_dno.name}",
             )
-    
+
     # Fetch VNB details if vnb_id provided and some fields are missing
     website = request.website
     phone = request.phone
     email = request.email
     contact_address = request.contact_address
     official_name = request.official_name
-    
+
     if request.vnb_id and not all([website, phone, email]):
         vnb_client = VNBDigitalClient(request_delay=0.5)
         vnb_details = await vnb_client.get_vnb_details(request.vnb_id)
@@ -160,7 +160,7 @@ async def create_dno(
             website = website or vnb_details.homepage_url
             phone = phone or vnb_details.phone
             email = email or vnb_details.email
-            
+
             # Try to enrich address with postal code + city from Impressum
             if not contact_address and vnb_details.address and vnb_details.homepage_url:
                 from app.services.impressum_extractor import impressum_extractor
@@ -174,18 +174,19 @@ async def create_dno(
                     contact_address = vnb_details.address
             elif not contact_address:
                 contact_address = vnb_details.address
-    
+
     # Check robots.txt for Cloudflare/JS protection if we have a website
     crawlable = True
     crawl_blocked_reason = None
     robots_txt = None
     sitemap_urls = None
     disallow_paths = None
-    
+
     if website:
-        from app.services.robots_parser import fetch_robots_txt
         import httpx
-        
+
+        from app.services.robots_parser import fetch_robots_txt
+
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
@@ -198,7 +199,7 @@ async def create_dno(
                 robots_txt = robots_result.raw_content
                 sitemap_urls = robots_result.sitemap_urls
                 disallow_paths = robots_result.disallow_paths
-    
+
     # Create DNO
     dno = DNOModel(
         name=request.name,
@@ -221,7 +222,7 @@ async def create_dno(
     db.add(dno)
     await db.commit()
     await db.refresh(dno)
-    
+
     return APIResponse(
         success=True,
         message=f"DNO '{dno.name}' created successfully",
@@ -254,15 +255,15 @@ async def get_stats(
     
     Returns counts for DNOs, data points, and active jobs.
     """
-    from app.db.models import NetzentgelteModel, HLZFModel
-    
+    from app.db.models import HLZFModel, NetzentgelteModel
+
     # Count DNOs
     dno_count = await db.scalar(select(func.count(DNOModel.id)))
-    
+
     # Count data points
     netzentgelte_count = await db.scalar(select(func.count(NetzentgelteModel.id)))
     hlzf_count = await db.scalar(select(func.count(HLZFModel.id)))
-    
+
     # Count active jobs
     pending_jobs = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
@@ -270,7 +271,7 @@ async def get_stats(
     running_jobs = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "running")
     )
-    
+
     return APIResponse(
         success=True,
         data={
@@ -305,10 +306,10 @@ async def list_dnos_detailed(
     allowed_per_page = [25, 50, 100, 250]
     if per_page not in allowed_per_page:
         per_page = 50  # Default to 50 if invalid
-    
+
     # Base query
     query = select(DNOModel)
-    
+
     # Apply search filter if provided
     if q:
         search_filter = or_(
@@ -318,7 +319,7 @@ async def list_dnos_detailed(
             DNOModel.vnb_id.ilike(f"%{q}%")
         )
         query = query.where(search_filter)
-        
+
         # Count with filter
         count_query = select(func.count()).select_from(DNOModel).where(search_filter)
     else:
@@ -328,31 +329,31 @@ async def list_dnos_detailed(
     total_count_result = await db.execute(count_query)
     total = total_count_result.scalar() or 0
     total_pages = (total + per_page - 1) // per_page  # Ceiling division
-    
+
     # Clamp page to valid range
-    if page > total_pages and total_pages > 0:
+    if page > total_pages > 0:
         page = total_pages
     elif total_pages == 0:
         page = 1
-    
+
     # Calculate offset
     offset = (page - 1) * per_page
-    
+
     # Paginated query
     query = query.order_by(DNOModel.name).offset(offset).limit(per_page)
     result = await db.execute(query)
     dnos = result.scalars().all()
-    
+
     if not dnos:
         return APIResponse(
             success=True,
             data=[],
             meta={"total": total, "page": page, "per_page": per_page, "total_pages": total_pages},
         )
-    
+
     # Get DNO IDs for batch queries
     dno_ids = [dno.id for dno in dnos]
-    
+
     # Batch query for netzentgelte counts
     netz_counts_result = await db.execute(
         text("""
@@ -364,7 +365,7 @@ async def list_dnos_detailed(
         {"dno_ids": dno_ids}
     )
     netz_counts = {row[0]: row[1] for row in netz_counts_result.fetchall()}
-    
+
     # Batch query for HLZF counts
     hlzf_counts_result = await db.execute(
         text("""
@@ -376,7 +377,7 @@ async def list_dnos_detailed(
         {"dno_ids": dno_ids}
     )
     hlzf_counts = {row[0]: row[1] for row in hlzf_counts_result.fetchall()}
-    
+
     # Batch query for job statuses
     job_status_result = await db.execute(
         text("""
@@ -393,13 +394,13 @@ async def list_dnos_detailed(
         if dno_id not in job_statuses:
             job_statuses[dno_id] = {"running": 0, "pending": 0}
         job_statuses[dno_id][status] = count
-    
+
     data = []
     for dno in dnos:
         netzentgelte_count = netz_counts.get(dno.id, 0)
         hlzf_count = hlzf_counts.get(dno.id, 0)
         data_points_count = netzentgelte_count + hlzf_count
-        
+
         # Compute live status from batch-loaded job data
         job_status = job_statuses.get(dno.id, {"running": 0, "pending": 0})
         if job_status["running"] > 0:
@@ -410,7 +411,7 @@ async def list_dnos_detailed(
             live_status = "crawled"
         else:
             live_status = "uncrawled"
-        
+
         dno_data = {
             "id": str(dno.id),
             "slug": dno.slug,
@@ -427,15 +428,15 @@ async def list_dnos_detailed(
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         }
-        
+
         if include_stats:
             dno_data["stats"] = {
                 "years_available": [],
                 "last_crawl": None,
             }
-        
+
         data.append(dno_data)
-    
+
     return APIResponse(
         success=True,
         data=data,
@@ -451,7 +452,7 @@ async def get_dno_details(
 ) -> APIResponse:
     """Get detailed information about a specific DNO by ID or slug."""
     from pathlib import Path
-    
+
     # Try to find by numeric ID first, then by slug
     # Eagerly load source data
     dno = None
@@ -467,7 +468,7 @@ async def get_dno_details(
         )
         result = await db.execute(query)
         dno = result.scalar_one_or_none()
-    
+
     if not dno:
         query = (
             select(DNOModel)
@@ -480,18 +481,18 @@ async def get_dno_details(
         )
         result = await db.execute(query)
         dno = result.scalar_one_or_none()
-    
+
     if not dno:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="DNO not found",
         )
-    
+
     # Check if local files exist for this DNO
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     dno_dir = Path(storage_path) / "downloads" / dno.slug
     has_local_files = dno_dir.exists() and any(dno_dir.iterdir())
-    
+
     # Build MaStR source data
     mastr_data = None
     if dno.mastr_data:
@@ -512,7 +513,7 @@ async def get_dno_details(
             "mastr_last_updated": m.mastr_last_updated.isoformat() if m.mastr_last_updated else None,
             "last_synced_at": m.last_synced_at.isoformat() if m.last_synced_at else None,
         }
-    
+
     # Build VNB source data
     vnb_data = None
     if dno.vnb_data:
@@ -531,7 +532,7 @@ async def get_dno_details(
             "is_electricity": v.is_electricity,
             "last_synced_at": v.last_synced_at.isoformat() if v.last_synced_at else None,
         }
-    
+
     # Build BDEW source data (one-to-many)
     bdew_data = []
     if dno.bdew_data:
@@ -552,7 +553,7 @@ async def get_dno_details(
                 "is_grid_operator": b.is_grid_operator,
                 "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
             })
-        
+
     return APIResponse(
         success=True,
         data={
@@ -611,11 +612,11 @@ async def update_dno(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     dno = await db.get(DNOModel, dno_id)
     if not dno:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DNO not found")
-    
+
     # Update only provided fields
     if request.name is not None:
         dno.name = request.name
@@ -633,10 +634,10 @@ async def update_dno(
         dno.email = request.email
     if request.contact_address is not None:
         dno.contact_address = request.contact_address
-    
+
     await db.commit()
     await db.refresh(dno)
-    
+
     return APIResponse(
         success=True,
         message=f"DNO '{dno.name}' updated successfully",
@@ -656,16 +657,16 @@ async def delete_dno(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     dno = await db.get(DNOModel, dno_id)
     if not dno:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="DNO not found")
-    
+
     dno_name = dno.name
-    
+
     # Delete associated data (cascade should handle this, but being explicit)
-    from app.db.models import NetzentgelteModel, HLZFModel, CrawlJobModel, LocationModel
-    
+    from app.db.models import CrawlJobModel, HLZFModel, LocationModel, NetzentgelteModel
+
     # Delete locations
     await db.execute(delete(LocationModel).where(LocationModel.dno_id == dno_id))
     # Delete netzentgelte
@@ -674,11 +675,11 @@ async def delete_dno(
     await db.execute(delete(HLZFModel).where(HLZFModel.dno_id == dno_id))
     # Delete crawl jobs
     await db.execute(delete(CrawlJobModel).where(CrawlJobModel.dno_id == dno_id))
-    
+
     # Delete the DNO itself
     await db.delete(dno)
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message=f"DNO '{dno_name}' and all associated data deleted successfully",

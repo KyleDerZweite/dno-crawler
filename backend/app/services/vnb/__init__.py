@@ -16,19 +16,19 @@ Usage:
     dno, created = await skeleton_service.get_or_create_dno(db, name, vnb_id)
 """
 
+from app.services.vnb.client import VNBDigitalClient, vnb_client
 from app.services.vnb.models import (
-    VNBResult,
-    LocationResult,
     DNODetails,
+    LocationResult,
+    VNBResult,
     VNBSearchResult,
 )
-from app.services.vnb.client import VNBDigitalClient, vnb_client
 from app.services.vnb.skeleton import (
-    SkeletonService,
-    skeleton_service,
-    normalize_address,
     NormalizedAddress,
+    SkeletonService,
     generate_slug,
+    normalize_address,
+    skeleton_service,
     snap_coordinate,
 )
 
@@ -36,7 +36,7 @@ __all__ = [
     # Client
     "VNBDigitalClient",
     "vnb_client",
-    
+
     # Skeleton service
     "SkeletonService",
     "skeleton_service",
@@ -44,7 +44,7 @@ __all__ = [
     "NormalizedAddress",
     "generate_slug",
     "snap_coordinate",
-    
+
     # Data models
     "VNBResult",
     "LocationResult",

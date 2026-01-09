@@ -23,11 +23,11 @@ def extract_hlzf_from_html(html: str, year: int) -> list[dict[str, Any]]:
     """
     soup = BeautifulSoup(html, 'html.parser')
     records = []
-    
+
     # Find table headers that indicate the year
     # Format: "Stand XX.XX.XXXX gültig ab 01.01.{year}"
     year_pattern = f"gültig ab 01.01.{year}"
-    
+
     target_table = None
     for h3 in soup.find_all('h3'):
         if year_pattern in h3.get_text():
@@ -42,19 +42,19 @@ def extract_hlzf_from_html(html: str, year: int) -> list[dict[str, Any]]:
                     break
                 next_sibling = next_sibling.find_next_sibling()
             break
-    
+
     if not target_table:
         # Fallback: just find the first table
         target_table = soup.find('table')
-    
+
     if not target_table:
         return records
-    
+
     # Parse table rows
     tbody = target_table.find('tbody')
     if not tbody:
         return records
-    
+
     for row in tbody.find_all('tr'):
         cells = row.find_all('td')
         if len(cells) >= 5:
@@ -63,7 +63,7 @@ def extract_hlzf_from_html(html: str, year: int) -> list[dict[str, Any]]:
             sommer = _clean_time_cell(cells[2])
             herbst = _clean_time_cell(cells[3])
             winter = _clean_time_cell(cells[4])
-            
+
             if voltage_level:
                 records.append({
                     "voltage_level": voltage_level,
@@ -72,7 +72,7 @@ def extract_hlzf_from_html(html: str, year: int) -> list[dict[str, Any]]:
                     "herbst": herbst,
                     "winter": winter,
                 })
-    
+
     return records
 
 
@@ -93,13 +93,13 @@ def _clean_time_cell(cell) -> str | None:
             text_parts.append(elem.strip())
         elif elem.name == 'br':
             text_parts.append('\n')
-    
+
     text = ''.join(text_parts).strip()
-    
+
     # Clean up multiple newlines
     lines = [line.strip() for line in text.split('\n') if line.strip()]
-    
+
     if not lines:
         return None
-    
+
     return '\n'.join(lines) if lines else None

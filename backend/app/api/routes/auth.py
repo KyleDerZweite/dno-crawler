@@ -8,7 +8,8 @@ Most auth is handled by Zitadel externally. This module only provides:
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
-from app.core.auth import get_current_user, User as AuthUser
+from app.core.auth import User as AuthUser
+from app.core.auth import get_current_user
 
 router = APIRouter()
 

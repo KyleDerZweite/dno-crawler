@@ -10,7 +10,6 @@ Features:
 
 import time
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 import jwt
@@ -44,12 +43,12 @@ class User:
     def is_admin(self) -> bool:
         # Case-insensitive check for admin role
         return any(role.upper() == "ADMIN" for role in self.roles)
-    
+
     @property
     def is_maintainer(self) -> bool:
         """Check if user has MAINTAINER role."""
         return any(role.upper() == "MAINTAINER" for role in self.roles)
-    
+
     @property
     def can_manage_flags(self) -> bool:
         """Check if user can remove flags (Maintainer or Admin)."""
@@ -92,10 +91,10 @@ def extract_roles(claims: dict) -> list[str]:
     """Extract role keys from Zitadel token claims."""
     import structlog
     logger = structlog.get_logger()
-    
+
     roles_obj = claims.get("urn:zitadel:iam:org:project:roles", {})
     logger.info("Role extraction", roles_obj=roles_obj, claim_keys=list(claims.keys()))
-    
+
     if isinstance(roles_obj, dict):
         roles = list(roles_obj.keys())
         logger.info("Extracted roles", roles=roles)
@@ -104,7 +103,7 @@ def extract_roles(claims: dict) -> list[str]:
 
 
 async def get_current_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
 ) -> User:
     """
     Dependency to get the current authenticated user.
@@ -115,7 +114,7 @@ async def get_current_user(
             return {"user": user.email}
     """
     from .config import settings
-    
+
     # Handle Mock Admin if auth is disabled or pointing to example.com
     if not settings.is_auth_enabled:
         return User(
@@ -153,7 +152,7 @@ async def get_current_user(
         roles = extract_roles(claims)
         email = claims.get("email", "")
         name = claims.get("name", claims.get("preferred_username", ""))
-        
+
         # If email or roles missing from access token, fetch from userinfo endpoint
         if not email or not roles:
             userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
@@ -186,18 +185,18 @@ async def get_current_user(
     except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {str(e)}",
+            detail=f"Invalid token: {e!s}",
         )
     except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {str(e)}",
+            detail=f"Authentication failed: {e!s}",
         )
 
 
 async def get_optional_user(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-) -> Optional[User]:
+    credentials: HTTPAuthorizationCredentials | None = Depends(bearer_scheme),
+) -> User | None:
     """
     Dependency to get the current user if authenticated, or None if not.
     
@@ -209,7 +208,7 @@ async def get_optional_user(
             return {"personalized": False}
     """
     from .config import settings
-    
+
     if not settings.is_auth_enabled:
         return User(
             id="mock-admin-id",
@@ -220,13 +219,13 @@ async def get_optional_user(
 
     if not credentials:
         return None
-    
+
     token = credentials.credentials
-    
+
     try:
         jwks = await fetch_jwks()
         signing_key = get_signing_key(token, jwks)
-        
+
         claims = jwt.decode(
             token,
             signing_key,
@@ -235,7 +234,7 @@ async def get_optional_user(
             options={"verify_aud": False},
             leeway=30,  # Allow 30 seconds clock skew
         )
-        
+
         return User(
             id=claims.get("sub", ""),
             email=claims.get("email", ""),

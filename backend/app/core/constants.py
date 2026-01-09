@@ -44,7 +44,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "hochspannungsnetz": "HS",
     "inhs": "HS",
     "hs": "HS",
-    
+
     "mittelspannung": "MS",
     "mittelspannungsnetz": "MS",
     "inms": "MS",
@@ -52,7 +52,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard (some municipal utilities use MSP)
     "msp": "MS",
     "mittelspannung (msp)": "MS",
-    
+
     "niederspannung": "NS",
     "niederspannungsnetz": "NS",
     "inns": "NS",
@@ -60,14 +60,14 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard (some municipal utilities use NSP)
     "nsp": "NS",
     "niederspannung (nsp)": "NS",
-    
+
     # Umspannung levels
     "umspannung hoch-/mittelspannung": "HS/MS",
     "umspannung hs/ms": "HS/MS",
     "umspannung zur mittelspannung": "HS/MS",
     "aushs": "HS/MS",
     "hs/ms": "HS/MS",
-    
+
     "umspannung mittel-/niederspannung": "MS/NS",
     "umspannung ms/ns": "MS/NS",
     "umspannung zur niederspannung": "MS/NS",
@@ -76,7 +76,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard municipal naming
     "msp/nsp": "MS/NS",
     "umspannung msp/nsp": "MS/NS",
-    
+
     # Höchstspannung (TSO level - rare but possible)
     "höchstspannung": "HöS",
     "höchstspannungsnetz": "HöS",
@@ -106,25 +106,25 @@ def normalize_voltage_level(level: str) -> str | None:
         Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS, HöS, HöS/HS) or None
     """
     import re
-    
+
     if not level:
         return None
-    
+
     # Clean and lowercase for matching
     cleaned = level.strip().lower()
     cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
     cleaned = re.sub(r'[()]', '', cleaned)  # Remove parentheses
     cleaned = cleaned.strip()
-    
+
     # Direct match
     if cleaned in VOLTAGE_LEVEL_ALIASES:
         return VOLTAGE_LEVEL_ALIASES[cleaned]
-    
+
     # Partial match - check if any key is contained in the level
     for alias, standard in VOLTAGE_LEVEL_ALIASES.items():
         if alias in cleaned:
             return standard
-    
+
     # If no match found, try to extract useful info
     # Check for compound levels first (with /)
     if "/" in cleaned:
@@ -135,7 +135,7 @@ def normalize_voltage_level(level: str) -> str | None:
             right = normalize_voltage_level(parts[1].strip())
             if left and right and len(left) <= 3 and len(right) <= 3:
                 return f"{left}/{right}"
-    
+
     # Return None if no match found
     return None
 
@@ -192,10 +192,10 @@ MAX_YEAR = 2030  # Should be dynamically computed in most cases
 def get_available_years(start_year: int = MIN_YEAR, end_year: int | None = None) -> list[int]:
     """Generate list of available years from end_year down to start_year."""
     from datetime import datetime
-    
+
     if end_year is None:
         end_year = datetime.now().year + 1
-    
+
     return list(range(end_year, start_year - 1, -1))
 
 

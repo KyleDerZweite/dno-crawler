@@ -31,23 +31,23 @@ def parse_german_number(value: str | None) -> float | None:
     """
     if value is None:
         return None
-    
+
     # Clean up the value
     s = str(value).strip()
-    
+
     # Check for explicit "no value" markers
     if s.lower() in ("-", "n/a", "null", "none", "", "entfällt", "–"):
         return None
-    
+
     try:
         # Remove thousands separators and normalize decimal
         # German: 1.234,56 -> 1234.56
         # US: 1,234.56 -> 1234.56
-        
+
         # Count occurrences to detect format
         comma_count = s.count(",")
         dot_count = s.count(".")
-        
+
         if comma_count == 1 and dot_count == 0:
             # Simple German format: 1234,56
             s = s.replace(",", ".")
@@ -58,7 +58,7 @@ def parse_german_number(value: str | None) -> float | None:
             # US with thousands: 1,234.56
             s = s.replace(",", "")
         # else: assume it's already in correct format
-        
+
         return float(s)
     except (ValueError, TypeError):
         return None
@@ -84,24 +84,24 @@ def parse_time_window(value: str | None) -> str | None:
     """
     if value is None:
         return None
-    
+
     s = str(value).strip()
-    
+
     # Check for explicit "no value" markers
     if s.lower() in ("-", "entfällt", "keine", "n/a", ""):
         return "-"
-    
+
     # Try to extract time patterns
     # Match patterns like "7:30", "07:30", "7.30", "07.30"
     time_pattern = r"(\d{1,2})[:\.](\d{2})"
     times = re.findall(time_pattern, s)
-    
+
     if len(times) >= 2:
         # Format as HH:MM-HH:MM
         start = f"{int(times[0][0]):02d}:{times[0][1]}"
         end = f"{int(times[1][0]):02d}:{times[1][1]}"
         return f"{start}-{end}"
-    
+
     # Return original if we can't parse
     return s
 
@@ -119,17 +119,17 @@ def clean_string(value: str | None, max_length: int | None = None) -> str | None
     """
     if value is None:
         return None
-    
+
     # Clean up whitespace
     s = " ".join(str(value).split())
-    
+
     if not s:
         return None
-    
+
     # Truncate if needed
     if max_length and len(s) > max_length:
         s = s[:max_length - 3] + "..."
-    
+
     return s
 
 
@@ -145,10 +145,10 @@ def is_valid_value(value: str | float | int | None) -> bool:
     """
     if value is None:
         return False
-    
+
     if isinstance(value, (int, float)):
         return True
-    
+
     s = str(value).strip().lower()
     return s not in ("-", "n/a", "null", "none", "", "entfällt", "–")
 
@@ -165,19 +165,19 @@ def parse_year(value: str | int | None) -> int | None:
     """
     if value is None:
         return None
-    
+
     if isinstance(value, int):
         return value if 1900 <= value <= 2100 else None
-    
+
     try:
         # Try to extract year from string
         s = str(value).strip()
-        
+
         # Look for 4-digit year
         match = re.search(r"\b(19\d{2}|20\d{2})\b", s)
         if match:
             return int(match.group(1))
-        
+
         # Try direct conversion
         year = int(s)
         return year if 1900 <= year <= 2100 else None

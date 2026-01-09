@@ -2,19 +2,19 @@
 Data endpoints for Netzentgelte and HLZF management.
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, User as AuthUser
+from app.core.auth import User as AuthUser
+from app.core.auth import get_current_user
 from app.core.models import APIResponse, DataType
 from app.db import DNOModel, get_db
 
-from .schemas import UpdateNetzentgelteRequest, UpdateHLZFRequest
-
+from .schemas import UpdateHLZFRequest, UpdateNetzentgelteRequest
 
 router = APIRouter()
 
@@ -32,13 +32,13 @@ async def get_dno_data(
     query = select(DNOModel).where(DNOModel.id == dno_id)
     result = await db.execute(query)
     dno = result.scalar_one_or_none()
-    
+
     if not dno:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="DNO not found",
         )
-    
+
     # Query netzentgelte data
     netzentgelte_query = text("""
         SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, 
@@ -50,7 +50,7 @@ async def get_dno_data(
     """)
     result = await db.execute(netzentgelte_query, {"dno_id": dno_id})
     netzentgelte_rows = result.fetchall()
-    
+
     netzentgelte = []
     for row in netzentgelte_rows:
         netzentgelte.append({
@@ -75,7 +75,7 @@ async def get_dno_data(
             "flagged_at": row[16].isoformat() if row[16] else None,
             "flag_reason": row[17],
         })
-    
+
     # Query HLZF data
     hlzf_query = text("""
         SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, 
@@ -87,17 +87,17 @@ async def get_dno_data(
     """)
     result = await db.execute(hlzf_query, {"dno_id": dno_id})
     hlzf_rows = result.fetchall()
-    
+
     # Import time parsing function from search module
     from app.api.routes.search import _parse_hlzf_times
-    
+
     hlzf = []
     for row in hlzf_rows:
         winter_val = row[3]
         fruehling_val = row[4]
         sommer_val = row[5]
         herbst_val = row[6]
-        
+
         hlzf.append({
             "id": row[0],
             "voltage_level": row[1],
@@ -125,7 +125,7 @@ async def get_dno_data(
             "flagged_at": row[16].isoformat() if row[16] else None,
             "flag_reason": row[17],
         })
-    
+
     return APIResponse(
         success=True,
         data={
@@ -153,22 +153,22 @@ async def update_netzentgelte(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     from app.db import NetzentgelteModel
-    
+
     query = select(NetzentgelteModel).where(
         NetzentgelteModel.id == record_id,
         NetzentgelteModel.dno_id == dno_id,
     )
     result = await db.execute(query)
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Record not found",
         )
-    
+
     # Update only provided fields
     if request.leistung is not None:
         record.leistung = request.leistung
@@ -178,14 +178,14 @@ async def update_netzentgelte(
         record.leistung_unter_2500h = request.leistung_unter_2500h
     if request.arbeit_unter_2500h is not None:
         record.arbeit_unter_2500h = request.arbeit_unter_2500h
-    
+
     # Track manual edit
     record.extraction_source = "manual"
     record.last_edited_by = current_user.sub or current_user.email
-    record.last_edited_at = datetime.now(timezone.utc)
-    
+    record.last_edited_at = datetime.now(UTC)
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="Record updated successfully",
@@ -206,25 +206,25 @@ async def delete_netzentgelte(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     from app.db import NetzentgelteModel
-    
+
     query = select(NetzentgelteModel).where(
         NetzentgelteModel.id == record_id,
         NetzentgelteModel.dno_id == dno_id,
     )
     result = await db.execute(query)
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Record not found",
         )
-    
+
     await db.delete(record)
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="Record deleted successfully",
@@ -245,22 +245,22 @@ async def update_hlzf(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     from app.db import HLZFModel
-    
+
     query = select(HLZFModel).where(
         HLZFModel.id == record_id,
         HLZFModel.dno_id == dno_id,
     )
     result = await db.execute(query)
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Record not found",
         )
-    
+
     # Update only provided fields
     if request.winter is not None:
         record.winter = request.winter if request.winter != "" else None
@@ -270,14 +270,14 @@ async def update_hlzf(
         record.sommer = request.sommer if request.sommer != "" else None
     if request.herbst is not None:
         record.herbst = request.herbst if request.herbst != "" else None
-    
+
     # Track manual edit
     record.extraction_source = "manual"
     record.last_edited_by = current_user.sub or current_user.email
-    record.last_edited_at = datetime.now(timezone.utc)
-    
+    record.last_edited_at = datetime.now(UTC)
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="Record updated successfully",
@@ -298,25 +298,25 @@ async def delete_hlzf(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Admin access required",
         )
-    
+
     from app.db import HLZFModel
-    
+
     query = select(HLZFModel).where(
         HLZFModel.id == record_id,
         HLZFModel.dno_id == dno_id,
     )
     result = await db.execute(query)
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Record not found",
         )
-    
+
     await db.delete(record)
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="Record deleted successfully",

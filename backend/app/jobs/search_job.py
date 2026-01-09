@@ -9,7 +9,6 @@ This simplified worker:
 Replace with actual implementation once queue mechanism is verified.
 """
 
-import asyncio
 from datetime import datetime
 
 import structlog
@@ -26,44 +25,45 @@ async def process_dno_crawl(
     """
     Orchestrates the DNO crawl process using modular steps.
     """
-    from app.jobs.steps import CRAWL_JOB_STEPS
-    from app.db.models import CrawlJobModel
     from sqlalchemy import select
+
+    from app.db.models import CrawlJobModel
+    from app.jobs.steps import CRAWL_JOB_STEPS
 
     log = logger.bind(job_id=job_id)
     log.info("🚀 Job received, starting execution")
-    
+
     async with get_db_session() as db:
         result = await db.execute(
             select(CrawlJobModel).where(CrawlJobModel.id == job_id)
         )
         job = result.scalar_one_or_none()
-        
+
         if not job:
             log.error("Job not found", job_id=job_id)
             return {"status": "error", "message": "Job not found"}
-        
+
         job.status = "running"
         job.started_at = datetime.utcnow()
         await db.commit()
-        
+
         total_steps = len(CRAWL_JOB_STEPS)
-        
+
         try:
             for i, step in enumerate(CRAWL_JOB_STEPS, 1):
                 # execute() handles commit for status and progress
                 await step.execute(db, job, i, total_steps)
-            
+
             # Finalize Job status
             job.status = "completed"
             job.progress = 100
             job.current_step = "Completed"
             job.completed_at = datetime.utcnow()
             await db.commit()
-            
+
             log.info("✅ Job completed successfully")
             return {"status": "completed", "message": "Workflow completed"}
-            
+
         except Exception as e:
             log.error("❌ Job failed", error=str(e))
             # Step base class handles job status update on failure

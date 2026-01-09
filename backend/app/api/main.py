@@ -2,8 +2,8 @@
 FastAPI application factory and main entry point.
 """
 
+from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from typing import AsyncGenerator
 
 import structlog
 from fastapi import FastAPI, Request
@@ -34,18 +34,19 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     logger.info("Starting DNO Crawler API", version=settings.app_version)
     await init_db()
     logger.info("Database initialized")
-    
+
     # Initialize rate limiter if Redis available
     try:
         from redis.asyncio import Redis
+
         from app.core.rate_limiter import init_rate_limiter
-        from app.services.crawl_recovery import recover_stuck_crawl_jobs
         from app.db import get_db_session
-        
+        from app.services.crawl_recovery import recover_stuck_crawl_jobs
+
         redis = Redis.from_url(str(settings.redis_url))
         init_rate_limiter(redis)
         logger.info("Rate limiter initialized")
-        
+
         # Warn if CONTACT_EMAIL not configured (important for crawler politeness)
         if not settings.has_contact_email:
             if settings.is_auth_enabled:
@@ -60,7 +61,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                     "BFS crawling will use initiator IP as fallback. "
                     "Set CONTACT_EMAIL in .env for production use."
                 )
-        
+
         # Recover stuck crawl jobs
         async with get_db_session() as db:
             recovered = await recover_stuck_crawl_jobs(db)
@@ -68,9 +69,9 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
                 logger.info("Recovered stuck crawl jobs", count=recovered)
     except Exception as e:
         logger.warning("Could not initialize rate limiter or recovery", error=str(e))
-    
+
     yield
-    
+
     # Shutdown
     logger.info("Shutting down DNO Crawler API")
     await close_db()
@@ -243,10 +244,10 @@ def create_app() -> FastAPI:
     async def global_exception_handler(request: Request, exc: Exception):
         """Handle unexpected exceptions"""
         logger.error("Unexpected error", url=str(request.url), error=str(exc), exc_info=True)
-        
+
         # Don't expose internal details in production
         message = str(exc) if settings.debug else "An unexpected error occurred"
-        
+
         return JSONResponse(
             status_code=500,
             content={

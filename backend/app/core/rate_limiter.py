@@ -7,7 +7,6 @@ Layer 2: Global VNB API quota (protects external API key)
 Uses Redis for distributed rate limiting across multiple workers.
 """
 
-from typing import Optional
 
 import structlog
 from fastapi import HTTPException, Request, status
@@ -23,10 +22,10 @@ class RateLimiter:
     - Per-IP: Limits requests from individual clients
     - Global VNB: Limits total VNB Digital API calls across ALL users
     """
-    
+
     # Redis key for GLOBAL VNB API counter (shared across all requests)
     VNB_GLOBAL_KEY = "global:vnb_api:count"
-    
+
     def __init__(
         self,
         redis: Redis,
@@ -51,7 +50,7 @@ class RateLimiter:
         self.vnb_global_rate = vnb_global_rate
         self.vnb_window = vnb_window
         self.log = logger.bind(component="RateLimiter")
-    
+
     async def check_ip_limit(self, ip: str) -> None:
         """
         Check and increment IP rate limit.
@@ -60,12 +59,12 @@ class RateLimiter:
             HTTPException: 429 if rate limit exceeded
         """
         key = f"rate_limit:ip:{ip}"
-        
+
         try:
             count = await self.redis.incr(key)
             if count == 1:
                 await self.redis.expire(key, self.ip_window)
-            
+
             if count > self.ip_rate:
                 self.log.warning("IP rate limit exceeded", ip=ip, count=count)
                 raise HTTPException(
@@ -78,7 +77,7 @@ class RateLimiter:
                 raise
             # Log but don't block on Redis errors
             self.log.error("Redis error in IP rate limit", error=str(e))
-    
+
     async def check_vnb_quota(self) -> None:
         """
         Check global VNB API quota before making VNB Digital call.
@@ -90,7 +89,7 @@ class RateLimiter:
             count = await self.redis.incr(self.VNB_GLOBAL_KEY)
             if count == 1:
                 await self.redis.expire(self.VNB_GLOBAL_KEY, self.vnb_window)
-            
+
             if count > self.vnb_global_rate:
                 self.log.warning("VNB global quota exhausted", count=count)
                 raise HTTPException(
@@ -102,11 +101,11 @@ class RateLimiter:
             if isinstance(e, HTTPException):
                 raise
             self.log.error("Redis error in VNB quota check", error=str(e))
-    
+
     async def before_vnb_call(self) -> None:
         """Convenience method to call before every VNB Digital API request."""
         await self.check_vnb_quota()
-    
+
     async def get_current_counts(self, ip: str) -> dict:
         """Get current rate limit counts (for debugging/monitoring)."""
         try:
@@ -129,16 +128,16 @@ def get_client_ip(request: Request) -> str:
     if forwarded:
         # First IP in the list is the original client
         return forwarded.split(",")[0].strip()
-    
+
     # Fallback to direct connection IP
     if request.client:
         return request.client.host
-    
+
     return "unknown"
 
 
 # Rate limiter instance will be created with Redis connection at startup
-_rate_limiter: Optional[RateLimiter] = None
+_rate_limiter: RateLimiter | None = None
 
 
 def init_rate_limiter(redis: Redis) -> RateLimiter:

@@ -11,24 +11,25 @@ from datetime import datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import structlog
+from arq import create_pool
+from arq.connections import RedisSettings
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
-from sqlalchemy import func, select, and_, or_
+from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import require_admin, User as AuthUser
-from app.core.models import APIResponse
+from app.core.auth import User as AuthUser
+from app.core.auth import require_admin
 from app.core.config import settings
+from app.core.models import APIResponse
 from app.db import (
     CrawlJobModel,
     DNOModel,
-    NetzentgelteModel,
     HLZFModel,
+    NetzentgelteModel,
     get_db,
 )
-from arq import create_pool
-from arq.connections import RedisSettings
-import structlog
 
 logger = structlog.get_logger()
 
@@ -46,7 +47,7 @@ async def admin_dashboard(
     """Get admin dashboard statistics."""
     # Count DNOs
     dno_count = await db.scalar(select(func.count(DNOModel.id)))
-    
+
     # Count DNOs by status
     uncrawled_count = await db.scalar(
         select(func.count(DNOModel.id)).where(DNOModel.status == "uncrawled")
@@ -54,7 +55,7 @@ async def admin_dashboard(
     crawled_count = await db.scalar(
         select(func.count(DNOModel.id)).where(DNOModel.status == "crawled")
     )
-    
+
     # Count pending jobs
     pending_jobs = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
@@ -62,7 +63,7 @@ async def admin_dashboard(
     running_jobs = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "running")
     )
-    
+
     # Count flagged records
     flagged_netzentgelte = await db.scalar(
         select(func.count(NetzentgelteModel.id)).where(NetzentgelteModel.verification_status == "flagged")
@@ -70,11 +71,11 @@ async def admin_dashboard(
     flagged_hlzf = await db.scalar(
         select(func.count(HLZFModel.id)).where(HLZFModel.verification_status == "flagged")
     )
-    
+
     # Count total data points
     total_netzentgelte = await db.scalar(select(func.count(NetzentgelteModel.id)))
     total_hlzf = await db.scalar(select(func.count(HLZFModel.id)))
-    
+
     return APIResponse(
         success=True,
         data={
@@ -140,7 +141,7 @@ async def list_flagged_items(
         }
         for row in netz_result.all()
     ]
-    
+
     # Get flagged HLZF with DNO info
     hlzf_query = (
         select(
@@ -174,11 +175,11 @@ async def list_flagged_items(
         }
         for row in hlzf_result.all()
     ]
-    
+
     # Combine and sort by flagged_at
     all_flagged = netz_flagged + hlzf_flagged
     all_flagged.sort(key=lambda x: x["flagged_at"] or "", reverse=True)
-    
+
     return APIResponse(
         success=True,
         data={
@@ -207,15 +208,15 @@ def _parse_file_info(file_path: Path, dno_slug: str) -> dict | None:
     match = re.match(pattern, name)
     if not match:
         return None
-    
+
     data_type = match.group(1)
     year = int(match.group(2))
     ext = match.group(3).lower()
-    
+
     # Only accept known data types
     if data_type not in ("netzentgelte", "hlzf"):
         return None
-    
+
     return {
         "name": name,
         "path": str(file_path),
@@ -240,7 +241,7 @@ async def list_cached_files(
     """
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     downloads_path = Path(storage_path) / "downloads"
-    
+
     if not downloads_path.exists():
         return APIResponse(
             success=True,
@@ -252,41 +253,41 @@ async def list_cached_files(
                 "by_status": {"no_data": 0, "flagged": 0, "verified": 0, "unverified": 0},
             },
         )
-    
+
     # Get all DNO slugs for matching
     dno_query = select(DNOModel.id, DNOModel.slug, DNOModel.name)
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
-    
+
     files = []
     by_data_type = {"netzentgelte": 0, "hlzf": 0}
     by_format = {}
     by_status = {"no_data": 0, "flagged": 0, "verified": 0, "unverified": 0}
-    
+
     # Scan all subdirectories (each is a DNO slug)
     for dno_dir in downloads_path.iterdir():
         if not dno_dir.is_dir():
             continue
-        
+
         dno_slug = dno_dir.name
         dno_info = dnos.get(dno_slug)
         if not dno_info:
             continue  # Unknown DNO, skip
-        
+
         for file_path in dno_dir.iterdir():
             if not file_path.is_file():
                 continue
             if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
-            
+
             file_info = _parse_file_info(file_path, dno_slug)
             if not file_info:
                 continue
-            
+
             # Add DNO info
             file_info["dno_id"] = dno_info["id"]
             file_info["dno_name"] = dno_info["name"]
-            
+
             # Check extraction status in database
             if file_info["data_type"] == "netzentgelte":
                 status_query = select(NetzentgelteModel.verification_status).where(
@@ -302,10 +303,10 @@ async def list_cached_files(
                         HLZFModel.year == file_info["year"],
                     )
                 )
-            
+
             status_result = await db.execute(status_query)
             statuses = [row[0] for row in status_result.all()]
-            
+
             if not statuses:
                 file_info["extraction_status"] = "no_data"
                 by_status["no_data"] += 1
@@ -318,14 +319,14 @@ async def list_cached_files(
             else:
                 file_info["extraction_status"] = "unverified"
                 by_status["unverified"] += 1
-            
+
             files.append(file_info)
             by_data_type[file_info["data_type"]] += 1
             by_format[file_info["format"]] = by_format.get(file_info["format"], 0) + 1
-    
+
     # Sort files by DNO name, then year descending
     files.sort(key=lambda f: (f["dno_name"], -f["year"]))
-    
+
     return APIResponse(
         success=True,
         data={
@@ -377,7 +378,7 @@ async def preview_bulk_extract(
     """
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     downloads_path = Path(storage_path) / "downloads"
-    
+
     if not downloads_path.exists():
         return APIResponse(
             success=True,
@@ -393,14 +394,14 @@ async def preview_bulk_extract(
                 files=[],
             ).model_dump(),
         )
-    
+
     # Get DNOs
     dno_query = select(DNOModel.id, DNOModel.slug, DNOModel.name)
     if request.dno_ids:
         dno_query = dno_query.where(DNOModel.id.in_(request.dno_ids))
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
-    
+
     total_files = 0
     will_extract = 0
     protected_verified = 0
@@ -410,26 +411,26 @@ async def preview_bulk_extract(
     unverified = 0
     failed_jobs = 0
     files_to_process = []
-    
+
     for dno_dir in downloads_path.iterdir():
         if not dno_dir.is_dir():
             continue
-        
+
         dno_slug = dno_dir.name
         dno_info = dnos.get(dno_slug)
         if not dno_info:
             continue
-        
+
         for file_path in dno_dir.iterdir():
             if not file_path.is_file():
                 continue
             if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                 continue
-            
+
             file_info = _parse_file_info(file_path, dno_slug)
             if not file_info:
                 continue
-            
+
             # Apply filters
             if file_info["data_type"] not in request.data_types:
                 continue
@@ -437,11 +438,11 @@ async def preview_bulk_extract(
                 continue
             if request.formats and file_info["format"] not in request.formats:
                 continue
-            
+
             total_files += 1
             file_info["dno_id"] = dno_info["id"]
             file_info["dno_name"] = dno_info["name"]
-            
+
             # Check extraction status
             if file_info["data_type"] == "netzentgelte":
                 status_query = select(NetzentgelteModel.verification_status).where(
@@ -457,14 +458,14 @@ async def preview_bulk_extract(
                         HLZFModel.year == file_info["year"],
                     )
                 )
-            
+
             status_result = await db.execute(status_query)
             statuses = [row[0] for row in status_result.all()]
-            
+
             has_verified = any(s == "verified" for s in statuses)
             has_flagged = any(s == "flagged" for s in statuses)
             has_data = len(statuses) > 0
-            
+
             # Check if there's a failed job for this file
             failed_job_query = select(CrawlJobModel.id).where(
                 and_(
@@ -475,10 +476,10 @@ async def preview_bulk_extract(
                 )
             ).limit(1)
             has_failed_job = await db.scalar(failed_job_query) is not None
-            
+
             # Determine if this file should be extracted based on mode
             should_extract = False
-            
+
             if request.mode == "flagged_only":
                 if has_flagged:
                     should_extract = True
@@ -512,7 +513,7 @@ async def preview_bulk_extract(
                 elif has_failed_job:
                     should_extract = True
                     failed_jobs += 1
-            
+
             if should_extract:
                 will_extract += 1
                 file_info["will_extract"] = True
@@ -521,7 +522,7 @@ async def preview_bulk_extract(
                 file_info["has_data"] = has_data
                 file_info["has_failed_job"] = has_failed_job
                 files_to_process.append(file_info)
-    
+
     return APIResponse(
         success=True,
         data={
@@ -557,47 +558,47 @@ async def trigger_bulk_extract(
     # First get the preview to know what to extract
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     downloads_path = Path(storage_path) / "downloads"
-    
+
     if not downloads_path.exists():
         return APIResponse(
             success=True,
             message="No files to extract",
             data={"jobs_queued": 0, "files_scanned": 0},
         )
-    
+
     # Get DNOs
     dno_query = select(DNOModel.id, DNOModel.slug, DNOModel.name, DNOModel.website)
     if request.dno_ids:
         dno_query = dno_query.where(DNOModel.id.in_(request.dno_ids))
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name, "website": row.website} for row in dno_result.all()}
-    
+
     jobs_queued = 0
     files_scanned = 0
-    
+
     # Connect to Redis for job queueing
     redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
-    
+
     try:
         for dno_dir in downloads_path.iterdir():
             if not dno_dir.is_dir():
                 continue
-            
+
             dno_slug = dno_dir.name
             dno_info = dnos.get(dno_slug)
             if not dno_info:
                 continue
-            
+
             for file_path in dno_dir.iterdir():
                 if not file_path.is_file():
                     continue
                 if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
                     continue
-                
+
                 file_info = _parse_file_info(file_path, dno_slug)
                 if not file_info:
                     continue
-                
+
                 # Apply filters
                 if file_info["data_type"] not in request.data_types:
                     continue
@@ -605,9 +606,9 @@ async def trigger_bulk_extract(
                     continue
                 if request.formats and file_info["format"] not in request.formats:
                     continue
-                
+
                 files_scanned += 1
-                
+
                 # Check extraction status to determine if we should queue
                 if file_info["data_type"] == "netzentgelte":
                     status_query = select(NetzentgelteModel.verification_status).where(
@@ -623,14 +624,14 @@ async def trigger_bulk_extract(
                             HLZFModel.year == file_info["year"],
                         )
                     )
-                
+
                 status_result = await db.execute(status_query)
                 statuses = [row[0] for row in status_result.all()]
-                
+
                 has_verified = any(s == "verified" for s in statuses)
                 has_flagged = any(s == "flagged" for s in statuses)
                 has_data = len(statuses) > 0
-                
+
                 # Check if there's a failed job for this file (for no_data_and_failed mode)
                 has_failed_job = False
                 if request.mode == "no_data_and_failed":
@@ -643,10 +644,10 @@ async def trigger_bulk_extract(
                         )
                     ).limit(1)
                     has_failed_job = await db.scalar(failed_job_query) is not None
-                
+
                 # Determine if this file should be extracted based on mode
                 should_extract = False
-                
+
                 if request.mode == "flagged_only":
                     should_extract = has_flagged
                 elif request.mode == "default":
@@ -655,10 +656,10 @@ async def trigger_bulk_extract(
                     should_extract = True
                 elif request.mode == "no_data_and_failed":
                     should_extract = not has_data or has_failed_job
-                
+
                 if not should_extract:
                     continue
-                
+
                 # Check if there's already a pending/running job for this DNO+year+type
                 existing_job_query = select(CrawlJobModel.id).where(
                     and_(
@@ -672,7 +673,7 @@ async def trigger_bulk_extract(
                 if existing_job:
                     logger.debug("job_already_exists", dno_id=dno_info["id"], year=file_info["year"])
                     continue
-                
+
                 # Create job context
                 job_context = {
                     "downloaded_file": str(file_path),
@@ -685,7 +686,7 @@ async def trigger_bulk_extract(
                     "force_override": request.mode == "force_override",
                     "initiated_by_admin": admin.email,
                 }
-                
+
                 # Create job in database
                 job = CrawlJobModel(
                     dno_id=dno_info["id"],
@@ -699,7 +700,7 @@ async def trigger_bulk_extract(
                 )
                 db.add(job)
                 await db.flush()  # Get the job ID
-                
+
                 # Enqueue to worker
                 await redis_pool.enqueue_job(
                     "process_extract",
@@ -707,7 +708,7 @@ async def trigger_bulk_extract(
                     _job_id=f"bulk_extract_{job.id}",
                     _queue_name="extract",
                 )
-                
+
                 jobs_queued += 1
                 logger.info(
                     "bulk_extract_job_queued",
@@ -717,11 +718,11 @@ async def trigger_bulk_extract(
                     data_type=file_info["data_type"],
                     mode=request.mode,
                 )
-        
+
         await db.commit()
     finally:
         await redis_pool.close()
-    
+
     return APIResponse(
         success=True,
         message=f"Queued {jobs_queued} extraction jobs",
@@ -742,10 +743,6 @@ async def get_bulk_extract_status(
     Returns counts of pending, running, completed, and failed bulk extract jobs.
     """
     # Query jobs with bulk_extract priority
-    base_query = select(CrawlJobModel).where(
-        CrawlJobModel.priority == BULK_EXTRACT_PRIORITY
-    )
-    
     pending = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(
             and_(
@@ -754,7 +751,7 @@ async def get_bulk_extract_status(
             )
         )
     )
-    
+
     running = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(
             and_(
@@ -763,7 +760,7 @@ async def get_bulk_extract_status(
             )
         )
     )
-    
+
     completed = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(
             and_(
@@ -772,7 +769,7 @@ async def get_bulk_extract_status(
             )
         )
     )
-    
+
     failed = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(
             and_(
@@ -781,9 +778,9 @@ async def get_bulk_extract_status(
             )
         )
     )
-    
+
     total = (pending or 0) + (running or 0) + (completed or 0) + (failed or 0)
-    
+
     return APIResponse(
         success=True,
         data={
@@ -815,22 +812,22 @@ async def cancel_bulk_extract(
     )
     result = await db.execute(query)
     pending_jobs = result.scalars().all()
-    
+
     cancelled_count = 0
     for job in pending_jobs:
         job.status = "cancelled"
         job.error_message = f"Cancelled by admin: {admin.email}"
         job.completed_at = datetime.utcnow()
         cancelled_count += 1
-    
+
     await db.commit()
-    
+
     logger.info(
         "bulk_extract_cancelled",
         cancelled_count=cancelled_count,
         admin=admin.email,
     )
-    
+
     return APIResponse(
         success=True,
         message=f"Cancelled {cancelled_count} pending bulk extraction jobs",
@@ -854,20 +851,20 @@ async def delete_bulk_extract_jobs(
     )
     result = await db.execute(query)
     jobs = result.scalars().all()
-    
+
     deleted_count = 0
     for job in jobs:
         await db.delete(job)
         deleted_count += 1
-    
+
     await db.commit()
-    
+
     logger.info(
         "bulk_extract_reset",
         deleted_count=deleted_count,
         admin=admin.email,
     )
-    
+
     return APIResponse(
         success=True,
         message=f"Deleted {deleted_count} bulk extraction jobs",

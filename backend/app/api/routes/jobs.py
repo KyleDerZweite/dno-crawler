@@ -5,7 +5,7 @@ Accessible to all authenticated users (not admin-only).
 Provides a unified interface for viewing and managing crawl jobs.
 """
 
-from typing import Annotated, Optional
+from typing import Annotated
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -13,7 +13,8 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.auth import get_current_user, User as AuthUser
+from app.core.auth import User as AuthUser
+from app.core.auth import get_current_user
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, get_db
 
@@ -25,7 +26,7 @@ router = APIRouter()
 async def list_jobs(
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    status_filter: Optional[str] = Query(None, alias="status"),
+    status_filter: str | None = Query(None, alias="status"),
     limit: int = Query(50, ge=1, le=100),
     page: int = Query(1, ge=1),
 ) -> dict:
@@ -36,28 +37,28 @@ async def list_jobs(
     Accessible to any authenticated user.
     """
     query = select(CrawlJobModel)
-    
+
     if status_filter:
         query = query.where(CrawlJobModel.status == status_filter)
-    
+
     # Get total count
     count_query = select(func.count(CrawlJobModel.id))
     if status_filter:
         count_query = count_query.where(CrawlJobModel.status == status_filter)
     total = await db.scalar(count_query) or 0
-    
+
     # Get pending count for queue length
     pending_count = await db.scalar(
         select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
     ) or 0
-    
+
     # Order by created_at desc, paginate
     query = query.order_by(CrawlJobModel.created_at.desc())
     query = query.offset((page - 1) * limit).limit(limit)
-    
+
     result = await db.execute(query)
     jobs = result.scalars().all()
-    
+
     # Fetch DNO names for display
     dno_ids = list(set(job.dno_id for job in jobs))
     if dno_ids:
@@ -66,7 +67,7 @@ async def list_jobs(
         dnos = {dno.id: dno for dno in dno_result.scalars().all()}
     else:
         dnos = {}
-    
+
     # Calculate queue position for pending jobs (separate for crawl and extract queues)
     pending_jobs_query = (
         select(CrawlJobModel.id, CrawlJobModel.job_type)
@@ -84,7 +85,7 @@ async def list_jobs(
         else:  # extract
             extract_position += 1
             pending_order[job_id] = extract_position
-    
+
     return {
         "jobs": [
             {
@@ -130,20 +131,20 @@ async def get_job(
     )
     result = await db.execute(query)
     job = result.scalar_one_or_none()
-    
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
         )
-    
+
     # Get DNO info
     dno = await db.get(DNOModel, job.dno_id)
-    
+
     # Get linked jobs info
     parent_job_info = None
     child_job_info = None
-    
+
     if getattr(job, 'parent_job_id', None):
         parent = await db.get(CrawlJobModel, job.parent_job_id)
         if parent:
@@ -152,7 +153,7 @@ async def get_job(
                 "job_type": getattr(parent, 'job_type', 'full'),
                 "status": parent.status,
             }
-    
+
     if getattr(job, 'child_job_id', None):
         child = await db.get(CrawlJobModel, job.child_job_id)
         if child:
@@ -161,7 +162,7 @@ async def get_job(
                 "job_type": getattr(child, 'job_type', 'full'),
                 "status": child.status,
             }
-    
+
     return APIResponse(
         success=True,
         data={
@@ -213,13 +214,13 @@ async def delete_job(
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)
     result = await db.execute(query)
     job = result.scalar_one_or_none()
-    
+
     if not job:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Job not found",
         )
-    
+
     # Permission check: admin OR creator
     is_creator = job.triggered_by == current_user.email
     if not current_user.is_admin and not is_creator:
@@ -227,12 +228,12 @@ async def delete_job(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="You can only delete jobs you created",
         )
-    
+
     await db.delete(job)
     await db.commit()
-    
+
     logger.info("Job deleted", job_id=job_id, user=current_user.email)
-    
+
     return APIResponse(
         success=True,
         message="Job deleted",

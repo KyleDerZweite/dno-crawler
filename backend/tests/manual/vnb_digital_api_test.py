@@ -7,8 +7,9 @@ Implements the 2-step discovery flow:
 
 import asyncio
 import json
-import httpx
 import urllib.parse
+
+import httpx
 
 # =============================================================================
 # API CONFIGURATION
@@ -93,18 +94,18 @@ query (
 
 async def find_provider(address: str):
     print(f"🔎 Searching for: '{address}'")
-    
+
     async with httpx.AsyncClient() as client:
         # --- STEP 1: Search Address ---
         payload_search = {
             "query": SEARCH_QUERY,
             "variables": {"searchTerm": address}
         }
-        
+
         try:
             resp_search = await client.post(URL, json=payload_search, headers=HEADERS, timeout=10.0)
             data_search = resp_search.json()
-            
+
             if "errors" in data_search:
                 print(f"❌ Search Error: {json.dumps(data_search['errors'], indent=2)}")
                 return
@@ -118,17 +119,17 @@ async def find_provider(address: str):
             location = results[0]
             print(f"✅ Found Location: {location['title']}")
             print(f"   URL: {location['url']}")
-            
+
             # Extract coordinates from URL parameter
             # URL format: /overview?coordinates=50.94834,6.82052&searchType=LOCATION
             parsed_url = urllib.parse.urlparse(location['url'])
             query_params = urllib.parse.parse_qs(parsed_url.query)
             coordinates = query_params.get("coordinates", [None])[0]
-            
+
             if not coordinates:
                 print("❌ Could not extract coordinates from URL.")
                 return
-                
+
             print(f"📍 Extracted Coordinates: {coordinates}")
 
         except Exception as e:
@@ -148,22 +149,22 @@ async def find_provider(address: str):
                 "withCoordinates": True
             }
         }
-        
+
         try:
             print(f"🌍 Querying Provider for {coordinates}...")
             resp_coords = await client.post(URL, json=payload_coords, headers=HEADERS, timeout=10.0)
             data_coords = resp_coords.json()
-            
+
             if "errors" in data_coords:
                 print(f"❌ Provider Query Error: {json.dumps(data_coords['errors'], indent=2)}")
                 return
 
             vnbs = data_coords.get("data", {}).get("vnb_coordinates", {}).get("vnbs", [])
-            
+
             if not vnbs:
                 print("❌ No network operator (VNB) found for these coordinates.")
                 return
-            
+
             print("\n🏆 FOUND NETWORK OPERATORS:")
             for vnb in vnbs:
                 print(f"   - Name: {vnb['name']}")

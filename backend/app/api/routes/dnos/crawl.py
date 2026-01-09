@@ -2,7 +2,7 @@
 Crawl and job-related endpoints for DNO management.
 """
 
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated
 
@@ -10,13 +10,13 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.auth import get_current_user, User as AuthUser
+from app.core.auth import User as AuthUser
+from app.core.auth import get_current_user
 from app.core.models import APIResponse
 from app.core.rate_limiter import get_client_ip
 from app.db import CrawlJobModel, DNOModel, get_db
 
 from .schemas import TriggerCrawlRequest
-
 
 router = APIRouter()
 
@@ -41,12 +41,13 @@ async def trigger_crawl(
     Any authenticated user (member or admin) can trigger this.
     Accepts either numeric ID or slug.
     """
+    import structlog
     from arq import create_pool
     from arq.connections import RedisSettings
+
     from app.core.config import settings
-    import structlog
     logger = structlog.get_logger()
-    
+
     # Verify DNO exists - support both ID and slug
     if dno_id.isdigit():
         query = select(DNOModel).where(DNOModel.id == int(dno_id))
@@ -54,21 +55,21 @@ async def trigger_crawl(
         query = select(DNOModel).where(DNOModel.slug == dno_id)
     result = await db.execute(query)
     dno = result.scalar_one_or_none()
-    
+
     if not dno:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="DNO not found",
         )
-    
+
     job_type = request.job_type.value
-    
+
     # For extract-only jobs, verify a file exists
     if job_type == "extract":
         downloads_dir = Path(settings.downloads_path) / dno.slug
         file_pattern = f"{dno.slug}-{request.data_type.value}-{request.year}.*"
         existing_files = list(downloads_dir.glob(file_pattern)) if downloads_dir.exists() else []
-        
+
         if not existing_files:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -79,17 +80,17 @@ async def trigger_crawl(
         file_path = str(existing_files[0])
     else:
         file_path = None
-    
+
     # For crawl and full jobs, check DNO lock status
     if job_type in ("full", "crawl"):
         dno_status = getattr(dno, 'status', 'uncrawled')
         if dno_status == "crawling":
             locked_at = getattr(dno, 'crawl_locked_at', None)
-            now = datetime.now(timezone.utc)
+            now = datetime.now(UTC)
             threshold = now - timedelta(hours=1)
             if locked_at:
                 if locked_at.tzinfo is None:
-                    locked_at = locked_at.replace(tzinfo=timezone.utc)
+                    locked_at = locked_at.replace(tzinfo=UTC)
                 if locked_at < threshold:
                     logger.warning("Force-releasing stuck crawl", dno_id=dno_id)
             else:
@@ -97,7 +98,7 @@ async def trigger_crawl(
                     status_code=status.HTTP_409_CONFLICT,
                     detail=f"A crawl is already in progress for {dno.name}",
                 )
-    
+
     # Check for existing pending/running job for this year AND data_type
     existing_query = select(CrawlJobModel).where(
         CrawlJobModel.dno_id == dno.id,
@@ -109,18 +110,18 @@ async def trigger_crawl(
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail=f"A job for this DNO, year, and data type is already in progress",
+            detail="A job for this DNO, year, and data type is already in progress",
         )
-    
+
     # Update DNO status for crawl/full jobs
     if job_type in ("full", "crawl"):
         dno.status = "crawling"
         dno.crawl_locked_at = datetime.utcnow()
-    
+
     # Build job context
     initiator_ip = get_client_ip(http_request)
     job_context = {"initiator_ip": initiator_ip}
-    
+
     # For extract jobs, add file path to context
     if job_type == "extract" and file_path:
         job_context["downloaded_file"] = file_path
@@ -129,7 +130,7 @@ async def trigger_crawl(
         job_context["dno_name"] = dno.name
         job_context["dno_website"] = dno.website
         job_context["strategy"] = "use_cache"  # Indicate we're using existing file
-    
+
     # Create job in database
     job = CrawlJobModel(
         dno_id=dno.id,
@@ -144,7 +145,7 @@ async def trigger_crawl(
     db.add(job)
     await db.commit()
     await db.refresh(job)
-    
+
     # Determine which queue and function to use
     # "full" and "crawl" both use process_crawl on crawl queue
     # process_crawl handles steps 0-3, then chains to extract job automatically
@@ -154,7 +155,7 @@ async def trigger_crawl(
     else:  # extract
         queue_name = "extract"
         job_function = "process_extract"
-    
+
     # Enqueue job to appropriate worker queue
     try:
         redis_pool = await create_pool(
@@ -167,11 +168,11 @@ async def trigger_crawl(
             _queue_name=queue_name,
         )
         await redis_pool.close()
-        
+
         logger.info("Job enqueued", job_id=job.id, job_type=job_type, queue=queue_name)
     except Exception as e:
         logger.error("Failed to enqueue job to worker", job_id=job.id, error=str(e))
-    
+
     return APIResponse(
         success=True,
         message=f"{job_type.capitalize()} job created for {dno.name} ({request.year})",
@@ -204,7 +205,7 @@ async def get_dno_crawl_jobs(
     )
     result = await db.execute(query)
     jobs = result.scalars().all()
-    
+
     return APIResponse(
         success=True,
         data=[

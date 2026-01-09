@@ -5,7 +5,6 @@ Data classes for VNB Digital API responses.
 """
 
 from dataclasses import dataclass
-from typing import Optional
 
 
 @dataclass
@@ -15,9 +14,9 @@ class VNBResult:
     vnb_id: str
     types: list[str]  # e.g., ["STROM", "GAS"]
     voltage_types: list[str]  # e.g., ["Niederspannung", "Mittelspannung"]
-    logo_url: Optional[str] = None
-    official_name: Optional[str] = None  # Full legal name (e.g., "Westnetz GmbH")
-    
+    logo_url: str | None = None
+    official_name: str | None = None  # Full legal name (e.g., "Westnetz GmbH")
+
     @property
     def is_electricity(self) -> bool:
         """Check if this VNB handles electricity."""
@@ -40,10 +39,10 @@ class DNODetails:
     """
     vnb_id: str
     name: str
-    homepage_url: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
+    homepage_url: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
 
 
 @dataclass
@@ -51,5 +50,5 @@ class VNBSearchResult:
     """Result from VNB name search for autocomplete."""
     vnb_id: str
     name: str
-    subtitle: Optional[str] = None  # Often contains official legal name (e.g., "GmbH")
-    logo_url: Optional[str] = None
+    subtitle: str | None = None  # Often contains official legal name (e.g., "GmbH")
+    logo_url: str | None = None

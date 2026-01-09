@@ -8,8 +8,7 @@ without triggering heavy crawl jobs. All methods are idempotent and race-safe.
 import hashlib
 import re
 from dataclasses import dataclass
-from decimal import Decimal, ROUND_HALF_UP
-from typing import Optional
+from decimal import ROUND_HALF_UP, Decimal
 
 import structlog
 from sqlalchemy import func, select
@@ -80,10 +79,10 @@ def normalize_address(street_input: str, zip_code: str, city: str) -> Normalized
 
     # 3. Create "Mashed" String for Hashing
     mashed_street = street_clean.lower()
-    
+
     for pattern, repl in STREET_REPLACEMENTS.items():
         mashed_street = re.sub(pattern, repl, mashed_street)
-    
+
     # 4. Generate Hash
     canonical_string = f"{mashed_street}|{number_clean or ''}|{zip_code}"
     address_hash = hashlib.sha256(canonical_string.encode()).hexdigest()
@@ -128,10 +127,10 @@ class SkeletonService:
     All methods are idempotent - safe to call multiple times with same input.
     Never triggers heavy crawl jobs.
     """
-    
+
     def __init__(self):
         self.log = logger.bind(service="SkeletonService")
-    
+
     async def get_or_create_dno(
         self,
         db: AsyncSession,
@@ -157,7 +156,7 @@ class SkeletonService:
         Race-condition safe: uses IntegrityError fallback for concurrent creates.
         """
         log = self.log.bind(name=name, vnb_id=vnb_id)
-        
+
         # First, try to find existing by vnb_id
         result = await db.execute(
             select(DNOModel).where(DNOModel.vnb_id == vnb_id)
@@ -166,7 +165,7 @@ class SkeletonService:
         if existing:
             log.debug("DNO already exists", dno_id=existing.id)
             return existing, False
-        
+
         # Create new skeleton with contact info and crawlability
         slug = generate_slug(name)
         dno = DNOModel(
@@ -186,7 +185,7 @@ class SkeletonService:
             crawlable=crawlable,
             crawl_blocked_reason=crawl_blocked_reason,
         )
-        
+
         try:
             db.add(dno)
             await db.commit()
@@ -213,7 +212,7 @@ class SkeletonService:
             # Race condition: another request created it first
             await db.rollback()
             log.warning("Race condition on DNO create, fetching existing", error=str(e))
-            
+
             # Fetch the existing record (try by vnb_id, then by slug)
             result = await db.execute(
                 select(DNOModel).where(
@@ -223,7 +222,7 @@ class SkeletonService:
             existing = result.scalar_one_or_none()
             if existing:
                 return existing, False
-            
+
             # If still not found, re-raise the error
             raise
     async def find_location_by_hash(
@@ -236,7 +235,7 @@ class SkeletonService:
             select(LocationModel).where(LocationModel.address_hash == address_hash)
         )
         return result.scalar_one_or_none()
-    
+
     async def find_location_by_geocoord(
         self,
         db: AsyncSession,
@@ -252,7 +251,7 @@ class SkeletonService:
         """
         snapped_lat = snap_coordinate(lat)
         snapped_lon = snap_coordinate(lon)
-        
+
         result = await db.execute(
             select(LocationModel).where(
                 func.abs(LocationModel.latitude - snapped_lat) < tolerance,
@@ -260,7 +259,7 @@ class SkeletonService:
             )
         )
         return result.scalar_one_or_none()
-    
+
     async def get_or_create_location(
         self,
         db: AsyncSession,
@@ -277,13 +276,13 @@ class SkeletonService:
         Race-condition safe: uses IntegrityError fallback.
         """
         log = self.log.bind(address_hash=address.address_hash[:16], dno_id=dno_id)
-        
+
         # First, try to find existing by hash
         existing = await self.find_location_by_hash(db, address.address_hash)
         if existing:
             log.debug("Location already exists", location_id=existing.id)
             return existing, False
-        
+
         # Create new location
         location = LocationModel(
             dno_id=dno_id,
@@ -296,7 +295,7 @@ class SkeletonService:
             longitude=snap_coordinate(lon),
             source="vnb_digital",
         )
-        
+
         try:
             db.add(location)
             await db.commit()

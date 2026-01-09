@@ -7,7 +7,6 @@ skeleton DNO/Location records via VNB Digital API.
 Rate limited: 60 req/min per IP, 50 req/min global VNB quota.
 """
 
-from typing import Optional
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
@@ -15,13 +14,13 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.core.rate_limiter import get_client_ip, get_rate_limiter, RateLimiter
-from app.db import get_db, DNOModel, HLZFModel, NetzentgelteModel, LocationModel
+from app.core.rate_limiter import RateLimiter, get_client_ip, get_rate_limiter
+from app.db import DNOModel, HLZFModel, LocationModel, NetzentgelteModel, get_db
 from app.services.vnb import (
+    NormalizedAddress,
     VNBDigitalClient,
     normalize_address,
     skeleton_service,
-    NormalizedAddress,
 )
 
 logger = structlog.get_logger()
@@ -64,17 +63,17 @@ class CoordinatesSearchInput(BaseModel):
 
 class DNOSearchInput(BaseModel):
     """Direct DNO search input with validation."""
-    dno_id: Optional[str] = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
-    dno_name: Optional[str] = Field(None, max_length=200)
+    dno_id: str | None = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
+    dno_name: str | None = Field(None, max_length=200)
 
 
 class PublicSearchRequest(BaseModel):
     """Public search request - one of three input types."""
-    address: Optional[AddressSearchInput] = None
-    coordinates: Optional[CoordinatesSearchInput] = None
-    dno: Optional[DNOSearchInput] = None
-    year: Optional[int] = Field(None, ge=2000, le=2100)  # Single year (backward compat)
-    years: Optional[list[int]] = Field(None, description="Multiple years filter")
+    address: AddressSearchInput | None = None
+    coordinates: CoordinatesSearchInput | None = None
+    dno: DNOSearchInput | None = None
+    year: int | None = Field(None, ge=2000, le=2100)  # Single year (backward compat)
+    years: list[int] | None = Field(None, description="Multiple years filter")
 
 
 class DNOMetadata(BaseModel):
@@ -82,15 +81,15 @@ class DNOMetadata(BaseModel):
     id: int
     slug: str
     name: str
-    official_name: Optional[str] = None
-    vnb_id: Optional[str] = None
+    official_name: str | None = None
+    vnb_id: str | None = None
     status: str
 
 
 class LocationInfo(BaseModel):
     """Location info."""
     street: str
-    number: Optional[str] = None
+    number: str | None = None
     zip_code: str
     city: str
     latitude: float
@@ -101,11 +100,11 @@ class NetzentgelteData(BaseModel):
     """Netzentgelte data."""
     year: int
     voltage_level: str
-    leistung: Optional[float] = None
-    arbeit: Optional[float] = None
-    leistung_unter_2500h: Optional[float] = None
-    arbeit_unter_2500h: Optional[float] = None
-    verification_status: Optional[str] = None
+    leistung: float | None = None
+    arbeit: float | None = None
+    leistung_unter_2500h: float | None = None
+    arbeit_unter_2500h: float | None = None
+    verification_status: str | None = None
 
 
 class HLZFTimeRange(BaseModel):
@@ -114,7 +113,7 @@ class HLZFTimeRange(BaseModel):
     end: str    # e.g., "13:15:00"
 
 
-def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
+def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
     """
     Parse HLZF time string into structured time ranges.
     
@@ -128,12 +127,12 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
     Returns list of HLZFTimeRange or None if no valid ranges.
     """
     import re
-    
+
     if not value or value.strip() == "-" or value.strip().lower() == "entfällt":
         return None
-    
+
     ranges = []
-    
+
     # Normalize time helper
     def normalize_time(t: str) -> str:
         parts = t.split(':')
@@ -141,29 +140,29 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
         minute = parts[1] if len(parts) > 1 else "00"
         second = parts[2] if len(parts) > 2 else "00"
         return f"{hour}:{minute}:{second}"
-    
+
     # Split by comma OR newline to get individual periods
     # This handles both "12:15-13:15, 16:45-19:45" and "12:15-13:15\n16:45-19:45"
     periods = re.split(r'[,\n]', value)
-    
+
     for period in periods:
         period = period.strip()
         if not period:
             continue
-        
+
         # Match any dash type: hyphen (-), en-dash (–), em-dash (—)
         # Allow optional spaces around the dash
         match = re.match(
             r'^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$',
             period
         )
-        
+
         if match:
             start_time = normalize_time(match.group(1))
             end_time = normalize_time(match.group(2))
             ranges.append(HLZFTimeRange(start=start_time, end=end_time))
             continue
-        
+
         # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
         space_match = re.match(
             r'^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$',
@@ -173,7 +172,7 @@ def _parse_hlzf_times(value: Optional[str]) -> Optional[list[HLZFTimeRange]]:
             start_time = normalize_time(space_match.group(1))
             end_time = normalize_time(space_match.group(2))
             ranges.append(HLZFTimeRange(start=start_time, end=end_time))
-    
+
     return ranges if ranges else None
 
 
@@ -182,28 +181,28 @@ class HLZFData(BaseModel):
     year: int
     voltage_level: str
     # Raw string values (for display fallback)
-    winter: Optional[str] = None
-    fruehling: Optional[str] = None
-    sommer: Optional[str] = None
-    herbst: Optional[str] = None
+    winter: str | None = None
+    fruehling: str | None = None
+    sommer: str | None = None
+    herbst: str | None = None
     # Parsed time ranges (for structured display)
-    winter_ranges: Optional[list[HLZFTimeRange]] = None
-    fruehling_ranges: Optional[list[HLZFTimeRange]] = None
-    sommer_ranges: Optional[list[HLZFTimeRange]] = None
-    herbst_ranges: Optional[list[HLZFTimeRange]] = None
+    winter_ranges: list[HLZFTimeRange] | None = None
+    fruehling_ranges: list[HLZFTimeRange] | None = None
+    sommer_ranges: list[HLZFTimeRange] | None = None
+    herbst_ranges: list[HLZFTimeRange] | None = None
     # Verification status
-    verification_status: Optional[str] = None
+    verification_status: str | None = None
 
 
 class PublicSearchResponse(BaseModel):
     """Response for public search."""
     found: bool
     has_data: bool
-    dno: Optional[DNOMetadata] = None
-    location: Optional[LocationInfo] = None
-    netzentgelte: Optional[list[NetzentgelteData]] = None
-    hlzf: Optional[list[HLZFData]] = None
-    message: Optional[str] = None
+    dno: DNOMetadata | None = None
+    location: LocationInfo | None = None
+    netzentgelte: list[NetzentgelteData] | None = None
+    hlzf: list[HLZFData] | None = None
+    message: str | None = None
 
 
 # =============================================================================
@@ -238,7 +237,7 @@ async def public_search(
     - 50 VNB API calls/minute globally
     """
     log = logger.bind(endpoint="public_search")
-    
+
     # Get rate limiter and client IP
     try:
         rate_limiter = get_rate_limiter()
@@ -249,7 +248,7 @@ async def public_search(
         log.warning("Rate limiter not available")
         rate_limiter = None
         client_ip = "unknown"
-    
+
     # Validate exactly one input type provided
     inputs_provided = sum([
         request.address is not None,
@@ -261,10 +260,10 @@ async def public_search(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Exactly one of 'address', 'coordinates', or 'dno' must be provided.",
         )
-    
+
     # Merge year/years into a single list
     filter_years = request.years if request.years else ([request.year] if request.year else None)
-    
+
     # Route to appropriate handler
     if request.address:
         return await _search_by_address(
@@ -285,9 +284,9 @@ async def public_search(
 
 async def _search_by_address(
     db: AsyncSession,
-    rate_limiter: Optional[RateLimiter],
+    rate_limiter: RateLimiter | None,
     address_input: AddressSearchInput,
-    years: Optional[list[int]],
+    years: list[int] | None,
     log,
 ) -> PublicSearchResponse:
     """
@@ -298,7 +297,7 @@ async def _search_by_address(
     4. If not found → call VNB API → create skeleton → evaluate data
     """
     log = log.bind(zip=address_input.zip_code, city=address_input.city)
-    
+
     # Step 1: Normalize address
     normalized = normalize_address(
         address_input.street,
@@ -306,27 +305,27 @@ async def _search_by_address(
         address_input.city,
     )
     log.debug("Address normalized", hash=normalized.address_hash[:16])
-    
+
     # Step 2: Check DB for existing location by hash
     location = await skeleton_service.find_location_by_hash(db, normalized.address_hash)
-    
+
     if location:
         log.debug("Location found in cache", location_id=location.id)
         dno = await db.get(DNOModel, location.dno_id)
         return await _build_response(db, dno, location, years)
-    
+
     # Step 3: Not in cache - call VNB Digital API
     log.info("Cache miss, calling VNB Digital API")
-    
+
     if rate_limiter:
         await rate_limiter.before_vnb_call()
-    
+
     vnb_client = VNBDigitalClient(request_delay=0.5)
-    
+
     # Get coordinates
     full_address = f"{address_input.street}, {address_input.zip_code} {address_input.city}"
     location_result = await vnb_client.search_address(full_address)
-    
+
     if not location_result:
         log.warning("Address not found in VNB Digital")
         return PublicSearchResponse(
@@ -334,30 +333,30 @@ async def _search_by_address(
             has_data=False,
             message="Address not found. Please check the address and try again.",
         )
-    
+
     # Parse coordinates
     lat, lon = map(float, location_result.coordinates.split(","))
-    
+
     # Step 4: Check if we have a location for these coordinates
     if rate_limiter:
         await rate_limiter.before_vnb_call()
-    
+
     existing_location = await skeleton_service.find_location_by_geocoord(db, lat, lon)
-    
+
     if existing_location:
         log.debug("Location found by coordinates", location_id=existing_location.id)
         dno = await db.get(DNOModel, existing_location.dno_id)
-        
+
         # Create location alias for this address hash
         await skeleton_service.get_or_create_location(
             db, existing_location.dno_id, normalized, lat, lon
         )
-        
+
         return await _build_response(db, dno, existing_location, years)
-    
+
     # Step 5: Get DNO from VNB Digital
     vnbs = await vnb_client.lookup_by_coordinates(location_result.coordinates)
-    
+
     if not vnbs:
         log.warning("No DNO found for coordinates")
         return PublicSearchResponse(
@@ -365,16 +364,16 @@ async def _search_by_address(
             has_data=False,
             message="No distribution network operator found for this location.",
         )
-    
+
     # Prefer electricity DNO
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
-    
+
     # Step 6: Fetch extended details (homepage URL, contact info)
     if rate_limiter:
         await rate_limiter.before_vnb_call()
-    
+
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
-    
+
     # Step 7: Try to enrich address with postal code + city from Impressum
     enriched_address = dno_details.address if dno_details else None
     if dno_details and dno_details.homepage_url and dno_details.address:
@@ -385,20 +384,21 @@ async def _search_by_address(
         )
         if full_addr:
             enriched_address = full_addr.formatted
-    
+
     # Step 8: Fetch robots.txt to determine crawlability
     robots_result = None
     if dno_details and dno_details.homepage_url:
-        from app.services.robots_parser import fetch_robots_txt
         import httpx
-        
+
+        from app.services.robots_parser import fetch_robots_txt
+
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
             timeout=10.0,
         ) as http_client:
             robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
-    
+
     # Step 9: Create or get DNO skeleton with contact info and crawlability
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
@@ -416,12 +416,12 @@ async def _search_by_address(
         crawlable=robots_result.crawlable if robots_result else True,
         crawl_blocked_reason=robots_result.blocked_reason if robots_result else None,
     )
-    
+
     # Step 8: Create location
     location, loc_created = await skeleton_service.get_or_create_location(
         db, dno.id, normalized, lat, lon
     )
-    
+
     log.info(
         "Created skeleton",
         dno_created=dno_created,
@@ -429,54 +429,54 @@ async def _search_by_address(
         dno_name=dno.name,
         has_website=bool(dno.website),
     )
-    
+
     return await _build_response(db, dno, location, years)
 
 
 async def _search_by_coordinates(
     db: AsyncSession,
-    rate_limiter: Optional[RateLimiter],
+    rate_limiter: RateLimiter | None,
     coords_input: CoordinatesSearchInput,
-    years: Optional[list[int]],
+    years: list[int] | None,
     log,
 ) -> PublicSearchResponse:
     """Search by coordinates - similar to address but skips geocoding."""
     log = log.bind(lat=coords_input.latitude, lon=coords_input.longitude)
-    
+
     # Check DB first
     location = await skeleton_service.find_location_by_geocoord(
         db, coords_input.latitude, coords_input.longitude
     )
-    
+
     if location:
         dno = await db.get(DNOModel, location.dno_id)
         return await _build_response(db, dno, location, years)
-    
+
     # Call VNB Digital
     log.info("Calling VNB Digital for coordinates")
-    
+
     if rate_limiter:
         await rate_limiter.before_vnb_call()
-    
+
     vnb_client = VNBDigitalClient(request_delay=0.5)
     coords_str = f"{coords_input.latitude},{coords_input.longitude}"
     vnbs = await vnb_client.lookup_by_coordinates(coords_str)
-    
+
     if not vnbs:
         return PublicSearchResponse(
             found=False,
             has_data=False,
             message="No distribution network operator found for these coordinates.",
         )
-    
+
     vnb = next((v for v in vnbs if v.is_electricity), vnbs[0])
-    
+
     # Fetch extended details
     if rate_limiter:
         await rate_limiter.before_vnb_call()
-    
+
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
-    
+
     # Try to enrich address with postal code + city from Impressum
     enriched_address = dno_details.address if dno_details else None
     if dno_details and dno_details.homepage_url and dno_details.address:
@@ -487,20 +487,21 @@ async def _search_by_coordinates(
         )
         if full_addr:
             enriched_address = full_addr.formatted
-    
+
     # Fetch robots.txt to determine crawlability
     robots_result = None
     if dno_details and dno_details.homepage_url:
-        from app.services.robots_parser import fetch_robots_txt
         import httpx
-        
+
+        from app.services.robots_parser import fetch_robots_txt
+
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
             timeout=10.0,
         ) as http_client:
             robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
-    
+
     dno, _ = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -516,11 +517,10 @@ async def _search_by_coordinates(
         crawlable=robots_result.crawlable if robots_result else True,
         crawl_blocked_reason=robots_result.blocked_reason if robots_result else None,
     )
-    
+
     # Create simple location without full address
-    from app.services.vnb import NormalizedAddress
     import hashlib
-    
+
     coords_hash = hashlib.sha256(coords_str.encode()).hexdigest()
     simple_address = NormalizedAddress(
         street_clean=f"Coordinates ({coords_input.latitude:.4f}, {coords_input.longitude:.4f})",
@@ -529,23 +529,23 @@ async def _search_by_coordinates(
         city="Unknown",
         address_hash=coords_hash,
     )
-    
+
     location, _ = await skeleton_service.get_or_create_location(
         db, dno.id, simple_address, coords_input.latitude, coords_input.longitude
     )
-    
+
     return await _build_response(db, dno, location, years)
 
 
 async def _search_by_dno(
     db: AsyncSession,
     dno_input: DNOSearchInput,
-    years: Optional[list[int]],
+    years: list[int] | None,
     log,
 ) -> PublicSearchResponse:
     """Search by DNO name or ID directly."""
     log = log.bind(dno_name=dno_input.dno_name, dno_id=dno_input.dno_id)
-    
+
     # Build query
     if dno_input.dno_id:
         query = select(DNOModel).where(DNOModel.vnb_id == dno_input.dno_id)
@@ -556,28 +556,28 @@ async def _search_by_dno(
         )
     else:
         raise HTTPException(400, "Either dno_id or dno_name must be provided")
-    
+
     result = await db.execute(query)
     dno = result.scalar_one_or_none()
-    
+
     if not dno:
         return PublicSearchResponse(
             found=False,
             has_data=False,
-            message=f"DNO not found. Try searching by address instead.",
+            message="DNO not found. Try searching by address instead.",
         )
-    
+
     return await _build_response(db, dno, None, years)
 
 
 async def _build_response(
     db: AsyncSession,
     dno: DNOModel,
-    location: Optional[LocationModel],
-    years: Optional[list[int]],
+    location: LocationModel | None,
+    years: list[int] | None,
 ) -> PublicSearchResponse:
     """Build response with data evaluation."""
-    
+
     # Build DNO metadata
     dno_meta = DNOMetadata(
         id=dno.id,
@@ -587,7 +587,7 @@ async def _build_response(
         vnb_id=dno.vnb_id,
         status=dno.status,
     )
-    
+
     # Build location info
     loc_info = None
     if location:
@@ -599,18 +599,18 @@ async def _build_response(
             latitude=float(location.latitude),
             longitude=float(location.longitude),
         )
-    
+
     # Check for data
     netzentgelte_query = select(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno.id)
     hlzf_query = select(HLZFModel).where(HLZFModel.dno_id == dno.id)
-    
+
     if years:
         netzentgelte_query = netzentgelte_query.where(NetzentgelteModel.year.in_(years))
         hlzf_query = hlzf_query.where(HLZFModel.year.in_(years))
-    
+
     netzentgelte_result = await db.execute(netzentgelte_query)
     hlzf_result = await db.execute(hlzf_query)
-    
+
     netzentgelte = [
         NetzentgelteData(
             year=n.year,
@@ -623,7 +623,7 @@ async def _build_response(
         )
         for n in netzentgelte_result.scalars().all()
     ]
-    
+
     hlzf = [
         HLZFData(
             year=h.year,
@@ -640,14 +640,14 @@ async def _build_response(
         )
         for h in hlzf_result.scalars().all()
     ]
-    
+
     has_data = len(netzentgelte) > 0 or len(hlzf) > 0
-    
+
     # Build message for skeleton DNOs
     message = None
     if not has_data:
         message = f"DNO '{dno.name}' registered. No detailed data available yet. Request crawl via dashboard."
-    
+
     return PublicSearchResponse(
         found=True,
         has_data=has_data,

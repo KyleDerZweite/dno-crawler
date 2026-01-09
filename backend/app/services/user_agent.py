@@ -24,14 +24,14 @@ def build_user_agent(initiator_ip: str | None = None) -> str:
         User-Agent string suitable for crawling requests
     """
     settings = get_settings()
-    
+
     if settings.has_contact_email:
         contact = f"contact: {settings.contact_email}"
     elif initiator_ip:
         contact = f"initiated-by: {initiator_ip}"
     else:
         contact = "see repository"
-    
+
     return (
         f"DNO-Data-Crawler/1.0 "
         f"(Netzentgelte/HLZF Research; {contact}; "
@@ -56,11 +56,11 @@ def require_contact_for_bfs(initiator_ip: str | None = None) -> str:
         ValueError: If in production mode and no CONTACT_EMAIL is configured
     """
     settings = get_settings()
-    
+
     # If email is configured, always use it
     if settings.has_contact_email:
         return build_user_agent(initiator_ip)
-    
+
     # In production (Zitadel enabled), require email
     if settings.is_auth_enabled:
         raise ValueError(
@@ -68,6 +68,6 @@ def require_contact_for_bfs(initiator_ip: str | None = None) -> str:
             "Set CONTACT_EMAIL in your .env file to a valid email address. "
             "This protects you by ensuring site administrators can reach you if needed."
         )
-    
+
     # In dev mode (mock auth), allow IP fallback
     return build_user_agent(initiator_ip)

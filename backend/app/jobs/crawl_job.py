@@ -34,7 +34,7 @@ def get_crawl_steps():
         from app.jobs.steps.step_00_gather_context import GatherContextStep
         from app.jobs.steps.step_01_discover import DiscoverStep
         from app.jobs.steps.step_03_download import DownloadStep
-        
+
         CRAWL_STEPS = [
             GatherContextStep(),
             DiscoverStep(),
@@ -61,46 +61,46 @@ async def process_crawl(
     """
     log = logger.bind(job_id=job_id, job_type="crawl")
     log.info("🚀 Crawl job received, starting execution")
-    
+
     async with get_db_session() as db:
         result = await db.execute(
             select(CrawlJobModel).where(CrawlJobModel.id == job_id)
         )
         job = result.scalar_one_or_none()
-        
+
         if not job:
             log.error("Job not found", job_id=job_id)
             return {"status": "error", "message": "Job not found"}
-        
+
         # Mark job as running
         job.status = "running"
         job.started_at = datetime.utcnow()
         await db.commit()
-        
+
         steps = get_crawl_steps()
         total_steps = len(steps)
-        
+
         try:
             for i, step in enumerate(steps, 1):
                 await step.execute(db, job, i, total_steps)
-            
+
             # Crawl steps completed successfully
             job.status = "completed"
             job.progress = 100
             job.current_step = "Crawl Completed - Queuing Extract"
             job.completed_at = datetime.utcnow()
             await db.commit()
-            
+
             # Now enqueue the extract job
             extract_job_id = await _enqueue_extract_job(db, job, log)
-            
+
             if extract_job_id:
                 # Update this job with the child reference
                 job.child_job_id = extract_job_id
                 job.current_step = f"Completed - Extract job #{extract_job_id} queued"
                 await db.commit()
-                
-                log.info("✅ Crawl job completed, extract job enqueued", 
+
+                log.info("✅ Crawl job completed, extract job enqueued",
                         extract_job_id=extract_job_id)
                 return {
                     "status": "completed",
@@ -113,7 +113,7 @@ async def process_crawl(
                     "status": "completed",
                     "message": "Crawl completed (no extract needed or failed to queue)",
                 }
-                
+
         except Exception as e:
             log.error("❌ Crawl job failed", error=str(e))
             # Step base class handles job status update on failure
@@ -128,16 +128,17 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
     """
     from arq import create_pool
     from arq.connections import RedisSettings
+
     from app.core.config import settings
-    
+
     ctx = parent_job.context or {}
-    
+
     # Check if we have a file to extract
     downloaded_file = ctx.get("downloaded_file") or ctx.get("file_to_process")
     if not downloaded_file:
         log.info("No file to extract, skipping extract job")
         return None
-    
+
     # Create the extract job record
     extract_job = CrawlJobModel(
         dno_id=parent_job.dno_id,
@@ -154,9 +155,9 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
     db.add(extract_job)
     await db.commit()
     await db.refresh(extract_job)
-    
+
     log.info("Created extract job", extract_job_id=extract_job.id)
-    
+
     # Enqueue to the extract queue
     try:
         redis_pool = await create_pool(
@@ -169,15 +170,15 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
             _queue_name="extract",  # Different queue for extract jobs
         )
         await redis_pool.close()
-        
+
         log.info("Extract job enqueued to Redis", extract_job_id=extract_job.id)
         return extract_job.id
-        
+
     except Exception as e:
-        log.error("Failed to enqueue extract job", 
+        log.error("Failed to enqueue extract job",
                  extract_job_id=extract_job.id, error=str(e))
         # Mark the extract job as failed since we couldn't queue it
         extract_job.status = "failed"
-        extract_job.error_message = f"Failed to enqueue: {str(e)}"
+        extract_job.error_message = f"Failed to enqueue: {e!s}"
         await db.commit()
         return None

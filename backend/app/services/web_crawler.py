@@ -11,8 +11,8 @@ Features:
 - JS/SPA detection fallback
 """
 
-import random
 import asyncio
+import random
 import re
 from dataclasses import dataclass, field
 from heapq import heappop, heappush
@@ -70,7 +70,7 @@ class QueueItem:
 # Keywords indicating relevant pages for each data type
 KEYWORDS = {
     "netzentgelte": [
-        "netzentgelte", "preisblatt", "preisblaetter", "netzzugang", 
+        "netzentgelte", "preisblatt", "preisblaetter", "netzzugang",
         "netznutzung", "entgelt", "tarif", "veroeffentlichung",
         "strom", "netznutzungsentgelte", "arbeitspreis", "leistungspreis",
     ],
@@ -132,7 +132,7 @@ class WebCrawler:
     Crawls websites breadth-first, prioritizing URLs likely to contain
     target data based on keyword matching and learned patterns.
     """
-    
+
     def __init__(
         self,
         client: httpx.AsyncClient,
@@ -158,11 +158,11 @@ class WebCrawler:
         self.max_pages = max_pages
         self.request_delay = request_delay
         self.timeout = timeout
-        
+
         self.prober = UrlProber(client)
         self.robots = RobotsChecker(client)
         self.log = logger.bind(component="WebCrawler")
-    
+
     async def crawl(
         self,
         start_url: str,
@@ -188,36 +188,36 @@ class WebCrawler:
         if not domain:
             self.log.error("Invalid start URL", url=start_url)
             return []
-        
+
         allowed_domains = {domain, f"www.{domain}"}
-        
+
         # Initialize state
         visited: set[str] = set()
         results: list[CrawlResult] = []
         queue: list[QueueItem] = []
         pages_crawled = 0
-        
+
         # Expand and queue priority paths first (if provided)
         if priority_paths and target_year:
             parsed_start = urlparse(start_url)
             base_url = f"{parsed_start.scheme}://{parsed_start.netloc}"
-            
+
             for pattern in priority_paths:
                 expanded = pattern.replace("{year}", str(target_year))
                 priority_url = urljoin(base_url, expanded)
                 normalized = normalize_url(priority_url)
-                
+
                 if normalized not in visited:
                     # High priority (negative score means processed first)
                     heappush(queue, QueueItem(-100.0, normalized, 0))
                     visited.add(normalized)
-        
+
         # Add start URL
         start_normalized = normalize_url(start_url)
         if start_normalized not in visited:
             heappush(queue, QueueItem(0.0, start_normalized, 0))
             visited.add(start_normalized)
-        
+
         self.log.info(
             "Starting BFS crawl",
             start_url=start_url,
@@ -225,43 +225,43 @@ class WebCrawler:
             max_pages=self.max_pages,
             priority_paths=len(priority_paths or []),
         )
-        
+
         while queue and pages_crawled < self.max_pages:
             item = heappop(queue)
             url = item.url
             depth = item.depth
-            
+
             # Skip if too deep
             if depth > self.max_depth:
                 continue
-            
+
             # Check robots.txt
             if not await self.robots.can_fetch(url):
                 self.log.debug("Blocked by robots.txt", url=url[:60])
                 continue
-            
+
             # Politeness delay
             if pages_crawled > 0:
                 # Jitter should be proportional, not absolute
                 jitter = random.uniform(0.5, 1.5)  # 50% to 150% of base delay
                 delay = max(0.5, self.request_delay * jitter)
                 await asyncio.sleep(delay)
-            
+
             # Probe URL with HEAD first
             is_valid, content_type, final_url, content_length = await self.prober.probe(
-                url, 
+                url,
                 allowed_domains=allowed_domains,
                 head_only=True,
             )
-            
+
             if not is_valid or not final_url:
                 continue
-            
+
             pages_crawled += 1
-            
+
             # Check if it's a document (PDF, etc) - no need to parse HTML
             is_document = self._is_document(final_url, content_type)
-            
+
             if is_document:
                 score = self._score_url(final_url, depth, target_keywords, data_type)
                 result = CrawlResult(
@@ -282,7 +282,7 @@ class WebCrawler:
                     content_type=content_type,
                 )
                 continue
-            
+
             # It's HTML - fetch and parse for links
             try:
                 response = await self.client.get(
@@ -290,25 +290,25 @@ class WebCrawler:
                     timeout=self.timeout,
                     follow_redirects=True,
                 )
-                
+
                 if response.status_code != 200:
                     continue
-                
+
                 content = response.text
                 content_length = len(content)
-                
+
                 # Check for possible SPA (suspiciously small content)
                 needs_headless = content_length < 1024 and "text/html" in (content_type or "")
-                
+
                 # Parse HTML
                 soup = BeautifulSoup(content, "lxml")
                 title = soup.title.string.strip() if soup.title and soup.title.string else None
-                
+
                 # Score this page
                 score = self._score_url(final_url, depth, target_keywords, data_type)
                 text_content = soup.get_text()
                 text_keywords = self._find_keywords_in_text(text_content, target_keywords)
-                
+
                 result = CrawlResult(
                     url=url,
                     final_url=final_url,
@@ -322,51 +322,51 @@ class WebCrawler:
                     needs_headless=needs_headless,
                 )
                 results.append(result)
-                
+
                 # Extract and queue links
                 links = self._extract_links(soup, final_url, allowed_domains)
-                
+
                 for link in links:
                     normalized_link = normalize_url(link)
                     if normalized_link not in visited:
                         visited.add(normalized_link)
                         link_score = self._score_url(normalized_link, depth + 1, target_keywords, data_type)
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
-                
+
             except httpx.RequestError as e:
                 self.log.debug("Failed to fetch page", url=final_url[:60], error=str(e))
             except Exception as e:
                 self.log.debug("Error processing page", url=final_url[:60], error=str(e))
-        
+
         # Sort results by score (highest first)
         results.sort(key=lambda r: r.score, reverse=True)
-        
+
         self.log.info(
             "BFS crawl complete",
             pages_crawled=pages_crawled,
             results_found=len(results),
             documents_found=sum(1 for r in results if r.is_document),
         )
-        
+
         return results
-    
+
     def _is_document(self, url: str, content_type: str | None) -> bool:
         """Check if URL points to a document file."""
         url_lower = url.lower()
-        
+
         # Check file extension
         for ext in DOCUMENT_EXTENSIONS:
             if url_lower.endswith(ext):
                 return True
-        
+
         # Check content type
         if content_type:
             ct = content_type.lower()
             if "pdf" in ct or "excel" in ct or "spreadsheet" in ct or "word" in ct:
                 return True
-        
+
         return False
-    
+
     def _is_token_url(self, url: str) -> bool:
         """Detect URLs that look like tokenized download links.
         
@@ -374,74 +374,75 @@ class WebCrawler:
         like /media_token/abc123 or /get_file/xyz without file extensions.
         """
         return bool(re.search(r'/(media_token|get_file|download_id|fileadmin)/[\w-]+$', url))
-    
+
     def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
         """Score URL based on relevance.
         
         Higher score = more likely to contain target data.
         """
-        from app.services.content_verifier import score_for_data_type
         from datetime import datetime
-        
+
+        from app.services.content_verifier import score_for_data_type
+
         score = 0.0
         url_lower = url.lower()
-        
+
         # Depth penalty (prefer shallower)
         score -= depth * 2
-        
+
         # Boost token URLs significantly - these are likely document downloads
         if self._is_token_url(url):
             score += 40
-        
+
         # Document type bonus
         if any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
             score += 20
             if url_lower.endswith(".pdf"):
                 score += 10  # PDFs are most common format
-        
+
         # Keyword bonuses
         for keyword in target_keywords:
             if keyword.lower() in url_lower:
                 score += 15
-        
+
         # Year in URL bonus (current/recent years)
         years = re.findall(r'/(\d{4})/', url_lower)
         for year in years:
             current_year = datetime.now().year
             if current_year - 6 <= int(year) <= current_year:
                 score += 10
-        
+
         # Irrelevant path penalty
         for pattern in IRRELEVANT_PATHS:
             if pattern in url_lower:
                 score -= 50
                 break
-        
+
         # Negative keyword penalty (filter out wrong document types)
         if data_type and data_type in NEGATIVE_KEYWORDS:
             for neg_kw, penalty in NEGATIVE_KEYWORDS[data_type]:
                 if neg_kw.lower() in url_lower:
                     score += penalty  # penalty is already negative
-        
+
         # Data-type-specific scoring
         if data_type:
             score += score_for_data_type(url, data_type)
-        
+
         return score
-    
+
     def _find_keywords_in_url(self, url: str, target_keywords: list[str]) -> list[str]:
         """Find which target keywords appear in URL."""
         url_lower = url.lower()
         return [kw for kw in target_keywords if kw.lower() in url_lower]
-    
+
     def _find_keywords_in_text(self, text: str, target_keywords: list[str]) -> list[str]:
         """Find which target keywords appear in text content."""
         text_lower = text.lower()
         return [kw for kw in target_keywords if kw.lower() in text_lower]
-    
+
     def _extract_links(
-        self, 
-        soup: BeautifulSoup, 
+        self,
+        soup: BeautifulSoup,
         base_url: str,
         allowed_domains: set[str],
     ) -> list[str]:
@@ -450,53 +451,53 @@ class WebCrawler:
         Filters out external links, skip patterns, and normalizes URLs.
         """
         links = []
-        
+
         for tag in soup.find_all("a", href=True):
             href = tag["href"]
-            
+
             # Skip empty, javascript, mailto, tel links
             if not href or href.startswith(("javascript:", "mailto:", "tel:", "#")):
                 continue
-            
+
             # Resolve relative URLs
             full_url = urljoin(base_url, href)
-            
+
             try:
                 parsed = urlparse(full_url)
-                
+
                 # Skip non-http(s)
                 if parsed.scheme not in ("http", "https"):
                     continue
-                
+
                 # Check domain
                 host = parsed.hostname
                 if not host:
                     continue
-                
+
                 host_lower = host.lower()
                 if host_lower.startswith("www."):
                     host_check = host_lower[4:]
                 else:
                     host_check = host_lower
-                
+
                 # Skip external domains
                 if not any(host_check == d or host_check.endswith(f".{d}") for d in allowed_domains):
                     continue
-                
+
                 # Skip known bad domains
                 if any(skip in host_lower for skip in SKIP_DOMAINS):
                     continue
-                
+
                 # Skip irrelevant paths
                 path_lower = parsed.path.lower()
                 if any(pattern in path_lower for pattern in IRRELEVANT_PATHS):
                     continue
-                
+
                 links.append(full_url)
-                
+
             except Exception:
                 continue
-        
+
         return links
 
 

@@ -28,12 +28,12 @@ CRAWL_JOB_STEPS = [
 ]
 
 __all__ = [
-    "GatherContextStep",
+    "CRAWL_JOB_STEPS",
     "DiscoverStep",
     "DownloadStep",
     "ExtractStep",
-    "ValidateStep",
     "FinalizeStep",
-    "CRAWL_JOB_STEPS",
+    "GatherContextStep",
+    "ValidateStep",
 ]
 

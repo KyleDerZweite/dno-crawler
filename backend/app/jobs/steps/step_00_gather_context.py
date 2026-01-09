@@ -35,7 +35,7 @@ class GatherContextStep(BaseStep):
         dno = await db.get(DNOModel, job.dno_id)
         if not dno:
             raise ValueError(f"DNO not found: {job.dno_id}")
-        
+
         # 2. Load source profile for this DNO + data_type (if exists)
         profile_query = select(DNOSourceProfile).where(
             DNOSourceProfile.dno_id == job.dno_id,
@@ -43,7 +43,7 @@ class GatherContextStep(BaseStep):
         )
         result = await db.execute(profile_query)
         profile = result.scalar_one_or_none()
-        
+
         # 3. Check for cached files
         cache_dir = Path(settings.downloads_path) / dno.slug
         cached_file = None
@@ -52,7 +52,7 @@ class GatherContextStep(BaseStep):
             pattern = f"{dno.slug}-{job.data_type}-{job.year}.*"
             cached_files = list(cache_dir.glob(pattern))
             cached_file = str(cached_files[0]) if cached_files else None
-        
+
         # 4. Build context with crawlability info
         job.context = {
             "dno_id": dno.id,
@@ -67,7 +67,7 @@ class GatherContextStep(BaseStep):
             "dno_crawlable": getattr(dno, 'crawlable', True),
             "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
         }
-        
+
         # Return summary based on what we found
         if cached_file:
             return f"Found cached file: {Path(cached_file).name}"

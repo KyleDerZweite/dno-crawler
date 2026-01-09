@@ -30,19 +30,19 @@ from app.services.discovery.base import (
     FileType,
 )
 from app.services.discovery.manager import DiscoveryManager
-from app.services.discovery.scorer import score_url, score_html_for_data, detect_file_type
+from app.services.discovery.scorer import detect_file_type, score_html_for_data, score_url
 from app.services.discovery.sitemap import discover_via_sitemap
 
 __all__ = [
     # Main manager
     "DiscoveryManager",
-    
+
     # Result types
     "DiscoveredDocument",
     "DiscoveryResult",
     "DiscoveryStrategy",
     "FileType",
-    
+
     # Utilities
     "score_url",
     "score_html_for_data",

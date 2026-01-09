@@ -15,7 +15,7 @@ that choose the best value from available sources.
 """
 
 from datetime import datetime
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     Boolean,
@@ -24,7 +24,6 @@ from sqlalchemy import (
     Index,
     Integer,
     String,
-    Text,
 )
 from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -87,7 +86,7 @@ class DNOMastrData(Base, TimestampMixin):
     # Address (structured)
     address_components: Mapped[dict | None] = mapped_column(JSON)
     # Structure: {street, house_number, zip_code, city, country}
-    
+
     contact_address: Mapped[str | None] = mapped_column(String(500))  # Formatted display string
     region: Mapped[str | None] = mapped_column(String(255))  # Bundesland
 
@@ -222,7 +221,7 @@ class DNOBdewData(Base, TimestampMixin):
 
     # Market function this code is for
     market_function: Mapped[str | None] = mapped_column(String(100))
-    # Values: Netzbetreiber, Lieferant, Messstellenbetreiber, 
+    # Values: Netzbetreiber, Lieferant, Messstellenbetreiber,
     #         Bilanzkreisverantwortlicher, Übertragungsnetzbetreiber, etc.
 
     # Contact (BDEW-specific)
@@ -249,6 +248,6 @@ class DNOBdewData(Base, TimestampMixin):
         """Check if this is a grid operator (VNB/ÜNB) code."""
         return self.market_function in (
             "Netzbetreiber",
-            "Verteilnetzbetreiber", 
+            "Verteilnetzbetreiber",
             "Übertragungsnetzbetreiber",
         )

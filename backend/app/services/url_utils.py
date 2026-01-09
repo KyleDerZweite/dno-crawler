@@ -77,37 +77,37 @@ def normalize_url(url: str) -> str:
     """
     try:
         parsed = urlparse(url)
-        
+
         # Lowercase hostname
         hostname = parsed.hostname.lower() if parsed.hostname else ""
-        
+
         # Rebuild netloc with lowercase hostname
         if parsed.port and parsed.port not in (80, 443):
             netloc = f"{hostname}:{parsed.port}"
         else:
             netloc = hostname
-        
+
         # Clean path - normalize double slashes
         path = re.sub(r'/+', '/', parsed.path)
         if not path:
             path = "/"
-        
+
         # DON'T add trailing slashes - many sites return 404 for them
         # Just preserve the original slash status (except for homepage)
         # This ensures deduplication still works
-        
+
         # Filter out tracking parameters
         if parsed.query:
             params = parse_qs(parsed.query, keep_blank_values=True)
             filtered = {
-                k: v for k, v in params.items() 
+                k: v for k, v in params.items()
                 if k.lower() not in STRIP_PARAMS and not k.lower().startswith("utm_")
             }
             # Sort for consistency
             query = urlencode(sorted(filtered.items()), doseq=True)
         else:
             query = ""
-        
+
         # Remove fragment (anchor)
         return urlunparse((
             parsed.scheme,
@@ -145,14 +145,14 @@ class RobotsChecker:
     
     Caches robots.txt per domain to avoid repeated fetches.
     """
-    
+
     USER_AGENT = "DNO-Data-Crawler/1.0"
-    
+
     def __init__(self, client: httpx.AsyncClient):
         self.client = client
         self._cache: dict[str, RobotFileParser] = {}
         self.log = logger.bind(component="RobotsChecker")
-    
+
     async def can_fetch(self, url: str) -> bool:
         """Check if URL can be fetched according to robots.txt.
         
@@ -165,21 +165,21 @@ class RobotsChecker:
         try:
             parsed = urlparse(url)
             domain = f"{parsed.scheme}://{parsed.netloc}"
-            
+
             # Get or fetch robots.txt
             if domain not in self._cache:
                 await self._fetch_robots(domain)
-            
+
             rp = self._cache.get(domain)
             if rp is None:
                 # No robots.txt or fetch failed - allow by default
                 return True
-            
+
             return rp.can_fetch(self.USER_AGENT, url)
         except Exception as e:
             self.log.debug("robots.txt check failed", url=url[:80], error=str(e))
             return True  # Allow on error
-    
+
     async def _fetch_robots(self, domain: str):
         """Fetch and parse robots.txt for domain."""
         robots_url = f"{domain}/robots.txt"
@@ -212,39 +212,39 @@ class UrlProber:
     - Handles relative redirects with urljoin
     - Async DNS resolution to avoid blocking
     """
-    
+
     MAX_REDIRECTS = 5
-    
+
     def __init__(self, client: httpx.AsyncClient):
         self.client = client
         self.log = logger.bind(component="UrlProber")
-    
+
     def is_safe_url(self, url: str) -> bool:
         """Validate URL structure (scheme, port, no userinfo)."""
         try:
             parsed = urlparse(url)
-            
+
             # Scheme check
             if parsed.scheme not in ("http", "https"):
                 return False
-            
+
             # No credentials in URL
             if parsed.username or parsed.password:
                 return False
-            
+
             # Must have host
             if not parsed.netloc or not parsed.hostname:
                 return False
-            
+
             # Port check
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
             if port not in ALLOWED_PORTS:
                 return False
-            
+
             return True
         except Exception:
             return False
-    
+
     def _is_allowed_domain(self, host: str, allowed_domains: set[str]) -> bool:
         """Check if host matches allowed domains (exact or subdomain)."""
         host = host.lower()
@@ -253,7 +253,7 @@ class UrlProber:
             if host == domain or host.endswith("." + domain):
                 return True
         return False
-    
+
     async def _resolves_to_safe_ip(self, host: str) -> bool:
         """Check if host resolves only to global (public) IPs.
         
@@ -264,7 +264,7 @@ class UrlProber:
                 ips = socket.getaddrinfo(host, None, socket.AF_UNSPEC)
                 if not ips:
                     return False
-                
+
                 for _, _, _, _, addr in ips:
                     try:
                         ip = ipaddress.ip_address(addr[0])
@@ -277,9 +277,9 @@ class UrlProber:
                 return False
             except Exception:
                 return False
-        
+
         return await asyncio.to_thread(_check)
-    
+
     async def probe(
         self,
         url: str,
@@ -304,31 +304,31 @@ class UrlProber:
         if not self.is_safe_url(url):
             self.log.debug("URL failed safety check", url=url[:80])
             return False, None, None, None
-        
+
         parsed = urlparse(url)
-        
+
         # Domain allowlist check (if provided)
         if allowed_domains and not self._is_allowed_domain(parsed.hostname, allowed_domains):
             self.log.debug("Domain not in allowlist", host=parsed.hostname)
             return False, None, None, None
-        
+
         # DNS safety check
         if not await self._resolves_to_safe_ip(parsed.hostname):
             self.log.warning("Blocked non-global IP", host=parsed.hostname)
             return False, None, None, None
-        
+
         try:
             current_url = url
             redirect_count = 0
-            
+
             while redirect_count < self.MAX_REDIRECTS:
                 # Try HEAD first (fast path)
                 response = await self.client.head(current_url, follow_redirects=False)
-                
+
                 # Some servers (cheap IIS setups) block HEAD with 404/405 but allow GET
                 # Fall back to streaming GET "peek" if HEAD fails
                 head_failed = response.status_code in (404, 405, 501)
-                
+
                 if head_failed:
                     self.log.debug(
                         "HEAD blocked, falling back to GET peek",
@@ -338,61 +338,61 @@ class UrlProber:
                     response = await self._peek_with_get(current_url)
                     if response is None:
                         return False, None, None, None
-                
+
                 # Handle redirects manually (SSRF protection)
                 if response.is_redirect:
                     redirect_count += 1
                     location = response.headers.get("location")
                     if not location:
                         return False, None, None, None
-                    
+
                     # Resolve relative redirects
                     next_url = urljoin(str(response.url), location)
-                    
+
                     # Validate redirect target
                     if not self.is_safe_url(next_url):
                         self.log.warning("Unsafe redirect blocked", location=next_url[:80])
                         return False, None, None, None
-                    
+
                     next_parsed = urlparse(next_url)
-                    
+
                     # Domain check on redirect
                     if allowed_domains and not self._is_allowed_domain(next_parsed.hostname, allowed_domains):
                         self.log.warning("Redirect to disallowed domain", host=next_parsed.hostname)
                         return False, None, None, None
-                    
+
                     # DNS check on redirect (rebinding protection)
                     if not await self._resolves_to_safe_ip(next_parsed.hostname):
                         self.log.warning("Redirect to non-global IP blocked", host=next_parsed.hostname)
                         return False, None, None, None
-                    
+
                     current_url = next_url
                     continue
-                
+
                 # Check final status
                 if response.status_code not in (200, 206):
                     return False, None, None, None
-                
+
                 # Extract content info
                 content_type = response.headers.get("content-type", "")
                 content_type = content_type.split(";")[0].strip().lower()
                 content_length = response.headers.get("content-length")
                 content_length = int(content_length) if content_length else None
-                
+
                 if content_type not in ALLOWED_CONTENT_TYPES:
                     # Allow files by extension even if content-type is wrong
                     url_lower = current_url.lower()
                     if not any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
-                        self.log.debug("Content type not allowed", 
+                        self.log.debug("Content type not allowed",
                                       content_type=content_type, url=current_url[:80])
                         return False, None, None, None
-                
+
                 return True, content_type, current_url, content_length
-            
+
             # Too many redirects
             self.log.warning("Too many redirects", url=url[:80])
             return False, None, None, None
-            
+
         except httpx.TimeoutException:
             self.log.debug("Probe timeout", url=url[:80])
             return False, None, None, None
@@ -402,7 +402,7 @@ class UrlProber:
         except Exception as e:
             self.log.debug("Probe failed", url=url[:80], error=str(e))
             return False, None, None, None
-    
+
     async def _peek_with_get(self, url: str) -> httpx.Response | None:
         """Fallback probe using streaming GET when HEAD is blocked.
         
@@ -429,7 +429,7 @@ class UrlProber:
                     await response.aread()  # Read a tiny bit to finalize headers
                 except Exception:
                     pass  # Ignore read errors, we have the headers
-                
+
                 # Return a "snapshot" of the response info we need
                 # We can't return the streaming response directly since context exits
                 return _PeekResponse(
@@ -454,7 +454,7 @@ class _PeekResponse:
     
     Mimics the httpx.Response interface for the fields we need.
     """
-    
+
     def __init__(
         self,
         status_code: int,

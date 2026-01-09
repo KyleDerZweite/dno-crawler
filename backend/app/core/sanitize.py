@@ -4,8 +4,8 @@ Content sanitization utilities for import data.
 Provides protection against injection attacks in imported JSON data.
 """
 
-import re
 import html
+import re
 from typing import Any
 
 import structlog
@@ -34,13 +34,13 @@ DANGEROUS_PATTERNS = [
 
 # Compiled regex for performance
 DANGEROUS_REGEX = re.compile(
-    "|".join(DANGEROUS_PATTERNS), 
+    "|".join(DANGEROUS_PATTERNS),
     re.IGNORECASE
 )
 
 
 def sanitize_string(
-    value: str, 
+    value: str,
     field_name: str = "field",
     max_length: int = 1000,
     allow_html_entities: bool = False,
@@ -62,19 +62,19 @@ def sanitize_string(
     """
     if not isinstance(value, str):
         raise SanitizationError(f"{field_name}: Expected string, got {type(value).__name__}")
-    
+
     # Check length
     if len(value) > max_length:
         raise SanitizationError(
             f"{field_name}: Exceeds maximum length of {max_length} characters"
         )
-    
+
     # Strip control characters (except newline, tab)
     cleaned = "".join(
-        char for char in value 
+        char for char in value
         if char >= " " or char in "\n\t"
     )
-    
+
     # Check for dangerous patterns
     if DANGEROUS_REGEX.search(cleaned):
         logger.warning(
@@ -85,13 +85,13 @@ def sanitize_string(
         raise SanitizationError(
             f"{field_name}: Contains potentially dangerous content"
         )
-    
+
     # Check for HTML entities if not allowed
     if not allow_html_entities and re.search(r"&#\d+;|&#x[0-9a-fA-F]+;", cleaned):
         raise SanitizationError(
             f"{field_name}: HTML entity encoding is not allowed"
         )
-    
+
     # HTML escape special characters
     return html.escape(cleaned)
 
@@ -107,14 +107,14 @@ def sanitize_time_string(value: str, field_name: str = "field") -> str:
     """
     if not value or value == "-":
         return value
-    
+
     # Strict pattern for time windows
     pattern = r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$"
     if not re.match(pattern, value):
         raise SanitizationError(
             f"{field_name}: Invalid time format. Expected 'HH:MM-HH:MM' or '-'"
         )
-    
+
     return value
 
 
@@ -137,17 +137,17 @@ def sanitize_dict(
         Sanitized dictionary (new copy)
     """
     result = dict(data)
-    
+
     # Sanitize specified string fields
     if string_fields:
         for field in string_fields:
             if field in result and result[field] is not None:
                 result[field] = sanitize_string(
-                    result[field], 
+                    result[field],
                     field_name=field,
                     max_length=max_string_length,
                 )
-    
+
     # Sanitize specified time fields
     if time_fields:
         for field in time_fields:
@@ -156,5 +156,5 @@ def sanitize_dict(
                     result[field],
                     field_name=field,
                 )
-    
+
     return result

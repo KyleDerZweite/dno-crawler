@@ -6,12 +6,12 @@ from pathlib import Path
 backend_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 sys.path.append(backend_path)
 
-from app.services.extraction.ai_extractor import AIExtractor
 from app.core.config import settings
+from app.services.extraction.ai_extractor import AIExtractor
 
 # Mock settings just in case
 # ai_enabled is a property derived from these
-settings.ai_api_key = "dummy" 
+settings.ai_api_key = "dummy"
 settings.ai_api_url = "https://dummy.com"
 settings.ai_model = "dummy"
 
@@ -24,29 +24,29 @@ def test_pdf_optimization():
         return
 
     extractor = AIExtractor()
-    
+
     # Path locally
     base_dir = Path(os.path.abspath(os.path.join(backend_path, "../data/downloads/netze-bw-gmbh")))
     files = [
         ("netze-bw-gmbh-hlzf-2024.pdf", "context: HLZF Hochlastzeitfenster"),
         ("netze-bw-gmbh-netzentgelte-2024.pdf", "context: Netzentgelte Strom Netzwerk"),
     ]
-    
+
     print(f"Testing PDF optimization on {base_dir}...\n")
-    
+
     for filename, prompt in files:
         file_path = base_dir / filename
         if not file_path.exists():
             print(f"Skipping {filename} (not found)")
             continue
-            
+
         print(f"--- Processing {filename} ---")
         print(f"Original size: {file_path.stat().st_size / 1024:.2f} KB")
-        
+
         # Run optimization
         subset_bytes, was_optimized = extractor._preprocess_pdf(file_path, prompt)
         print(f"Was optimized: {was_optimized}")
-        
+
         # Analyze results
         try:
             doc_orig = fitz.open(file_path)
@@ -63,7 +63,7 @@ def test_pdf_optimization():
         output_path = base_dir / output_filename
         with open(output_path, "wb") as f:
             f.write(subset_bytes)
-            
+
         print(f"Subset size:   {len(subset_bytes) / 1024:.2f} KB")
         print(f"Saved to:      {output_path}")
         print("-" * 40 + "\n")

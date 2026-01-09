@@ -7,7 +7,7 @@ Provides endpoints for:
 - Removing flags (Maintainer/Admin only)
 """
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -75,33 +75,33 @@ async def verify_netzentgelte(
         select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Netzentgelte record {record_id} not found"
         )
-    
+
     # Update verification status
     record.verification_status = VerificationStatus.VERIFIED.value
     record.verified_by = user.id
-    record.verified_at = datetime.now(timezone.utc)
+    record.verified_at = datetime.now(UTC)
     record.verification_notes = request.notes if request else None
-    
+
     # Clear any existing flags when verifying
     record.flagged_by = None
     record.flagged_at = None
     record.flag_reason = None
-    
+
     await db.commit()
-    
+
     logger.info(
         "Netzentgelte record verified",
         record_id=record_id,
         user_id=user.id,
         user_email=user.email,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,
@@ -132,21 +132,21 @@ async def flag_netzentgelte(
         select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Netzentgelte record {record_id} not found"
         )
-    
+
     # Update status to flagged
     record.verification_status = VerificationStatus.FLAGGED.value
     record.flagged_by = user.id
-    record.flagged_at = datetime.now(timezone.utc)
+    record.flagged_at = datetime.now(UTC)
     record.flag_reason = request.reason
-    
+
     await db.commit()
-    
+
     logger.info(
         "Netzentgelte record flagged",
         record_id=record_id,
@@ -154,7 +154,7 @@ async def flag_netzentgelte(
         user_email=user.email,
         reason=request.reason,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,
@@ -184,34 +184,34 @@ async def unflag_netzentgelte(
         select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"Netzentgelte record {record_id} not found"
         )
-    
+
     if record.verification_status != VerificationStatus.FLAGGED.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Record is not flagged"
         )
-    
+
     # Reset to unverified status
     record.verification_status = VerificationStatus.UNVERIFIED.value
     record.flagged_by = None
     record.flagged_at = None
     record.flag_reason = None
-    
+
     await db.commit()
-    
+
     logger.info(
         "Netzentgelte record unflagged",
         record_id=record_id,
         user_id=user.id,
         user_email=user.email,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,
@@ -247,32 +247,32 @@ async def verify_hlzf(
         select(HLZFModel).where(HLZFModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"HLZF record {record_id} not found"
         )
-    
+
     # Update verification status
     record.verification_status = VerificationStatus.VERIFIED.value
     record.verified_by = user.id
-    record.verified_at = datetime.now(timezone.utc)
-    
+    record.verified_at = datetime.now(UTC)
+
     # Clear any existing flags when verifying
     record.flagged_by = None
     record.flagged_at = None
     record.flag_reason = None
-    
+
     await db.commit()
-    
+
     logger.info(
         "HLZF record verified",
         record_id=record_id,
         user_id=user.id,
         user_email=user.email,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,
@@ -303,21 +303,21 @@ async def flag_hlzf(
         select(HLZFModel).where(HLZFModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"HLZF record {record_id} not found"
         )
-    
+
     # Update status to flagged
     record.verification_status = VerificationStatus.FLAGGED.value
     record.flagged_by = user.id
-    record.flagged_at = datetime.now(timezone.utc)
+    record.flagged_at = datetime.now(UTC)
     record.flag_reason = request.reason
-    
+
     await db.commit()
-    
+
     logger.info(
         "HLZF record flagged",
         record_id=record_id,
@@ -325,7 +325,7 @@ async def flag_hlzf(
         user_email=user.email,
         reason=request.reason,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,
@@ -355,34 +355,34 @@ async def unflag_hlzf(
         select(HLZFModel).where(HLZFModel.id == record_id)
     )
     record = result.scalar_one_or_none()
-    
+
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail=f"HLZF record {record_id} not found"
         )
-    
+
     if record.verification_status != VerificationStatus.FLAGGED.value:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Record is not flagged"
         )
-    
+
     # Reset to unverified status
     record.verification_status = VerificationStatus.UNVERIFIED.value
     record.flagged_by = None
     record.flagged_at = None
     record.flag_reason = None
-    
+
     await db.commit()
-    
+
     logger.info(
         "HLZF record unflagged",
         record_id=record_id,
         user_id=user.id,
         user_email=user.email,
     )
-    
+
     return VerificationResponse(
         id=record.id,
         verification_status=record.verification_status,

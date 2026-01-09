@@ -55,17 +55,17 @@ async def fetch_sitemap(
         Sitemap XML content, or None if not found
     """
     log = logger.bind(component="SitemapFetcher")
-    
+
     parsed = urlparse(base_url)
     site_base = f"{parsed.scheme}://{parsed.netloc}"
-    
+
     sitemap_urls = []
-    
+
     # Step 1: Check robots.txt for Sitemap: directive
     try:
         robots_url = f"{site_base}/robots.txt"
         response = await client.get(robots_url, timeout=10.0, follow_redirects=True)
-        
+
         if response.status_code == 200:
             robots_content = response.text
             # Extract Sitemap: URLs
@@ -75,30 +75,30 @@ async def fetch_sitemap(
                     sitemap_url = line.split(":", 1)[1].strip()
                     sitemap_urls.append(sitemap_url)
                     log.info("Found sitemap in robots.txt", url=sitemap_url)
-                    
+
     except Exception as e:
         log.debug("Failed to fetch robots.txt", error=str(e))
-    
+
     # Step 2: Add common fallback paths
     for path in SITEMAP_PATHS:
         sitemap_urls.append(site_base + path)
-    
+
     # Step 3: Try each sitemap URL
     for url in sitemap_urls:
         try:
             response = await client.get(url, timeout=10.0, follow_redirects=True)
-            
+
             # Check if it's valid XML (not a Cloudflare challenge)
             if response.status_code == 200:
                 content = response.text
                 if content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<loc>" in content[:1000]:
                     log.info("Found sitemap", url=url)
                     return content
-                    
+
         except Exception as e:
             log.debug("Sitemap fetch failed", url=url[:60], error=str(e))
             continue
-    
+
     log.info("No sitemap found", base_url=base_url)
     return None
 
@@ -116,39 +116,39 @@ def parse_sitemap(xml_content: str) -> list[str]:
         List of URLs found
     """
     urls = []
-    
+
     try:
         # Handle namespace
         namespaces = {
             "sm": "http://www.sitemaps.org/schemas/sitemap/0.9"
         }
-        
+
         root = ElementTree.fromstring(xml_content)
-        
+
         # Check for sitemap index (contains other sitemaps)
         sitemap_refs = root.findall(".//sm:sitemap/sm:loc", namespaces)
         if sitemap_refs:
             # This is an index - would need to fetch referenced sitemaps
             # For now, just log and continue
             pass
-        
+
         # Extract URLs from urlset
         for url_elem in root.findall(".//sm:url", namespaces):
             loc = url_elem.find("sm:loc", namespaces)
             if loc is not None and loc.text:
                 urls.append(loc.text)
-        
+
         # Also try without namespace (some sitemaps don't use it)
         if not urls:
             for loc in root.iter("loc"):
                 if loc.text:
                     urls.append(loc.text)
-                    
+
     except ElementTree.ParseError:
         # Try regex fallback for malformed XML
         pattern = r'<loc>([^<]+)</loc>'
         urls = re.findall(pattern, xml_content)
-    
+
     return urls
 
 
@@ -178,43 +178,43 @@ async def discover_via_sitemap(
         DiscoveryResult with scored candidates
     """
     log = logger.bind(component="SitemapDiscovery", base_url=base_url[:40])
-    
+
     result = DiscoveryResult(
         start_url=base_url,
         data_type=data_type,
         target_year=target_year,
         strategy=DiscoveryStrategy.SITEMAP,
     )
-    
+
     # Fetch sitemap if not provided
     if not sitemap_content:
         sitemap_content = await fetch_sitemap(client, base_url)
-    
+
     if not sitemap_content:
         log.info("No sitemap available")
         result.errors.append("No sitemap found")
         return result
-    
+
     # Parse URLs from sitemap
     urls = parse_sitemap(sitemap_content)
     result.sitemap_urls_checked = len(urls)
     log.info("Parsed sitemap", url_count=len(urls))
-    
+
     if not urls:
         result.errors.append("Sitemap empty or unparseable")
         return result
-    
+
     # Score each URL
     candidates = []
-    
+
     for url in urls:
         score, keywords, has_year = score_url(url, data_type, target_year)
         file_type = detect_file_type(url)
-        
+
         # Skip very low scores (unless it's a file)
         if score <= 0 and file_type == FileType.UNKNOWN:
             continue
-        
+
         candidates.append(DiscoveredDocument(
             url=url,
             score=score,
@@ -223,18 +223,18 @@ async def discover_via_sitemap(
             keywords_found=keywords,
             has_target_year=has_year,
         ))
-    
+
     # Sort by score
     candidates.sort(key=lambda d: d.score, reverse=True)
-    
+
     # Take top candidates
     result.documents = candidates[:max_candidates]
-    
+
     log.info(
         "Sitemap discovery complete",
         total_candidates=len(candidates),
         returned=len(result.documents),
         top_score=result.documents[0].score if result.documents else 0,
     )
-    
+
     return result

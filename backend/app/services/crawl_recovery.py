@@ -12,7 +12,7 @@ import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db.models import DNOModel, CrawlJobModel
+from app.db.models import CrawlJobModel, DNOModel
 
 logger = structlog.get_logger()
 
@@ -35,10 +35,10 @@ async def recover_stuck_crawl_jobs(
     """
     log = logger.bind(timeout_hours=timeout_hours)
     log.info("Checking for stuck crawl jobs")
-    
+
     timeout_threshold = datetime.utcnow() - timedelta(hours=timeout_hours)
     recovered_count = 0
-    
+
     # 1. Recover stuck DNO statuses
     result = await db.execute(
         select(DNOModel).where(
@@ -47,7 +47,7 @@ async def recover_stuck_crawl_jobs(
         )
     )
     stuck_dnos = result.scalars().all()
-    
+
     for dno in stuck_dnos:
         dno.status = "failed"
         dno.crawl_locked_at = None
@@ -57,7 +57,7 @@ async def recover_stuck_crawl_jobs(
             dno_name=dno.name,
         )
         recovered_count += 1
-    
+
     # 2. Recover stuck CrawlJobModel entries
     job_result = await db.execute(
         select(CrawlJobModel).where(
@@ -66,7 +66,7 @@ async def recover_stuck_crawl_jobs(
         )
     )
     stuck_jobs = job_result.scalars().all()
-    
+
     for job in stuck_jobs:
         job.status = "failed"
         job.error_message = "Timed out - recovered on startup"
@@ -77,12 +77,12 @@ async def recover_stuck_crawl_jobs(
             status_was=job.status,
         )
         recovered_count += 1
-    
+
     if recovered_count > 0:
         await db.commit()
         log.info("Recovered stuck crawl jobs", count=recovered_count)
     else:
         log.debug("No stuck crawl jobs found")
-    
+
     return recovered_count
 

@@ -12,7 +12,6 @@ import asyncio
 
 from app.services.vnb_digital import VNBDigitalClient
 
-
 # =============================================================================
 # Test Cases
 # =============================================================================
@@ -26,7 +25,7 @@ TEST_DNOS = [
     {
         "vnb_id": "7332",
         "expected_name": "Westnetz",
-        "expected_homepage": "https://www.westnetz.de/",  
+        "expected_homepage": "https://www.westnetz.de/",
     },
 ]
 
@@ -40,40 +39,40 @@ async def test_get_vnb_details():
     print("\n" + "=" * 60)
     print("🔍 GET VNB DETAILS TEST")
     print("=" * 60)
-    
+
     client = VNBDigitalClient(request_delay=1.0)
     passed = 0
-    
+
     for test in TEST_DNOS:
         vnb_id = test["vnb_id"]
         print(f"\n📍 Testing VNB ID: {vnb_id}")
-        
+
         details = await client.get_vnb_details(vnb_id)
-        
+
         if details is None:
-            print(f"   ❌ FAILED: Could not fetch details")
+            print("   ❌ FAILED: Could not fetch details")
             continue
-        
+
         print(f"   Name: {details.name}")
         print(f"   Homepage: {details.homepage_url}")
         print(f"   Phone: {details.phone}")
         print(f"   Email: {details.email}")
         print(f"   Address: {details.address}")
-        
+
         # Validate
         name_ok = test["expected_name"].lower() in details.name.lower()
         homepage_ok = details.homepage_url and test["expected_homepage"].rstrip("/") in details.homepage_url.rstrip("/")
-        
+
         if name_ok and homepage_ok:
-            print(f"   ✅ PASSED")
+            print("   ✅ PASSED")
             passed += 1
         else:
-            print(f"   ❌ FAILED validation")
+            print("   ❌ FAILED validation")
             if not name_ok:
                 print(f"      Expected name containing: {test['expected_name']}")
             if not homepage_ok:
                 print(f"      Expected homepage: {test['expected_homepage']}")
-    
+
     print(f"\n   Result: {passed}/{len(TEST_DNOS)} passed")
     return passed == len(TEST_DNOS)
 
@@ -83,12 +82,12 @@ async def test_full_flow():
     print("\n" + "=" * 60)
     print("🔗 FULL FLOW TEST: Address → VNB → Details → Homepage")
     print("=" * 60)
-    
+
     client = VNBDigitalClient(request_delay=1.0)
-    
+
     test_address = "Parkgürtel 24, 50823 Köln"
     print(f"\n📍 Test Address: {test_address}")
-    
+
     # Step 1: Get location from address
     location = await client.search_address(test_address)
     if not location:
@@ -96,26 +95,26 @@ async def test_full_flow():
         return False
     print(f"   ✅ Location: {location.title}")
     print(f"   📍 Coordinates: {location.coordinates}")
-    
+
     # Step 2: Get VNB from coordinates
     vnbs = await client.lookup_by_coordinates(location.coordinates)
     if not vnbs:
         print("   ❌ FAILED: No VNBs found")
         return False
-    
+
     vnb = vnbs[0]
     print(f"   ✅ VNB Found: {vnb.name} (ID: {vnb.vnb_id})")
-    
+
     # Step 3: Get extended details
     details = await client.get_vnb_details(vnb.vnb_id)
     if not details:
         print("   ❌ FAILED: Could not fetch VNB details")
         return False
-    
+
     print(f"   ✅ Homepage: {details.homepage_url}")
     print(f"   ✅ Phone: {details.phone}")
     print(f"   ✅ Email: {details.email}")
-    
+
     # Verify we got a usable homepage for BFS crawling
     if details.homepage_url and details.homepage_url.startswith("http"):
         print("\n   🎉 SUCCESS: Got homepage URL for BFS crawl seed!")
@@ -133,25 +132,25 @@ async def main():
     print("=" * 60)
     print("🏢 VNB DIGITAL CLIENT TEST (Async-Only)")
     print("=" * 60)
-    
+
     results = {}
-    
+
     # Run tests
     results["get_vnb_details"] = await test_get_vnb_details()
     results["full_flow"] = await test_full_flow()
-    
+
     # Summary
     print("\n" + "=" * 60)
     print("📊 TEST SUMMARY")
     print("=" * 60)
-    
+
     for test_name, passed in results.items():
         status = "✅ PASS" if passed else "❌ FAIL"
         print(f"   {status}: {test_name}")
-    
+
     all_passed = all(results.values())
     print("\n" + ("✅ ALL TESTS PASSED" if all_passed else "❌ SOME TESTS FAILED"))
-    
+
     return 0 if all_passed else 1
 
 

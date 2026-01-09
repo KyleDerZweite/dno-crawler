@@ -8,7 +8,7 @@ from pathlib import Path
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
-from app.core.rate_limiter import get_rate_limiter, get_client_ip
+from app.core.rate_limiter import get_client_ip, get_rate_limiter
 
 router = APIRouter()
 
@@ -23,10 +23,10 @@ async def serve_download(filepath: str, request: Request) -> FileResponse:
         await rate_limiter.check_ip_limit(client_ip)
     except RuntimeError:
         pass  # Rate limiter not initialized (dev mode), allow request
-    
+
     storage_path = os.environ.get("STORAGE_PATH", "/data")
     file_path = Path(storage_path) / "downloads" / filepath
-    
+
     # Security check - ensure path is within downloads directory
     downloads_base = (Path(storage_path) / "downloads").resolve()
     try:
@@ -41,13 +41,13 @@ async def serve_download(filepath: str, request: Request) -> FileResponse:
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    
+
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
         )
-    
+
     return FileResponse(
         path=file_path,
         filename=file_path.name,

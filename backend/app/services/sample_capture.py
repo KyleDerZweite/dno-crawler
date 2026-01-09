@@ -20,7 +20,7 @@ logger = structlog.get_logger()
 
 class SampleCapture:
     """Captures extraction samples for offline learning and debugging."""
-    
+
     def __init__(self, base_dir: Path | None = None):
         """Initialize with base directory for samples.
         
@@ -32,7 +32,7 @@ class SampleCapture:
             base_dir = Path(__file__).parent.parent.parent.parent.parent / "data" / "samples"
         self.base_dir = base_dir
         self.log = logger.bind(component="SampleCapture")
-    
+
     async def capture(
         self,
         category: Literal["training", "debug"],
@@ -70,12 +70,12 @@ class SampleCapture:
         # Create directory structure
         sample_dir = self.base_dir / category / dno_slug
         sample_dir.mkdir(parents=True, exist_ok=True)
-        
+
         # Generate filename with timestamp
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"{year}_{data_type}_{timestamp}.json"
         sample_path = sample_dir / filename
-        
+
         # Build sample data
         sample = {
             "captured_at": datetime.utcnow().isoformat() + "Z",
@@ -98,13 +98,13 @@ class SampleCapture:
                 "fail_reason": ai_fail_reason,
             },
         }
-        
+
         # Write sample to file
         sample_path.write_text(
             json.dumps(sample, indent=2, ensure_ascii=False, default=str),
             encoding="utf-8",
         )
-        
+
         self.log.info(
             "sample_captured",
             category=category,
@@ -113,5 +113,5 @@ class SampleCapture:
             data_type=data_type,
             path=str(sample_path),
         )
-        
+
         return str(sample_path)

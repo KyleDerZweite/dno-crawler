@@ -17,11 +17,9 @@ Run:
 import asyncio
 import re
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 from bs4 import BeautifulSoup
-
 
 # =============================================================================
 # Data Classes
@@ -35,7 +33,7 @@ class ExtractedAddress:
     postal_code: str
     city: str
     raw_line: str  # Original line from Impressum
-    
+
     @property
     def full_address(self) -> str:
         return f"{self.street} {self.house_number}, {self.postal_code} {self.city}"
@@ -109,7 +107,7 @@ def normalize_street(street: str) -> str:
     return s
 
 
-def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedAddress]:
+def extract_address_from_html(html: str, vnb_street: str) -> ExtractedAddress | None:
     """
     Extract full address from Impressum HTML.
     
@@ -120,25 +118,25 @@ def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedA
     4. Validate the extraction
     """
     soup = BeautifulSoup(html, "html.parser")
-    
+
     # Remove script and style elements
     for element in soup(["script", "style", "nav", "header"]):
         element.decompose()
-    
+
     # Get text content, preserving line breaks
     text = soup.get_text(separator="\n")
     lines = [line.strip() for line in text.split("\n") if line.strip()]
-    
+
     # Normalize the VNB street for matching
     vnb_normalized = normalize_street(vnb_street)
-    
+
     # Strategy 1: Look for exact line containing the street
     street_line_idx = None
     for idx, line in enumerate(lines):
         if normalize_street(line).startswith(vnb_normalized[:10]):
             street_line_idx = idx
             break
-    
+
     if street_line_idx is None:
         # Strategy 2: Look for partial match anywhere
         for idx, line in enumerate(lines):
@@ -149,17 +147,17 @@ def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedA
                 if street_name in line.lower():
                     street_line_idx = idx
                     break
-    
+
     if street_line_idx is None:
         return None
-    
+
     # Look for postal code + city in nearby lines (within 3 lines)
     search_range = lines[max(0, street_line_idx-2):street_line_idx+4]
-    
+
     postal_code = None
     city = None
     raw_postal_line = None
-    
+
     for line in search_range:
         match = POSTAL_CITY_PATTERN.search(line)
         if match:
@@ -167,10 +165,10 @@ def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedA
             city = match.group(2).strip()
             raw_postal_line = line
             break
-    
+
     if not postal_code or not city:
         return None
-    
+
     # Extract street and house number from VNB address
     street_match = STREET_PATTERN.match(vnb_street)
     if street_match:
@@ -181,7 +179,7 @@ def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedA
         parts = vnb_street.rsplit(" ", 1)
         street = parts[0] if len(parts) > 1 else vnb_street
         house_number = parts[1] if len(parts) > 1 else ""
-    
+
     return ExtractedAddress(
         street=street,
         house_number=house_number,
@@ -191,7 +189,7 @@ def extract_address_from_html(html: str, vnb_street: str) -> Optional[ExtractedA
     )
 
 
-async def fetch_impressum(url: str) -> Optional[str]:
+async def fetch_impressum(url: str) -> str | None:
     """Fetch Impressum page HTML."""
     async with httpx.AsyncClient(
         follow_redirects=True,
@@ -219,56 +217,56 @@ async def test_impressum_extraction():
     print("\n" + "=" * 70)
     print("🔍 IMPRESSUM ADDRESS EXTRACTION TEST")
     print("=" * 70)
-    
+
     passed = 0
     failed = 0
     skipped = 0
-    
+
     for test in TEST_CASES:
         is_js = test.get("js_rendered", False)
         print(f"\n📍 Testing: {test['name']}" + (" [JS-rendered]" if is_js else ""))
         print(f"   URL: {test['impressum_url']}")
         print(f"   VNB Street: {test['vnb_street']}")
-        
+
         # Fetch Impressum
         html = await fetch_impressum(test["impressum_url"])
         if not html:
-            print(f"   ❌ FAILED: Could not fetch Impressum page")
+            print("   ❌ FAILED: Could not fetch Impressum page")
             failed += 1
             continue
-        
+
         print(f"   ✓ Fetched {len(html)} bytes")
-        
+
         # Extract address
         extracted = extract_address_from_html(html, test["vnb_street"])
-        
+
         if not extracted:
             if is_js:
-                print(f"   ⏭️ SKIPPED: JS-rendered page (expected)")
+                print("   ⏭️ SKIPPED: JS-rendered page (expected)")
                 skipped += 1
             else:
-                print(f"   ❌ FAILED: Could not extract address")
+                print("   ❌ FAILED: Could not extract address")
                 failed += 1
             continue
-        
+
         print(f"   📬 Extracted: {extracted.full_address}")
         print(f"   📄 Raw line: {extracted.raw_line}")
-        
+
         # Validate
         postal_ok = extracted.postal_code == test["expected_postal_code"]
         city_ok = extracted.city.lower().startswith(test["expected_city"].lower())
-        
+
         if postal_ok and city_ok:
-            print(f"   ✅ PASSED")
+            print("   ✅ PASSED")
             passed += 1
         else:
-            print(f"   ❌ FAILED validation")
+            print("   ❌ FAILED validation")
             if not postal_ok:
                 print(f"      Expected postal code: {test['expected_postal_code']}, got: {extracted.postal_code}")
             if not city_ok:
                 print(f"      Expected city: {test['expected_city']}, got: {extracted.city}")
             failed += 1
-    
+
     print("\n" + "-" * 70)
     print(f"   📊 Results: {passed} passed, {skipped} skipped (JS), {failed} failed")
     return failed == 0  # Success if no unexpected failures
@@ -279,7 +277,7 @@ async def test_edge_cases():
     print("\n" + "=" * 70)
     print("🧪 EDGE CASE TESTS")
     print("=" * 70)
-    
+
     # Test 1: Non-existent URL
     print("\n📍 Test: Non-existent Impressum URL")
     html = await fetch_impressum("https://example.com/impressum")
@@ -289,7 +287,7 @@ async def test_edge_cases():
     else:
         print("   ⚠️ Unexpected: Got response from example.com")
         edge_pass = True  # Not a failure, just unexpected
-    
+
     # Test 2: Street not found in page
     print("\n📍 Test: Street address not found in HTML")
     fake_html = "<html><body><p>No address here</p></body></html>"
@@ -299,7 +297,7 @@ async def test_edge_cases():
     else:
         print("   ❌ Should have returned None")
         edge_pass = False
-    
+
     # Test 3: Malformed postal code
     print("\n📍 Test: Valid street but no postal code")
     fake_html = "<html><body><p>Parkgürtel 24</p><p>Köln</p></body></html>"
@@ -309,7 +307,7 @@ async def test_edge_cases():
     else:
         print("   ❌ Should have returned None")
         edge_pass = False
-    
+
     return edge_pass
 
 
@@ -321,25 +319,25 @@ async def main():
     print("=" * 70)
     print("🏢 IMPRESSUM ADDRESS EXTRACTOR TEST")
     print("=" * 70)
-    
+
     results = {}
-    
+
     # Run tests
     results["impressum_extraction"] = await test_impressum_extraction()
     results["edge_cases"] = await test_edge_cases()
-    
+
     # Summary
     print("\n" + "=" * 70)
     print("📊 TEST SUMMARY")
     print("=" * 70)
-    
+
     for test_name, passed in results.items():
         status = "✅ PASS" if passed else "❌ FAIL"
         print(f"   {status}: {test_name}")
-    
+
     all_passed = all(results.values())
     print("\n" + ("✅ ALL TESTS PASSED" if all_passed else "❌ SOME TESTS FAILED"))
-    
+
     return 0 if all_passed else 1
 
 

@@ -4,6 +4,7 @@ Pydantic schemas for DNO API endpoints.
 
 from enum import Enum
 from typing import Literal
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -72,7 +73,8 @@ class UpdateHLZFRequest(BaseModel):
 MAX_IMPORT_RECORDS = 500
 
 # Use shared voltage levels from core constants
-from app.core.constants import VOLTAGE_LEVELS, VERIFICATION_STATUSES
+from app.core.constants import VERIFICATION_STATUSES, VOLTAGE_LEVELS
+
 VALID_VOLTAGE_LEVELS = list(VOLTAGE_LEVELS)
 
 

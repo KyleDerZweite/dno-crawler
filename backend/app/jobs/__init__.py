@@ -22,7 +22,7 @@ import structlog
 from arq.connections import RedisSettings
 
 from app.core.config import settings
-from app.db import close_db, init_db, get_db_session
+from app.db import close_db, get_db_session, init_db
 from app.db.seeder import seed_dnos
 
 logger = structlog.get_logger()
@@ -37,10 +37,10 @@ async def health_check_job(ctx) -> str:
 async def startup_with_seeding(ctx):
     """Initialize the worker context with database seeding (crawl worker only)."""
     from app.jobs.enrichment_job import queue_enrichment_jobs
-    
+
     logger.info("Starting up worker (with seeding)...")
     await init_db()
-    
+
     # Seed the database with DNO data
     logger.info("Running database seeder...")
     async with get_db_session() as db:
@@ -64,7 +64,7 @@ async def startup_with_seeding(ctx):
         except Exception as e:
             logger.error("Database seeding failed", error=str(e))
             # Don't fail startup on seeding errors
-    
+
     logger.info("Worker startup complete.")
 
 
@@ -84,9 +84,9 @@ async def shutdown(ctx):
 
 # Import job functions
 from app.jobs.crawl_job import process_crawl
+from app.jobs.enrichment_job import enrich_dno
 from app.jobs.extract_job import process_extract
 from app.jobs.search_job import process_dno_crawl  # Legacy full pipeline
-from app.jobs.enrichment_job import enrich_dno
 
 
 class CrawlWorkerSettings:
@@ -100,7 +100,7 @@ class CrawlWorkerSettings:
     
     IMPORTANT: Only run ONE crawl worker to ensure polite crawling!
     """
-    
+
     functions = [
         health_check_job,
         process_crawl,
@@ -111,7 +111,7 @@ class CrawlWorkerSettings:
     on_startup = startup_with_seeding
     on_shutdown = shutdown
     handle_signals = False
-    
+
     # CRITICAL: Only process one job at a time for polite crawling
     max_jobs = 1
 
@@ -127,7 +127,7 @@ class ExtractWorkerSettings:
     
     Can run multiple extract workers safely since no external HTTP requests.
     """
-    
+
     functions = [
         health_check_job,
         process_extract,
@@ -137,7 +137,7 @@ class ExtractWorkerSettings:
     on_startup = startup_simple
     on_shutdown = shutdown
     handle_signals = False
-    
+
     # Can process multiple jobs (no external requests)
     # Start with 1, can increase if needed
     max_jobs = 1
@@ -150,7 +150,7 @@ class WorkerSettings:
     For backwards compatibility. Runs all steps (0-6) in sequence.
     Use this if you want a single combined worker.
     """
-    
+
     functions = [
         health_check_job,
         process_dno_crawl,  # Full pipeline
@@ -160,10 +160,10 @@ class WorkerSettings:
     on_startup = startup_with_seeding
     on_shutdown = shutdown
     handle_signals = False
-    
+
     # Only process one job at a time
     max_jobs = 1
-    
+
     # CRITICAL: Only process one search job at a time.
     # This forces the queue to be strictly sequential.
     max_jobs = 1

@@ -15,7 +15,6 @@ import asyncio
 import time
 import urllib.parse
 from dataclasses import dataclass
-from typing import Optional
 
 import httpx
 import structlog
@@ -34,9 +33,9 @@ class VNBResult:
     vnb_id: str
     types: list[str]  # e.g., ["STROM", "GAS"]
     voltage_types: list[str]  # e.g., ["Niederspannung", "Mittelspannung"]
-    logo_url: Optional[str] = None
-    official_name: Optional[str] = None  # Full legal name (e.g., "Westnetz GmbH")
-    
+    logo_url: str | None = None
+    official_name: str | None = None  # Full legal name (e.g., "Westnetz GmbH")
+
     @property
     def is_electricity(self) -> bool:
         """Check if this VNB handles electricity."""
@@ -59,10 +58,10 @@ class DNODetails:
     """
     vnb_id: str
     name: str
-    homepage_url: Optional[str] = None
-    phone: Optional[str] = None
-    email: Optional[str] = None
-    address: Optional[str] = None
+    homepage_url: str | None = None
+    phone: str | None = None
+    email: str | None = None
+    address: str | None = None
 
 
 @dataclass
@@ -70,8 +69,8 @@ class VNBSearchResult:
     """Result from VNB name search for autocomplete."""
     vnb_id: str
     name: str
-    subtitle: Optional[str] = None  # Often contains official legal name (e.g., "GmbH")
-    logo_url: Optional[str] = None
+    subtitle: str | None = None  # Often contains official legal name (e.g., "GmbH")
+    logo_url: str | None = None
 
 
 # =============================================================================
@@ -171,9 +170,9 @@ class VNBDigitalClient:
     
     All methods are async for FastAPI compatibility.
     """
-    
+
     API_URL = "https://www.vnbdigital.de/gateway/graphql"
-    
+
     HEADERS = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "Content-Type": "application/json",
@@ -181,7 +180,7 @@ class VNBDigitalClient:
         "Origin": "https://www.vnbdigital.de",
         "Referer": "https://www.vnbdigital.de/",
     }
-    
+
     def __init__(
         self,
         request_delay: float = 1.0,
@@ -198,7 +197,7 @@ class VNBDigitalClient:
         self.timeout = timeout
         self._last_request_time: float = 0.0
         self.log = logger.bind(component="VNBDigitalClient")
-    
+
     async def _wait_for_rate_limit(self) -> None:
         """Wait to respect rate limiting."""
         elapsed = time.time() - self._last_request_time
@@ -207,8 +206,8 @@ class VNBDigitalClient:
             self.log.debug("Rate limiting", sleep_seconds=sleep_time)
             await asyncio.sleep(sleep_time)
         self._last_request_time = time.time()
-    
-    def _parse_coordinates_from_url(self, url: str) -> Optional[str]:
+
+    def _parse_coordinates_from_url(self, url: str) -> str | None:
         """Extract coordinates from URL query parameter."""
         try:
             parsed = urllib.parse.urlparse(url)
@@ -216,8 +215,8 @@ class VNBDigitalClient:
             return params.get("coordinates", [None])[0]
         except Exception:
             return None
-    
-    async def search_address(self, address: str) -> Optional[LocationResult]:
+
+    async def search_address(self, address: str) -> LocationResult | None:
         """
         Search for an address and return location with coordinates.
         
@@ -228,15 +227,15 @@ class VNBDigitalClient:
             LocationResult with coordinates, or None if not found
         """
         await self._wait_for_rate_limit()
-        
+
         log = self.log.bind(address=address[:50])
         log.info("Searching address")
-        
+
         payload = {
             "query": SEARCH_QUERY,
             "variables": {"searchTerm": address}
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -246,42 +245,42 @@ class VNBDigitalClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-            
+
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
                 return None
-            
+
             results = data.get("data", {}).get("vnb_search", [])
             if not results:
                 log.warning("No location found")
                 return None
-            
+
             location = results[0]
             coordinates = self._parse_coordinates_from_url(location.get("url", ""))
-            
+
             if not coordinates:
                 log.warning("Could not extract coordinates from URL")
                 return None
-            
+
             log.info("Found location", title=location["title"], coords=coordinates)
-            
+
             return LocationResult(
                 title=location["title"],
                 coordinates=coordinates,
                 url=location.get("url", ""),
             )
-            
+
         except httpx.TimeoutException:
             log.error("Request timeout")
             return None
         except Exception as e:
             log.error("Request failed", error=str(e))
             return None
-    
+
     async def lookup_by_coordinates(
         self,
         coordinates: str,
-        voltage_types: Optional[list[str]] = None,
+        voltage_types: list[str] | None = None,
     ) -> list[VNBResult]:
         """
         Look up VNBs for given coordinates.
@@ -294,13 +293,13 @@ class VNBDigitalClient:
             List of VNBResult objects
         """
         await self._wait_for_rate_limit()
-        
+
         if voltage_types is None:
             voltage_types = ["Niederspannung", "Mittelspannung"]
-        
+
         log = self.log.bind(coordinates=coordinates)
         log.info("Looking up VNBs by coordinates")
-        
+
         payload = {
             "query": COORDINATES_QUERY,
             "variables": {
@@ -313,7 +312,7 @@ class VNBDigitalClient:
                 "withCoordinates": True,
             }
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -323,17 +322,17 @@ class VNBDigitalClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-            
+
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
                 return []
-            
+
             vnbs_data = data.get("data", {}).get("vnb_coordinates", {}).get("vnbs", [])
-            
+
             if not vnbs_data:
                 log.warning("No VNBs found for coordinates")
                 return []
-            
+
             results = []
             for vnb in vnbs_data:
                 logo = vnb.get("logo", {})
@@ -345,22 +344,22 @@ class VNBDigitalClient:
                     logo_url=logo.get("url") if logo else None,
                 )
                 results.append(result)
-            
+
             log.info("Found VNBs", count=len(results))
             return results
-            
+
         except httpx.TimeoutException:
             log.error("Request timeout")
             return []
         except Exception as e:
             log.error("Request failed", error=str(e))
             return []
-    
+
     async def resolve_address_to_dno(
         self,
         address: str,
         prefer_electricity: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Full resolution: Address → Coordinates → DNO name.
         
@@ -374,32 +373,32 @@ class VNBDigitalClient:
             DNO name if found, None otherwise
         """
         log = self.log.bind(address=address[:50])
-        
+
         location = await self.search_address(address)
         if not location:
             log.warning("Could not resolve address to coordinates")
             return None
-        
+
         vnbs = await self.lookup_by_coordinates(location.coordinates)
         if not vnbs:
             log.warning("No VNBs found for coordinates")
             return None
-        
+
         if prefer_electricity:
             electricity_vnbs = [v for v in vnbs if v.is_electricity]
             if electricity_vnbs:
                 vnbs = electricity_vnbs
-        
+
         dno_name = vnbs[0].name
         log.info("Resolved DNO", dno_name=dno_name)
         return dno_name
-    
+
     async def resolve_coordinates_to_dno(
         self,
         latitude: float,
         longitude: float,
         prefer_electricity: bool = True,
-    ) -> Optional[str]:
+    ) -> str | None:
         """
         Direct coordinate-based DNO lookup.
         
@@ -413,22 +412,22 @@ class VNBDigitalClient:
         """
         coordinates = f"{latitude},{longitude}"
         log = self.log.bind(lat=latitude, lon=longitude)
-        
+
         vnbs = await self.lookup_by_coordinates(coordinates)
         if not vnbs:
             log.warning("No VNBs found for coordinates")
             return None
-        
+
         if prefer_electricity:
             electricity_vnbs = [v for v in vnbs if v.is_electricity]
             if electricity_vnbs:
                 vnbs = electricity_vnbs
-        
+
         dno_name = vnbs[0].name
         log.info("Resolved DNO from coordinates", dno_name=dno_name)
         return dno_name
-    
-    async def get_vnb_details(self, vnb_id: str) -> Optional[DNODetails]:
+
+    async def get_vnb_details(self, vnb_id: str) -> DNODetails | None:
         """
         Fetch extended DNO details via VNBdigital GraphQL API.
         
@@ -442,15 +441,15 @@ class VNBDigitalClient:
             DNODetails with homepage_url and contact info, or None on error
         """
         await self._wait_for_rate_limit()
-        
+
         log = self.log.bind(vnb_id=vnb_id)
         log.info("Fetching VNB details via GraphQL")
-        
+
         payload = {
             "query": VNB_DETAILS_QUERY,
             "variables": {"id": vnb_id}
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -460,16 +459,16 @@ class VNBDigitalClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-            
+
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
                 return None
-            
+
             vnb_data = data.get("data", {}).get("vnb_vnb")
             if not vnb_data:
                 log.warning("No VNB found for ID")
                 return None
-            
+
             log.info(
                 "Fetched VNB details",
                 name=vnb_data.get("name"),
@@ -477,7 +476,7 @@ class VNBDigitalClient:
                 has_phone=bool(vnb_data.get("phone")),
                 has_contact=bool(vnb_data.get("contact")),
             )
-            
+
             return DNODetails(
                 vnb_id=vnb_id,
                 name=vnb_data.get("name", f"VNB {vnb_id}"),
@@ -486,7 +485,7 @@ class VNBDigitalClient:
                 email=vnb_data.get("contact"),  # 'contact' field contains email
                 address=vnb_data.get("address"),
             )
-            
+
         except httpx.HTTPStatusError as e:
             log.error("HTTP error fetching VNB details", status=e.response.status_code)
             return None
@@ -496,7 +495,7 @@ class VNBDigitalClient:
         except Exception as e:
             log.error("Error fetching VNB details", error=str(e))
             return None
-    
+
     async def search_vnb(self, name: str) -> list[VNBSearchResult]:
         """
         Search for VNBs by name for autocomplete/validation.
@@ -511,15 +510,15 @@ class VNBDigitalClient:
             List of VNBSearchResult matching the query
         """
         await self._wait_for_rate_limit()
-        
+
         log = self.log.bind(search_term=name[:50])
         log.info("Searching VNBs by name")
-        
+
         payload = {
             "query": SEARCH_QUERY,
             "variables": {"searchTerm": name}
         }
-        
+
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
                 response = await client.post(
@@ -529,13 +528,13 @@ class VNBDigitalClient:
                 )
                 response.raise_for_status()
                 data = response.json()
-            
+
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
                 return []
-            
+
             results = data.get("data", {}).get("vnb_search", [])
-            
+
             # Filter to only VNB type results (exclude locations/addresses)
             vnb_results = []
             for item in results:
@@ -547,10 +546,10 @@ class VNBDigitalClient:
                         subtitle=item.get("subtitle"),
                         logo_url=logo.get("url") if logo else None,
                     ))
-            
+
             log.info("VNB search completed", total=len(results), vnbs=len(vnb_results))
             return vnb_results
-            
+
         except httpx.TimeoutException:
             log.error("Request timeout")
             return []

@@ -3,11 +3,10 @@ Core configuration and settings for DNO Crawler.
 """
 
 import json
-import os
 from functools import lru_cache
-from typing import Literal, Any
+from typing import Any, Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn, field_validator, ValidationInfo
+from pydantic import Field, PostgresDsn, RedisDsn, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -69,7 +68,7 @@ class Settings(BaseSettings):
 
     # Crawler Politeness
     contact_email: str = Field(default="", validation_alias="CONTACT_EMAIL")
-    
+
     @property
     def has_contact_email(self) -> bool:
         """Check if a valid contact email is configured."""
@@ -148,11 +147,11 @@ settings = get_settings()
 # Backwards compatibility alias for auth module
 class AuthSettings:
     """Auth settings wrapper for backwards compatibility."""
-    
+
     @property
     def issuer(self) -> str:
         return settings.zitadel_issuer
-    
+
     @property
     def jwks_url(self) -> str:
         return settings.zitadel_jwks_url

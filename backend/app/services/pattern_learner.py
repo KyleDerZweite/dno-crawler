@@ -25,19 +25,19 @@ logger = structlog.get_logger()
 
 class PatternLearner:
     """Learns year-normalized URL patterns across DNOs."""
-    
+
     # Regex to match 4-digit years in paths
     YEAR_PATTERN = re.compile(r'/(\d{4})/')
-    
+
     # Path segments that are too generic to learn
     IGNORE_SEGMENTS = {"/", ""}
-    
+
     def __init__(self):
         self.log = logger.bind(component="PatternLearner")
-    
+
     async def get_priority_paths(
-        self, 
-        db: AsyncSession, 
+        self,
+        db: AsyncSession,
         data_type: str,
         min_success_rate: float = 0.3,
         limit: int = 10,
@@ -59,25 +59,25 @@ class PatternLearner:
         ).order_by(
             desc(CrawlPathPatternModel.success_count)  # Most successful first
         ).limit(limit * 2)  # Get more than needed for filtering
-        
+
         result = await db.execute(query)
         patterns = result.scalars().all()
-        
+
         # Filter by success rate and return patterns
         filtered = [
-            p.path_pattern for p in patterns 
+            p.path_pattern for p in patterns
             if p.success_rate >= min_success_rate
         ]
-        
+
         self.log.debug(
             "Retrieved priority paths",
             data_type=data_type,
             total_patterns=len(patterns),
             filtered_count=len(filtered),
         )
-        
+
         return filtered[:limit]
-    
+
     def expand_pattern(self, pattern: str, year: int) -> str:
         """Expand {year} placeholder to actual year.
         
@@ -89,7 +89,7 @@ class PatternLearner:
             Pattern with year substituted
         """
         return pattern.replace("{year}", str(year))
-    
+
     def _extract_path_patterns(self, url: str) -> list[str]:
         """Extract generalizable path patterns from URL.
         
@@ -114,41 +114,41 @@ class PatternLearner:
         try:
             parsed = urlparse(url)
             path = parsed.path
-            
+
             # Remove filename if present
             if "." in path.split("/")[-1]:
                 path = "/".join(path.split("/")[:-1]) + "/"
-            
+
             # Normalize years to {year}
             normalized = self.YEAR_PATTERN.sub("/{year}/", path)
-            
+
             # Generate patterns from path segments
             patterns = set()
-            
+
             # Full normalized path
             if normalized and normalized not in self.IGNORE_SEGMENTS:
                 patterns.add(normalized)
-            
+
             # Individual segments
             segments = [s for s in path.split("/") if s and not self.YEAR_PATTERN.match(f"/{s}/")]
             for segment in segments:
                 pattern = f"/{segment}/"
                 if pattern not in self.IGNORE_SEGMENTS:
                     patterns.add(pattern)
-            
+
             # Partial paths (e.g., /downloads/{year}/, /veroeffentlichungen/netzentgelte/)
             parts = normalized.strip("/").split("/")
             for i in range(1, len(parts)):
                 partial = "/" + "/".join(parts[:i]) + "/"
                 if partial not in self.IGNORE_SEGMENTS:
                     patterns.add(partial)
-            
+
             return list(patterns)
-            
+
         except Exception as e:
             self.log.warning("Failed to extract patterns", url=url[:80], error=str(e))
             return []
-    
+
     async def record_success(
         self,
         db: AsyncSession,
@@ -169,7 +169,7 @@ class PatternLearner:
         """
         patterns = self._extract_path_patterns(url)
         updated_patterns = []
-        
+
         for pattern in patterns:
             # Try to find existing pattern
             query = select(CrawlPathPatternModel).where(
@@ -177,18 +177,18 @@ class PatternLearner:
             )
             result = await db.execute(query)
             existing = result.scalar_one_or_none()
-            
+
             if existing:
                 # Update existing pattern
                 existing.success_count += 1
                 existing.last_success_at = datetime.utcnow()
-                
+
                 # Add DNO to successful list
                 dno_list = existing.successful_dno_slugs or {"slugs": []}
                 if dno_slug not in dno_list.get("slugs", []):
                     dno_list["slugs"] = dno_list.get("slugs", []) + [dno_slug]
                     existing.successful_dno_slugs = dno_list
-                
+
                 # Update data_type to "both" if it worked for different types
                 if existing.data_type != "both" and existing.data_type != data_type:
                     existing.data_type = "both"
@@ -203,20 +203,20 @@ class PatternLearner:
                     successful_dno_slugs={"slugs": [dno_slug]},
                 )
                 db.add(new_pattern)
-            
+
             updated_patterns.append(pattern)
-        
+
         await db.flush()
-        
+
         self.log.info(
             "Recorded success patterns",
             url=url[:60],
             dno=dno_slug,
             patterns_count=len(updated_patterns),
         )
-        
+
         return updated_patterns
-    
+
     async def record_failure(
         self,
         db: AsyncSession,
@@ -233,7 +233,7 @@ class PatternLearner:
         )
         result = await db.execute(query)
         existing = result.scalar_one_or_none()
-        
+
         if existing:
             existing.fail_count += 1
             await db.flush()
@@ -260,7 +260,7 @@ async def seed_initial_patterns(db: AsyncSession):
         ("/hochlastzeitfenster/", "hlzf", 3),
         ("/hlzf/", "hlzf", 2),
     ]
-    
+
     for path_pattern, data_type, success_count in patterns:
         existing = await db.execute(
             select(CrawlPathPatternModel).where(
@@ -274,6 +274,6 @@ async def seed_initial_patterns(db: AsyncSession):
                 success_count=success_count,
                 fail_count=0,
             ))
-    
+
     await db.flush()
     logger.info("Seeded initial path patterns")

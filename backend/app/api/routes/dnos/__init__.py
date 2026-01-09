@@ -13,12 +13,11 @@ This package contains decomposed DNO management routes:
 
 from fastapi import APIRouter
 
-from .crud import router as crud_router
 from .crawl import router as crawl_router
+from .crud import router as crud_router
 from .data import router as data_router
 from .files import router as files_router
 from .import_export import router as import_export_router
-
 
 # Create main router that combines all sub-routers
 router = APIRouter()

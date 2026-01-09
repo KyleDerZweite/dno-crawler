@@ -90,7 +90,7 @@ def transform_row(row: dict) -> dict:
     # Extract and clean fields
     mastr_nr = row.get('MaStR-Nr.', '').strip()
     name = row.get('Name des Marktakteurs', '').strip()
-    
+
     # Address components
     street = row.get('Straße', '').strip()
     house_number = row.get('Hausnummer', '').strip()
@@ -98,7 +98,7 @@ def transform_row(row: dict) -> dict:
     city = row.get('Ort', '').strip()
     region = row.get('Bundesland', '').strip()
     country = row.get('Land', '').strip()
-    
+
     # Build address_components dict
     address_components = {}
     if street:
@@ -111,7 +111,7 @@ def transform_row(row: dict) -> dict:
         address_components['city'] = city
     if country:
         address_components['country'] = country
-    
+
     # Build formatted contact_address for display
     parts = []
     if street and house_number:
@@ -123,26 +123,26 @@ def transform_row(row: dict) -> dict:
     elif city:
         parts.append(city)
     contact_address = ", ".join(parts) if parts else None
-    
+
     # ACER code (can be empty)
     acer_code = row.get('ACER-Code', '').strip() or None
-    
+
     # Market roles
     marktrollen = parse_market_roles(row.get('Marktrollen', ''))
-    
+
     # Dates
     registration_date = parse_date(row.get('Registrierungsdatum', ''))
     last_updated = parse_date(row.get('Datum der letzten Aktualisierung', ''))
     activity_start = parse_date(row.get('Tätigkeitsbeginn', ''))
     activity_end = parse_date(row.get('Tätigkeitsende', ''))
-    
+
     # Boolean flags
     closed_network = parse_boolean(row.get('Geschlossenes Verteilernetz', 'Nein'))
-    
+
     # Activity status
     activity_status = row.get('Tätigkeitsstatus', '').strip()
     is_active = activity_status.lower() == 'aktiv'
-    
+
     return {
         'mastr_nr': mastr_nr,
         'name': name,
@@ -168,27 +168,27 @@ def transform_csv_to_json(input_path: Path, output_path: Path) -> int:
     Returns the number of records processed.
     """
     records = []
-    
+
     # Use utf-8-sig to handle BOM (Byte Order Mark)
-    with open(input_path, 'r', encoding='utf-8-sig') as f:
+    with open(input_path, encoding='utf-8-sig') as f:
         # CSV is semicolon-delimited
         reader = csv.DictReader(f, delimiter=';')
-        
+
         for row in reader:
             # Skip empty rows
             if not row.get('MaStR-Nr.', '').strip():
                 continue
-            
+
             record = transform_row(row)
             records.append(record)
-    
+
     # Sort by name for consistent output
     records.sort(key=lambda x: x['name'].lower())
-    
+
     # Write JSON output
     with open(output_path, 'w', encoding='utf-8') as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
-    
+
     return len(records)
 
 
@@ -208,18 +208,18 @@ def main():
         default=Path(__file__).parent.parent.parent / 'data' / 'seed-data' / 'dnos_seed.json',
         help='Output JSON file path'
     )
-    
+
     args = parser.parse_args()
-    
+
     if not args.input.exists():
         print(f"Error: Input file not found: {args.input}")
         return 1
-    
+
     print(f"Reading from: {args.input}")
     print(f"Writing to: {args.output}")
-    
+
     count = transform_csv_to_json(args.input, args.output)
-    
+
     print(f"Successfully transformed {count} records")
     return 0
 
