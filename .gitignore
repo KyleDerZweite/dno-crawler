@@ -128,8 +128,4 @@ Thumbs.db
 # Lock files
 *.lock
 
-# Ignore personal notes and ideas
-notes.txt
-ideas.txt
-
 # End of .gitignore
