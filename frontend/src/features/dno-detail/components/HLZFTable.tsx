@@ -39,7 +39,7 @@ function SelectableTime({ value }: { value: string }) {
         <span
             className="cursor-text hover:bg-primary/20 rounded px-0.5"
             onClick={handleClick}
-            onMouseDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => { e.stopPropagation(); }}
             style={{ userSelect: "text" }}
         >
             {value}
@@ -194,7 +194,7 @@ export function HLZFTable({
                                                 }
                                                 isOpen={openMenuId === `hlzf-${item.id}`}
                                                 onOpenChange={(isOpen) =>
-                                                    onMenuOpenChange(isOpen ? `hlzf-${item.id}` : null)
+                                                    { onMenuOpenChange(isOpen ? `hlzf-${item.id}` : null); }
                                                 }
                                                 className="bg-popover border rounded-md shadow-md py-1"
                                             >

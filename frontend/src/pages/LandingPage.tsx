@@ -111,7 +111,7 @@ export default function LandingPage() {
         setIsSearching(true);
 
         try {
-            let request: PublicSearchRequest = {};
+            const request: PublicSearchRequest = {};
 
             if (searchMode === "address") {
                 request.address = {
@@ -215,7 +215,7 @@ export default function LandingPage() {
                                 <Button
                                     variant={searchMode === "address" ? "default" : "ghost"}
                                     size="sm"
-                                    onClick={() => setSearchMode("address")}
+                                    onClick={() => { setSearchMode("address"); }}
                                     className="gap-2"
                                 >
                                     <MapPin className="w-4 h-4" />
@@ -224,7 +224,7 @@ export default function LandingPage() {
                                 <Button
                                     variant={searchMode === "coordinates" ? "default" : "ghost"}
                                     size="sm"
-                                    onClick={() => setSearchMode("coordinates")}
+                                    onClick={() => { setSearchMode("coordinates"); }}
                                     className="gap-2"
                                 >
                                     <Navigation className="w-4 h-4" />
@@ -233,7 +233,7 @@ export default function LandingPage() {
                                 <Button
                                     variant={searchMode === "dno" ? "default" : "ghost"}
                                     size="sm"
-                                    onClick={() => setSearchMode("dno")}
+                                    onClick={() => { setSearchMode("dno"); }}
                                     className="gap-2"
                                 >
                                     <Building2 className="w-4 h-4" />
@@ -247,7 +247,7 @@ export default function LandingPage() {
                                     <Input
                                         placeholder="Street + House Number (e.g. Musterstraße 123)"
                                         value={street}
-                                        onChange={(e) => setStreet(e.target.value)}
+                                        onChange={(e) => { setStreet(e.target.value); }}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSearching}
                                     />
@@ -255,7 +255,7 @@ export default function LandingPage() {
                                         <Input
                                             placeholder="Zip Code (e.g. 50667)"
                                             value={zipCode}
-                                            onChange={(e) => setZipCode(e.target.value)}
+                                            onChange={(e) => { setZipCode(e.target.value); }}
                                             onKeyDown={handleKeyDown}
                                             disabled={isSearching}
                                             maxLength={5}
@@ -263,7 +263,7 @@ export default function LandingPage() {
                                         <Input
                                             placeholder="City (e.g. Köln)"
                                             value={city}
-                                            onChange={(e) => setCity(e.target.value)}
+                                            onChange={(e) => { setCity(e.target.value); }}
                                             onKeyDown={handleKeyDown}
                                             disabled={isSearching}
                                         />
@@ -277,14 +277,14 @@ export default function LandingPage() {
                                     <Input
                                         placeholder="Latitude (e.g. 50.9413)"
                                         value={latitude}
-                                        onChange={(e) => setLatitude(e.target.value)}
+                                        onChange={(e) => { setLatitude(e.target.value); }}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSearching}
                                     />
                                     <Input
                                         placeholder="Longitude (e.g. 6.9578)"
                                         value={longitude}
-                                        onChange={(e) => setLongitude(e.target.value)}
+                                        onChange={(e) => { setLongitude(e.target.value); }}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSearching}
                                     />
@@ -297,7 +297,7 @@ export default function LandingPage() {
                                     <Input
                                         placeholder="DNO Name (e.g. Netze BW, RheinEnergie, Westnetz)"
                                         value={dnoName}
-                                        onChange={(e) => setDnoName(e.target.value)}
+                                        onChange={(e) => { setDnoName(e.target.value); }}
                                         onKeyDown={handleKeyDown}
                                         disabled={isSearching}
                                     />
@@ -311,7 +311,7 @@ export default function LandingPage() {
                             <div className="border rounded-lg overflow-hidden">
                                 <button
                                     type="button"
-                                    onClick={() => setFiltersExpanded(!filtersExpanded)}
+                                    onClick={() => { setFiltersExpanded(!filtersExpanded); }}
                                     className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors"
                                 >
                                     <div className="flex items-center gap-2 text-sm font-medium">
@@ -344,7 +344,7 @@ export default function LandingPage() {
                                                     <button
                                                         key={year}
                                                         type="button"
-                                                        onClick={() => toggleYear(year)}
+                                                        onClick={() => { toggleYear(year); }}
                                                         className={`flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors ${isSelected
                                                             ? "bg-primary text-primary-foreground border-primary"
                                                             : "bg-background border-input hover:bg-muted"

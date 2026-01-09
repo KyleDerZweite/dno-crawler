@@ -335,7 +335,7 @@ export function VerificationBadge({
                                     variant="ghost"
                                     size="sm"
                                     className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                    onClick={() => verifyMutation.mutate()}
+                                    onClick={() => { verifyMutation.mutate(); }}
                                     disabled={isPending}
                                 >
                                     {verifyMutation.isPending ? (
@@ -356,7 +356,7 @@ export function VerificationBadge({
                                     variant="ghost"
                                     size="sm"
                                     className="h-6 w-6 p-0 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
-                                    onClick={() => setFlagDialogOpen(true)}
+                                    onClick={() => { setFlagDialogOpen(true); }}
                                     disabled={isPending}
                                 >
                                     <Flag className="h-3.5 w-3.5" />
@@ -373,7 +373,7 @@ export function VerificationBadge({
                                     variant="ghost"
                                     size="sm"
                                     className="h-6 w-6 p-0 text-gray-600 hover:text-gray-700 hover:bg-gray-50"
-                                    onClick={() => unflagMutation.mutate()}
+                                    onClick={() => { unflagMutation.mutate(); }}
                                     disabled={isPending}
                                 >
                                     {unflagMutation.isPending ? (
@@ -410,7 +410,7 @@ export function VerificationBadge({
                                     <button
                                         key={type.id}
                                         type="button"
-                                        onClick={() => setIssueType(type.id)}
+                                        onClick={() => { setIssueType(type.id); }}
                                         className={cn(
                                             "flex flex-col items-start p-3 rounded-lg border text-left transition-all",
                                             issueType === type.id
@@ -438,7 +438,7 @@ export function VerificationBadge({
                                     <button
                                         key={field.id}
                                         type="button"
-                                        onClick={() => toggleField(field.id)}
+                                        onClick={() => { toggleField(field.id); }}
                                         className={cn(
                                             "flex items-center gap-2 px-3 py-2 rounded-md border text-sm transition-all",
                                             affectedFields.includes(field.id)
@@ -473,7 +473,7 @@ export function VerificationBadge({
                                 className="w-full min-h-[80px] resize-none"
                                 placeholder={issueType === "other" ? "Please describe the issue... (minimum 10 characters)" : "Optional additional details..."}
                                 value={flagNotes}
-                                onChange={(e) => setFlagNotes(e.target.value)}
+                                onChange={(e) => { setFlagNotes(e.target.value); }}
                             />
                             {issueType === "other" && flagNotes.length > 0 && flagNotes.length < 10 && (
                                 <p className="text-xs text-destructive">Minimum 10 characters required</p>
@@ -481,12 +481,12 @@ export function VerificationBadge({
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setFlagDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => { setFlagDialogOpen(false); }}>
                             Cancel
                         </Button>
                         <Button
                             variant="destructive"
-                            onClick={() => flagMutation.mutate(buildFlagReason())}
+                            onClick={() => { flagMutation.mutate(buildFlagReason()); }}
                             disabled={!canSubmitFlag || flagMutation.isPending}
                         >
                             {flagMutation.isPending ? (

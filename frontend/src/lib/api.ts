@@ -460,7 +460,7 @@ export const api = {
       limit?: number;
       page?: number;
     }): Promise<{
-      jobs: Array<{
+      jobs: {
         job_id: string;
         dno_id: string;
         dno_name?: string;
@@ -474,7 +474,7 @@ export const api = {
         started_at?: string;
         completed_at?: string;
         created_at?: string;
-      }>;
+      }[];
       queue_length: number;
       meta?: {
         total: number;
@@ -724,7 +724,7 @@ export const api = {
       dno_id: string,
       payload: {
         mode: "merge" | "replace";
-        netzentgelte?: Array<{
+        netzentgelte?: {
           year: number;
           voltage_level: string;
           leistung?: number;
@@ -733,8 +733,8 @@ export const api = {
           arbeit_unter_2500h?: number;
           verification_status?: string;
           extraction_source?: string;
-        }>;
-        hlzf?: Array<{
+        }[];
+        hlzf?: {
           year: number;
           voltage_level: string;
           winter?: string;
@@ -743,7 +743,7 @@ export const api = {
           herbst?: string;
           verification_status?: string;
           extraction_source?: string;
-        }>;
+        }[];
       }
     ): Promise<
       ApiResponse<{
@@ -772,7 +772,7 @@ export const api = {
 
     async getFlagged(): Promise<
       ApiResponse<{
-        items: Array<{
+        items: {
           id: number;
           type: "netzentgelte" | "hlzf";
           year: number;
@@ -783,7 +783,7 @@ export const api = {
           dno_id: number;
           dno_name: string;
           dno_slug: string;
-        }>;
+        }[];
         total: number;
       }>
     > {
@@ -795,7 +795,7 @@ export const api = {
     async getCachedFiles(): Promise<
       ApiResponse<{
         total_files: number;
-        files: Array<{
+        files: {
           name: string;
           path: string;
           dno_slug: string;
@@ -806,7 +806,7 @@ export const api = {
           format: string;
           size: number;
           extraction_status: "no_data" | "flagged" | "verified" | "unverified";
-        }>;
+        }[];
         by_data_type: { netzentgelte: number; hlzf: number };
         by_format: Record<string, number>;
         by_status: {
@@ -837,7 +837,7 @@ export const api = {
         no_data: number;
         unverified: number;
         failed_jobs: number;
-        files: Array<{
+        files: {
           name: string;
           path: string;
           dno_slug: string;
@@ -851,7 +851,7 @@ export const api = {
           has_flagged: boolean;
           has_data: boolean;
           has_failed_job?: boolean;
-        }>;
+        }[];
       }>
     > {
       const { data } = await apiClient.post("/admin/extract/preview", options);

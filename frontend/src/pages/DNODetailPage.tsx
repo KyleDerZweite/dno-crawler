@@ -83,13 +83,13 @@ export function DNODetailPage() {
     const [uploadDialogOpen, setUploadDialogOpen] = useState(false);
 
     // Upload state
-    const [uploadResults, setUploadResults] = useState<Array<{
+    const [uploadResults, setUploadResults] = useState<{
         filename: string;
         success: boolean;
         message: string;
         detected_type?: string | null;
         detected_year?: number | null;
-    }>>([]);
+    }[]>([]);
     const [isUploading, setIsUploading] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,7 +106,7 @@ export function DNODetailPage() {
     const [isImporting, setIsImporting] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+     
     const [_showMoreDetails] = useState(false);
 
     // ===== DATA FETCHING =====
@@ -146,7 +146,7 @@ export function DNODetailPage() {
         },
     });
 
-    const jobs: Job[] = (jobsResponse?.data || []) as Job[];
+    const jobs: Job[] = (jobsResponse?.data || []);
     const hasActiveJobs = useMemo(() =>
         jobs.some((job: { status: string }) =>
             job.status === "pending" || job.status === "running"
@@ -518,8 +518,8 @@ export function DNODetailPage() {
             <DNOHeader
                 dno={dno}
                 isAdmin={isAdmin()}
-                onEditClick={() => setEditDNOOpen(true)}
-                onDeleteClick={() => setDeleteDNOOpen(true)}
+                onEditClick={() => { setEditDNOOpen(true); }}
+                onDeleteClick={() => { setDeleteDNOOpen(true); }}
             />
 
             {/* Crawl Dialog */}
@@ -528,7 +528,7 @@ export function DNODetailPage() {
                     dnoName={dno.name}
                     crawlable={dno.crawlable !== false}
                     hasLocalFiles={!!dno.has_local_files}
-                    onTrigger={(params) => triggerCrawlMutation.mutate(params)}
+                    onTrigger={(params) => { triggerCrawlMutation.mutate(params); }}
                     isPending={triggerCrawlMutation.isPending}
                 />
             </div>
@@ -649,7 +649,7 @@ export function DNODetailPage() {
                             {filterOptions.years.map(year => (
                                 <button
                                     key={year}
-                                    onClick={() => toggleYearFilter(year)}
+                                    onClick={() => { toggleYearFilter(year); }}
                                     className={cn(
                                         "px-2.5 py-1 text-sm rounded-md transition-colors font-medium",
                                         yearFilter.includes(year)
@@ -669,7 +669,7 @@ export function DNODetailPage() {
                                 {filterOptions.voltageLevels.map(level => (
                                     <button
                                         key={level}
-                                        onClick={() => toggleVoltageLevelFilter(level)}
+                                        onClick={() => { toggleVoltageLevelFilter(level); }}
                                         className={cn(
                                             "px-2 py-0.5 text-xs rounded-md transition-colors",
                                             voltageLevelFilter.includes(level)
@@ -693,7 +693,7 @@ export function DNODetailPage() {
                 dnoId={String(numericId)}
                 isAdmin={isAdmin()}
                 onEdit={handleEditNetzentgelte}
-                onDelete={(recordId) => deleteNetzentgelteMutation.mutate(recordId)}
+                onDelete={(recordId) => { deleteNetzentgelteMutation.mutate(recordId); }}
                 openMenuId={openMenuId}
                 onMenuOpenChange={setOpenMenuId}
             />
@@ -705,7 +705,7 @@ export function DNODetailPage() {
                 dnoId={numericId!}
                 isAdmin={isAdmin()}
                 onEdit={handleEditHLZF}
-                onDelete={(recordId) => deleteHLZFMutation.mutate(recordId)}
+                onDelete={(recordId) => { deleteHLZFMutation.mutate(recordId); }}
                 openMenuId={openMenuId}
                 onMenuOpenChange={setOpenMenuId}
             />
@@ -803,7 +803,7 @@ export function DNODetailPage() {
                 files={files}
                 jobs={jobs}
                 jobsLoading={jobsLoading}
-                onUploadClick={() => setUploadDialogOpen(true)}
+                onUploadClick={() => { setUploadDialogOpen(true); }}
             />
 
             {/* ===== DIALOGS ===== */}
@@ -822,7 +822,7 @@ export function DNODetailPage() {
                     email: dno.email || '',
                     contact_address: dno.contact_address || '',
                 }}
-                onSave={(data) => updateDNOMutation.mutate(data)}
+                onSave={(data) => { updateDNOMutation.mutate(data); }}
                 isPending={updateDNOMutation.isPending}
             />
 
@@ -831,7 +831,7 @@ export function DNODetailPage() {
                 open={deleteDNOOpen}
                 onOpenChange={setDeleteDNOOpen}
                 dnoName={dno.name}
-                onConfirm={() => deleteDNOMutation.mutate()}
+                onConfirm={() => { deleteDNOMutation.mutate(); }}
                 isPending={deleteDNOMutation.isPending}
             />
 
@@ -900,7 +900,7 @@ export function DNODetailPage() {
                         )}
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setUploadDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => { setUploadDialogOpen(false); }}>
                             Close
                         </Button>
                     </DialogFooter>
@@ -934,7 +934,7 @@ export function DNODetailPage() {
                             <div className="flex gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => setImportMode("merge")}
+                                    onClick={() => { setImportMode("merge"); }}
                                     className={cn(
                                         "flex-1 px-3 py-2 text-sm rounded-md border transition-colors",
                                         importMode === "merge"
@@ -946,7 +946,7 @@ export function DNODetailPage() {
                                 </button>
                                 <button
                                     type="button"
-                                    onClick={() => setImportMode("replace")}
+                                    onClick={() => { setImportMode("replace"); }}
                                     className={cn(
                                         "flex-1 px-3 py-2 text-sm rounded-md border transition-colors",
                                         importMode === "replace"
@@ -960,7 +960,7 @@ export function DNODetailPage() {
                         </div>
                     </div>
                     <DialogFooter>
-                        <Button variant="outline" onClick={() => setImportDialogOpen(false)}>
+                        <Button variant="outline" onClick={() => { setImportDialogOpen(false); }}>
                             Cancel
                         </Button>
                         <Button onClick={handleImport} disabled={isImporting}>

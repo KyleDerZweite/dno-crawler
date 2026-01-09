@@ -43,7 +43,7 @@ export function DataFilters({
                         return (
                             <button
                                 key={year}
-                                onClick={() => onToggleYear(year)}
+                                onClick={() => { onToggleYear(year); }}
                                 className={cn(
                                     "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                                     isSelected
@@ -74,7 +74,7 @@ export function DataFilters({
                             return (
                                 <button
                                     key={level}
-                                    onClick={() => onToggleVoltageLevel(level)}
+                                    onClick={() => { onToggleVoltageLevel(level); }}
                                     className={cn(
                                         "px-3 py-1.5 rounded-md text-sm font-medium transition-colors",
                                         isSelected
@@ -99,7 +99,7 @@ export function DataFilters({
                             <Badge key={year} variant="secondary" className="text-xs gap-1">
                                 {year}
                                 <button
-                                    onClick={() => onToggleYear(year)}
+                                    onClick={() => { onToggleYear(year); }}
                                     className="ml-1 hover:text-destructive"
                                 >
                                     <X className="h-3 w-3" />
@@ -110,7 +110,7 @@ export function DataFilters({
                             <Badge key={level} variant="secondary" className="text-xs gap-1">
                                 {level}
                                 <button
-                                    onClick={() => onToggleVoltageLevel(level)}
+                                    onClick={() => { onToggleVoltageLevel(level); }}
                                     className="ml-1 hover:text-destructive"
                                 >
                                     <X className="h-3 w-3" />

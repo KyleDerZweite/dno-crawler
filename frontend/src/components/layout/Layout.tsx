@@ -64,7 +64,7 @@ export function Layout() {
     handleResize()
 
     window.addEventListener('resize', handleResize)
-    return () => window.removeEventListener('resize', handleResize)
+    return () => { window.removeEventListener('resize', handleResize); }
   }, [isManualToggle])
 
   // Reset manual toggle when crossing breakpoints significantly
@@ -78,7 +78,7 @@ export function Layout() {
     }
 
     window.addEventListener('resize', handleBreakpointReset)
-    return () => window.removeEventListener('resize', handleBreakpointReset)
+    return () => { window.removeEventListener('resize', handleBreakpointReset); }
   }, [])
 
   // Derive page title for document and header
@@ -109,7 +109,7 @@ export function Layout() {
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-40 bg-black/50 lg:hidden"
-          onClick={() => setSidebarOpen(false)}
+          onClick={() => { setSidebarOpen(false); }}
         />
       )}
 
@@ -170,7 +170,7 @@ export function Layout() {
             variant="ghost"
             size="icon"
             className="lg:hidden hover:bg-secondary text-muted-foreground hover:text-foreground h-8 w-8"
-            onClick={() => setSidebarOpen(false)}
+            onClick={() => { setSidebarOpen(false); }}
           >
             <X className="h-4 w-4" />
           </Button>
@@ -196,7 +196,7 @@ export function Layout() {
                         ? "bg-secondary text-foreground font-medium"
                         : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
                     )}
-                    onClick={() => setSidebarOpen(false)}
+                    onClick={() => { setSidebarOpen(false); }}
                   >
                     {isActive && (
                       <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-primary/40 rounded-full" />
@@ -241,7 +241,7 @@ export function Layout() {
                         ? "bg-secondary text-foreground font-medium"
                         : "text-muted-foreground hover:bg-secondary/80 hover:text-foreground"
                     )}
-                    onClick={() => setSidebarOpen(false)}
+                    onClick={() => { setSidebarOpen(false); }}
                   >
                     {isSettingsActive && (
                       <span className="absolute bottom-0 left-3 right-3 h-0.5 bg-primary/40 rounded-full" />
@@ -352,7 +352,7 @@ export function Layout() {
             variant="ghost"
             size="icon"
             className="h-9 w-9"
-            onClick={() => setSidebarOpen(true)}
+            onClick={() => { setSidebarOpen(true); }}
           >
             <Menu className="h-5 w-5" />
           </Button>

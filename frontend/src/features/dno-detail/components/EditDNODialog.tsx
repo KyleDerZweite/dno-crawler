@@ -68,7 +68,7 @@ export function EditDNODialog({
                         <Input
                             type="text"
                             value={formData.name}
-                            onChange={(e) => handleChange("name", e.target.value)}
+                            onChange={(e) => { handleChange("name", e.target.value); }}
                         />
                     </div>
                     <div className="grid gap-2">
@@ -76,7 +76,7 @@ export function EditDNODialog({
                         <Input
                             type="text"
                             value={formData.region}
-                            onChange={(e) => handleChange("region", e.target.value)}
+                            onChange={(e) => { handleChange("region", e.target.value); }}
                         />
                     </div>
                     <div className="grid gap-2">
@@ -84,7 +84,7 @@ export function EditDNODialog({
                         <Input
                             type="url"
                             value={formData.website}
-                            onChange={(e) => handleChange("website", e.target.value)}
+                            onChange={(e) => { handleChange("website", e.target.value); }}
                         />
                     </div>
                     <div className="grid gap-2">
@@ -92,7 +92,7 @@ export function EditDNODialog({
                         <Input
                             type="text"
                             value={formData.description}
-                            onChange={(e) => handleChange("description", e.target.value)}
+                            onChange={(e) => { handleChange("description", e.target.value); }}
                         />
                     </div>
                     <div className="grid grid-cols-2 gap-4">
@@ -101,7 +101,7 @@ export function EditDNODialog({
                             <Input
                                 type="text"
                                 value={formData.phone}
-                                onChange={(e) => handleChange("phone", e.target.value)}
+                                onChange={(e) => { handleChange("phone", e.target.value); }}
                             />
                         </div>
                         <div className="grid gap-2">
@@ -109,7 +109,7 @@ export function EditDNODialog({
                             <Input
                                 type="email"
                                 value={formData.email}
-                                onChange={(e) => handleChange("email", e.target.value)}
+                                onChange={(e) => { handleChange("email", e.target.value); }}
                             />
                         </div>
                     </div>
@@ -118,15 +118,15 @@ export function EditDNODialog({
                         <Input
                             type="text"
                             value={formData.contact_address}
-                            onChange={(e) => handleChange("contact_address", e.target.value)}
+                            onChange={(e) => { handleChange("contact_address", e.target.value); }}
                         />
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => { onOpenChange(false); }}>
                         Cancel
                     </Button>
-                    <Button onClick={() => onSave(formData)} disabled={isPending}>
+                    <Button onClick={() => { onSave(formData); }} disabled={isPending}>
                         {isPending ? (
                             <>
                                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />

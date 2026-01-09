@@ -79,7 +79,7 @@ export function FilesJobsPanel({
             <div className="flex items-center justify-between mb-4">
                 <div className="flex gap-1 p-1 bg-muted rounded-lg">
                     <button
-                        onClick={() => setActiveTab("files")}
+                        onClick={() => { setActiveTab("files"); }}
                         className={cn(
                             "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
                             activeTab === "files"
@@ -96,7 +96,7 @@ export function FilesJobsPanel({
                         )}
                     </button>
                     <button
-                        onClick={() => setActiveTab("jobs")}
+                        onClick={() => { setActiveTab("jobs"); }}
                         className={cn(
                             "flex items-center gap-2 px-4 py-2 text-sm font-medium rounded-md transition-all",
                             activeTab === "jobs"

@@ -74,10 +74,10 @@ export function EditRecordDialog({
                                     step="0.01"
                                     value={netzData.leistung ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({
+                                        { onDataChange({
                                             ...netzData,
                                             leistung: e.target.value ? parseFloat(e.target.value) : undefined,
-                                        })
+                                        }); }
                                     }
                                 />
                             </div>
@@ -88,10 +88,10 @@ export function EditRecordDialog({
                                     step="0.001"
                                     value={netzData.arbeit ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({
+                                        { onDataChange({
                                             ...netzData,
                                             arbeit: e.target.value ? parseFloat(e.target.value) : undefined,
-                                        })
+                                        }); }
                                     }
                                 />
                             </div>
@@ -105,7 +105,7 @@ export function EditRecordDialog({
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.winter ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({ ...hlzfData, winter: e.target.value })
+                                        { onDataChange({ ...hlzfData, winter: e.target.value }); }
                                     }
                                 />
                             </div>
@@ -116,7 +116,7 @@ export function EditRecordDialog({
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.fruehling ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({ ...hlzfData, fruehling: e.target.value })
+                                        { onDataChange({ ...hlzfData, fruehling: e.target.value }); }
                                     }
                                 />
                             </div>
@@ -127,7 +127,7 @@ export function EditRecordDialog({
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.sommer ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({ ...hlzfData, sommer: e.target.value })
+                                        { onDataChange({ ...hlzfData, sommer: e.target.value }); }
                                     }
                                 />
                             </div>
@@ -138,7 +138,7 @@ export function EditRecordDialog({
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.herbst ?? ""}
                                     onChange={(e) =>
-                                        onDataChange({ ...hlzfData, herbst: e.target.value })
+                                        { onDataChange({ ...hlzfData, herbst: e.target.value }); }
                                     }
                                 />
                             </div>
@@ -146,7 +146,7 @@ export function EditRecordDialog({
                     )}
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => { onOpenChange(false); }}>
                         Cancel
                     </Button>
                     <Button onClick={onSave} disabled={isPending}>

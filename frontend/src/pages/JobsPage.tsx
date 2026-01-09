@@ -61,6 +61,19 @@ export function JobsPage() {
 
   const jobs = jobsResponse?.jobs || [];
 
+  // Delete mutation - must be before any conditional returns (React Hooks rule)
+  const deleteMutation = useMutation({
+    mutationFn: api.jobs.delete,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["jobs"] });
+      setJobToDelete(null);
+    },
+  });
+
+  const handleDelete = (jobId: string) => {
+    deleteMutation.mutate(jobId);
+  };
+
   if (!isAdminUser) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
@@ -78,19 +91,6 @@ export function JobsPage() {
   // Detail view - navigate to job detail page
   const handleJobClick = (job: typeof jobs[0]) => {
     navigate(`/jobs/${job.job_id}`);
-  };
-
-  // Delete mutation
-  const deleteMutation = useMutation({
-    mutationFn: api.jobs.delete,
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["jobs"] });
-      setJobToDelete(null);
-    },
-  });
-
-  const handleDelete = (jobId: string) => {
-    deleteMutation.mutate(jobId);
   };
 
   return (
@@ -115,7 +115,7 @@ export function JobsPage() {
                 key={status}
                 variant={statusFilter === status ? "default" : "outline"}
                 size="sm"
-                onClick={() => setStatusFilter(status)}
+                onClick={() => { setStatusFilter(status); }}
               >
                 {status.charAt(0).toUpperCase() + status.slice(1)}
               </Button>
@@ -145,8 +145,8 @@ export function JobsPage() {
             <CrawlJobCard
               key={job.job_id}
               job={job}
-              onClick={() => handleJobClick(job)}
-              onDelete={() => setJobToDelete(job.job_id)}
+              onClick={() => { handleJobClick(job); }}
+              onDelete={() => { setJobToDelete(job.job_id); }}
             />
           ))}
         </div>
@@ -162,7 +162,7 @@ export function JobsPage() {
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setJobToDelete(null)}>Cancel</Button>
+            <Button variant="outline" onClick={() => { setJobToDelete(null); }}>Cancel</Button>
             <Button
               variant="destructive"
               onClick={() => jobToDelete && handleDelete(jobToDelete)}
@@ -177,7 +177,7 @@ export function JobsPage() {
 }
 
 // Type for crawl jobs from the unified API
-type CrawlJobItem = {
+interface CrawlJobItem {
   job_id: string;
   dno_id: string;
   dno_name?: string;
@@ -194,7 +194,7 @@ type CrawlJobItem = {
   started_at?: string;
   completed_at?: string;
   created_at?: string;
-};
+}
 
 // Job type badge config
 const jobTypeConfig: Record<string, { label: string; color: string }> = {

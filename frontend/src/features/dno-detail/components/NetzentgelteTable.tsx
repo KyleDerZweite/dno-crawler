@@ -145,7 +145,7 @@ export function NetzentgelteTable({
                                                 }
                                                 isOpen={openMenuId === `netz-${item.id}`}
                                                 onOpenChange={(isOpen) =>
-                                                    onMenuOpenChange(isOpen ? `netz-${item.id}` : null)
+                                                    { onMenuOpenChange(isOpen ? `netz-${item.id}` : null); }
                                                 }
                                                 className="bg-popover border rounded-md shadow-md py-1"
                                             >

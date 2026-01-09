@@ -88,7 +88,7 @@ export function SourceDataAccordion({
 
             {/* Expand/Collapse Button */}
             <button
-                onClick={() => setExpanded(!expanded)}
+                onClick={() => { setExpanded(!expanded); }}
                 className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
                 <Info className="h-4 w-4" />

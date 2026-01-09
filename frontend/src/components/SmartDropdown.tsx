@@ -68,13 +68,13 @@ export function SmartDropdown({ trigger, children, isOpen, onOpenChange, classNa
         };
 
         document.addEventListener('mousedown', handleClickOutside);
-        return () => document.removeEventListener('mousedown', handleClickOutside);
+        return () => { document.removeEventListener('mousedown', handleClickOutside); };
     }, [isOpen, onOpenChange]);
 
 
     return (
         <>
-            <div ref={triggerRef} onClick={() => onOpenChange(!isOpen)} className="inline-block">
+            <div ref={triggerRef} onClick={() => { onOpenChange(!isOpen); }} className="inline-block">
                 {trigger}
             </div>
             {isOpen && createPortal(

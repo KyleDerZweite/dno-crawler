@@ -225,7 +225,7 @@ export function DNOsPage() {
       }
     };
     document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    return () => { document.removeEventListener("mousedown", handleClickOutside); };
   }, []);
 
   // Cleanup timeout on unmount
@@ -301,7 +301,7 @@ export function DNOsPage() {
                         id="name"
                         placeholder="e.g., Stadtwerke München"
                         value={formData.name}
-                        onChange={(e) => handleNameChange(e.target.value)}
+                        onChange={(e) => { handleNameChange(e.target.value); }}
                         required
                         autoComplete="off"
                       />
@@ -353,7 +353,7 @@ export function DNOsPage() {
                       id="slug"
                       placeholder="Auto-generated from name if empty"
                       value={formData.slug}
-                      onChange={(e) => handleFormChange("slug", e.target.value)}
+                      onChange={(e) => { handleFormChange("slug", e.target.value); }}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -362,7 +362,7 @@ export function DNOsPage() {
                       id="region"
                       placeholder="e.g., Bayern, Nordrhein-Westfalen"
                       value={formData.region}
-                      onChange={(e) => handleFormChange("region", e.target.value)}
+                      onChange={(e) => { handleFormChange("region", e.target.value); }}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -372,7 +372,7 @@ export function DNOsPage() {
                       type="url"
                       placeholder="https://example.com"
                       value={formData.website}
-                      onChange={(e) => handleFormChange("website", e.target.value)}
+                      onChange={(e) => { handleFormChange("website", e.target.value); }}
                     />
                   </div>
                   <div className="grid gap-2">
@@ -381,7 +381,7 @@ export function DNOsPage() {
                       id="description"
                       placeholder="Brief description..."
                       value={formData.description}
-                      onChange={(e) => handleFormChange("description", e.target.value)}
+                      onChange={(e) => { handleFormChange("description", e.target.value); }}
                     />
                   </div>
                   <div className="grid grid-cols-2 gap-4">
@@ -391,7 +391,7 @@ export function DNOsPage() {
                         id="phone"
                         placeholder="+49..."
                         value={formData.phone}
-                        onChange={(e) => handleFormChange("phone", e.target.value)}
+                        onChange={(e) => { handleFormChange("phone", e.target.value); }}
                       />
                     </div>
                     <div className="grid gap-2">
@@ -401,7 +401,7 @@ export function DNOsPage() {
                         type="email"
                         placeholder="contact@dno.de"
                         value={formData.email}
-                        onChange={(e) => handleFormChange("email", e.target.value)}
+                        onChange={(e) => { handleFormChange("email", e.target.value); }}
                       />
                     </div>
                   </div>
@@ -411,7 +411,7 @@ export function DNOsPage() {
                       id="contact_address"
                       placeholder="Musterstraße 1, 12345 Stadt"
                       value={formData.contact_address}
-                      onChange={(e) => handleFormChange("contact_address", e.target.value)}
+                      onChange={(e) => { handleFormChange("contact_address", e.target.value); }}
                     />
                   </div>
                 </div>
@@ -419,7 +419,7 @@ export function DNOsPage() {
                   <Button
                     type="button"
                     variant="outline"
-                    onClick={() => setIsAddDialogOpen(false)}
+                    onClick={() => { setIsAddDialogOpen(false); }}
                   >
                     Cancel
                   </Button>
@@ -449,7 +449,7 @@ export function DNOsPage() {
               type="text"
               placeholder="Search by name, region..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => { setSearchTerm(e.target.value); }}
               className="pl-10"
             />
           </div>
@@ -516,7 +516,7 @@ export function DNOsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      onClick={() => { setPage((p) => Math.max(1, p - 1)); }}
                       disabled={page <= 1}
                     >
                       <ChevronLeft className="h-4 w-4" />
@@ -527,7 +527,7 @@ export function DNOsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage((p) => Math.min(meta?.total_pages || 1, p + 1))}
+                      onClick={() => { setPage((p) => Math.min(meta?.total_pages || 1, p + 1)); }}
                       disabled={page >= (meta?.total_pages || 1)}
                     >
                       <ChevronRight className="h-4 w-4" />
@@ -550,7 +550,7 @@ export function DNOsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage((p) => Math.max(1, p - 1))}
+                      onClick={() => { setPage((p) => Math.max(1, p - 1)); }}
                       disabled={page <= 1}
                     >
                       <ChevronLeft className="h-4 w-4 mr-1" />
@@ -562,7 +562,7 @@ export function DNOsPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      onClick={() => setPage((p) => Math.min(meta?.total_pages || 1, p + 1))}
+                      onClick={() => { setPage((p) => Math.min(meta?.total_pages || 1, p + 1)); }}
                       disabled={page >= (meta?.total_pages || 1)}
                     >
                       Next

@@ -87,7 +87,7 @@ function SelectableTime({ value }: { value: string }) {
         <span
             className="cursor-text hover:bg-primary/20 rounded px-0.5"
             onClick={handleClick}
-            onMouseDown={(e) => e.stopPropagation()}
+            onMouseDown={(e) => { e.stopPropagation(); }}
             style={{ userSelect: 'text' }}
         >
             {value}

@@ -15,7 +15,7 @@ import {
 } from "lucide-react";
 
 import { api, type ApiResponse, type JobDetails } from "@/lib/api";
-import { JOB_STATUS_CONFIG, type JobStatus } from "@/lib/job-status";
+import { JOB_STATUS_CONFIG } from "@/lib/job-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -89,10 +89,10 @@ export function JobDetailsPage() {
     }
 
     const job = data.data;
-    const status = job.status as JobStatus;
+    const status = job.status;
     const config = JOB_STATUS_CONFIG[status] ?? JOB_STATUS_CONFIG.pending;
     const StatusIcon = config.icon;
-    
+
     // Job type config
     const jobTypeLabels: Record<string, string> = {
         full: 'Full Pipeline',
@@ -120,7 +120,7 @@ export function JobDetailsPage() {
                 </div>
                 <Button
                     variant="destructive"
-                    onClick={() => deleteMutation.mutate()}
+                    onClick={() => { deleteMutation.mutate(); }}
                     disabled={deleteMutation.isPending}
                 >
                     {deleteMutation.isPending ? (
@@ -139,9 +139,9 @@ export function JobDetailsPage() {
                         {job.parent_job && (
                             <div className="flex items-center gap-2">
                                 <span className="text-muted-foreground">Parent crawl job:</span>
-                                <Button 
-                                    variant="link" 
-                                    size="sm" 
+                                <Button
+                                    variant="link"
+                                    size="sm"
                                     className="p-0 h-auto"
                                     onClick={() => navigate(`/jobs/${job.parent_job!.id}`)}
                                 >
@@ -155,9 +155,9 @@ export function JobDetailsPage() {
                         {job.child_job && (
                             <div className="flex items-center gap-2">
                                 <span className="text-muted-foreground">Extract job:</span>
-                                <Button 
-                                    variant="link" 
-                                    size="sm" 
+                                <Button
+                                    variant="link"
+                                    size="sm"
                                     className="p-0 h-auto"
                                     onClick={() => navigate(`/jobs/${job.child_job!.id}`)}
                                 >

@@ -56,7 +56,7 @@ export function DeleteDNODialog({
                     </div>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    <Button variant="outline" onClick={() => { onOpenChange(false); }}>
                         Cancel
                     </Button>
                     <Button

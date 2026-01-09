@@ -92,7 +92,7 @@ export function CrawlDialog({
                                 <button
                                     key={year}
                                     type="button"
-                                    onClick={() => toggleCrawlYear(year)}
+                                    onClick={() => { toggleCrawlYear(year); }}
                                     className={cn(
                                         "flex items-center gap-2 px-3 py-2 rounded-md border text-sm font-medium transition-colors",
                                         isSelected
@@ -121,7 +121,7 @@ export function CrawlDialog({
                 <div className="border rounded-lg overflow-hidden">
                     <button
                         type="button"
-                        onClick={() => setShowAdvanced(!showAdvanced)}
+                        onClick={() => { setShowAdvanced(!showAdvanced); }}
                         className="w-full flex items-center justify-between p-3 bg-muted/30 hover:bg-muted/50 transition-colors text-sm"
                     >
                         <span className="font-medium">Advanced Options</span>
@@ -147,7 +147,7 @@ export function CrawlDialog({
                                         <button
                                             key={opt.value}
                                             type="button"
-                                            onClick={() => setCrawlJobType(opt.value)}
+                                            onClick={() => { setCrawlJobType(opt.value); }}
                                             className={cn(
                                                 "flex flex-col items-start px-3 py-2 rounded-md border text-sm transition-colors",
                                                 crawlJobType === opt.value
@@ -185,7 +185,7 @@ export function CrawlDialog({
                                         <button
                                             key={type}
                                             type="button"
-                                            onClick={() => setCrawlDataType(type)}
+                                            onClick={() => { setCrawlDataType(type); }}
                                             className={cn(
                                                 "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
                                                 crawlDataType === type
@@ -203,7 +203,7 @@ export function CrawlDialog({
                 </div>
 
                 <DialogFooter className="gap-2 sm:gap-0">
-                    <Button variant="outline" onClick={() => setOpen(false)}>
+                    <Button variant="outline" onClick={() => { setOpen(false); }}>
                         Cancel
                     </Button>
                     <Button onClick={handleTrigger} disabled={isPending || crawlYears.length === 0}>

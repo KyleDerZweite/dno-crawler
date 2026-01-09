@@ -451,7 +451,7 @@ function CachedFilesSection() {
               <div className="flex items-center gap-2">
                 <Select
                   value={selectedMode}
-                  onValueChange={(v) => setSelectedMode(v as ExtractMode)}
+                  onValueChange={(v) => { setSelectedMode(v as ExtractMode); }}
                 >
                   <SelectTrigger className="w-48">
                     <SelectValue />
@@ -597,7 +597,7 @@ function CachedFilesSection() {
                   <Button
                     variant="destructive"
                     size="sm"
-                    onClick={() => cancelMutation.mutate()}
+                    onClick={() => { cancelMutation.mutate(); }}
                     disabled={cancelMutation.isPending}
                   >
                     {cancelMutation.isPending ? (
@@ -612,7 +612,7 @@ function CachedFilesSection() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => resetMutation.mutate()}
+                    onClick={() => { resetMutation.mutate(); }}
                     disabled={resetMutation.isPending}
                   >
                     {resetMutation.isPending ? (
@@ -742,11 +742,11 @@ function CachedFilesSection() {
           )}
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowPreview(false)}>
+            <Button variant="outline" onClick={() => { setShowPreview(false); }}>
               Cancel
             </Button>
             <Button
-              onClick={() => extractMutation.mutate()}
+              onClick={() => { extractMutation.mutate(); }}
               disabled={extractMutation.isPending || (previewData?.will_extract || 0) === 0}
               variant={selectedMode === "force_override" ? "destructive" : "default"}
             >

@@ -13,7 +13,7 @@ export function Toaster() {
           title={title}
           description={description}
           variant={variant}
-          onClose={() => dismiss(id)}
+          onClose={() => { dismiss(id); }}
           className="pointer-events-auto animate-in slide-in-from-bottom-5"
         />
       ))}

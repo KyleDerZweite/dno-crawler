@@ -18,6 +18,10 @@ export function useAuth() {
     const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
     const isAuthEnabled = authority && authority !== "https://auth.example.com";
 
+    // Always call the hook unconditionally (React Hooks rule)
+    // It will be made noop when auth is disabled
+    const auth = useOidcAuth();
+
     // Handle Mock Admin if auth is disabled or pointing to example.com
     if (!isAuthEnabled) {
         return {
@@ -43,8 +47,6 @@ export function useAuth() {
         };
     }
 
-    const auth = useOidcAuth();
-
     // Extract roles from ID token claims
     const getRoles = (): string[] => {
         const claims = auth.user?.profile;
@@ -66,7 +68,7 @@ export function useAuth() {
         if (!claims) return undefined;
 
         // Zitadel uses 'picture' claim for avatar URL
-        return claims.picture as string | undefined;
+        return claims.picture;
     };
 
     // Check if user has a specific role
