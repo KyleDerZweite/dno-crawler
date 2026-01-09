@@ -191,6 +191,14 @@ cd backend
 pytest
 ```
 
+## Documentation
+
+For detailed technical documentation, see the [docs](docs/) directory:
+
+- [Architecture](docs/ARCHITECTURE.md) - System design, data flow diagrams, database schema
+- [Project Overview](docs/PROJECT.md) - Directory structure, API reference
+- [File Naming Conventions](docs/FILE_NAMING_CONVENTIONS.md) - Code style guidelines
+
 ## Maintenance
 
 ### Job Recovery
@@ -205,4 +213,4 @@ The `crawl_recovery` service automatically resets jobs stuck in `running` or `cr
 
 ## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License © 2025 KyleDerZweite. See [LICENSE](LICENSE) for details.

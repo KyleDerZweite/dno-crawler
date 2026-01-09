@@ -11,6 +11,7 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from app.api.middleware import WideEventMiddleware
 from app.api.routes import admin, auth, dnos, files, health, jobs, search, verification
 from app.core.config import settings
 from app.core.exceptions import (
@@ -22,7 +23,14 @@ from app.core.exceptions import (
     RateLimitError,
     ResourceNotFoundError,
 )
+from app.core.logging import configure_logging
 from app.db import DatabaseError, close_db, init_db
+
+# Configure structured logging with wide events support
+configure_logging(
+    json_logs=not settings.debug,  # JSON in production, console in dev
+    log_level="DEBUG" if settings.debug else "INFO",
+)
 
 logger = structlog.get_logger()
 
@@ -97,6 +105,9 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    
+    # Wide Events middleware - canonical log line per request
+    app.add_middleware(WideEventMiddleware)
 
     # Include routers - order matters for route matching
     app.include_router(health.router, tags=["Health"])
