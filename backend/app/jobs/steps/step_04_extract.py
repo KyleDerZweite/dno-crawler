@@ -144,6 +144,11 @@ class ExtractStep(BaseStep):
                 extracted_data = ai_result.get("data", [])
                 extraction_meta = ai_result.get("_extraction_meta", {})
 
+                # ===== POST-PROCESS AI RESULTS =====
+                # Clean up common formatting issues (k.A., Uhr, German decimals, spaces)
+                from app.core.parsers import clean_ai_extraction_result
+                extracted_data = clean_ai_extraction_result(extracted_data, job.data_type)
+
                 # ===== VALIDATE AI RESULT (same sanity check as regex) =====
                 ai_passed, ai_reason = self._validate_extraction(extracted_data, job.data_type)
 

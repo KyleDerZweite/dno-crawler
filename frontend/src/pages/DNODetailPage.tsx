@@ -40,7 +40,6 @@ import { useState, useMemo, useRef, useEffect } from "react";
 
 // Import extracted components
 import {
-    CrawlDialog,
     EditDNODialog,
     DeleteDNODialog,
     NetzentgelteTable,
@@ -104,9 +103,10 @@ export function DNODetailPage() {
     } | null>(null);
     const [importFileName, setImportFileName] = useState<string>("");
     const [isImporting, setIsImporting] = useState(false);
+    const [deleteConfirmed, setDeleteConfirmed] = useState(false);
     const importFileRef = useRef<HTMLInputElement>(null);
 
-     
+
     const [_showMoreDetails] = useState(false);
 
     // ===== DATA FETCHING =====
@@ -520,18 +520,9 @@ export function DNODetailPage() {
                 isAdmin={isAdmin()}
                 onEditClick={() => { setEditDNOOpen(true); }}
                 onDeleteClick={() => { setDeleteDNOOpen(true); }}
+                onTriggerCrawl={(params) => { triggerCrawlMutation.mutate(params); }}
+                isCrawlPending={triggerCrawlMutation.isPending}
             />
-
-            {/* Crawl Dialog */}
-            <div className="flex gap-2">
-                <CrawlDialog
-                    dnoName={dno.name}
-                    crawlable={dno.crawlable !== false}
-                    hasLocalFiles={!!dno.has_local_files}
-                    onTrigger={(params) => { triggerCrawlMutation.mutate(params); }}
-                    isPending={triggerCrawlMutation.isPending}
-                />
-            </div>
 
             {/* Stats Cards */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -542,7 +533,7 @@ export function DNODetailPage() {
                         </div>
                         <div>
                             <p className="text-sm text-muted-foreground">Netzentgelte Records</p>
-                            <p className="text-2xl font-bold">{netzentgelte.length}</p>
+                            <p className="text-2xl font-bold">{dataCompleteness.netzentgelte.valid}</p>
                         </div>
                     </div>
                 </Card>
@@ -553,7 +544,7 @@ export function DNODetailPage() {
                         </div>
                         <div>
                             <p className="text-sm text-muted-foreground">HLZF Records</p>
-                            <p className="text-2xl font-bold">{hlzf.length}</p>
+                            <p className="text-2xl font-bold">{dataCompleteness.hlzf.valid}</p>
                         </div>
                     </div>
                 </Card>
@@ -908,7 +899,10 @@ export function DNODetailPage() {
             </Dialog>
 
             {/* Import Preview Dialog */}
-            <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+            <Dialog open={importDialogOpen} onOpenChange={(open) => {
+                setImportDialogOpen(open);
+                if (!open) setDeleteConfirmed(false); // Reset confirmation when dialog closes
+            }}>
                 <DialogContent className="sm:max-w-lg">
                     <DialogHeader>
                         <DialogTitle>Import Data</DialogTitle>
@@ -934,7 +928,7 @@ export function DNODetailPage() {
                             <div className="flex gap-2">
                                 <button
                                     type="button"
-                                    onClick={() => { setImportMode("merge"); }}
+                                    onClick={() => { setImportMode("merge"); setDeleteConfirmed(false); }}
                                     className={cn(
                                         "flex-1 px-3 py-2 text-sm rounded-md border transition-colors",
                                         importMode === "merge"
@@ -958,19 +952,66 @@ export function DNODetailPage() {
                                 </button>
                             </div>
                         </div>
+
+                        {/* Warning for replace mode with empty arrays */}
+                        {importMode === "replace" && importData &&
+                            (importData.netzentgelte.length === 0 || importData.hlzf.length === 0) && (
+                                <div className="p-4 rounded-lg bg-destructive/10 border border-destructive/30 space-y-3">
+                                    <div className="flex items-start gap-2">
+                                        <svg className="h-5 w-5 text-destructive shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                                        </svg>
+                                        <div className="text-sm">
+                                            <p className="font-semibold text-destructive">Warning: This will delete ALL data!</p>
+                                            <p className="text-muted-foreground mt-1">
+                                                {importData.netzentgelte.length === 0 && importData.hlzf.length === 0
+                                                    ? "Both Netzentgelte and HLZF arrays are empty. All records for this DNO will be permanently deleted."
+                                                    : importData.netzentgelte.length === 0
+                                                        ? "Netzentgelte array is empty. All Netzentgelte records for this DNO will be permanently deleted."
+                                                        : "HLZF array is empty. All HLZF records for this DNO will be permanently deleted."
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+                                    <label className="flex items-center gap-2 cursor-pointer">
+                                        <input
+                                            type="checkbox"
+                                            checked={deleteConfirmed}
+                                            onChange={(e) => setDeleteConfirmed(e.target.checked)}
+                                            className="h-4 w-4 rounded border-destructive text-destructive focus:ring-destructive"
+                                        />
+                                        <span className="text-sm font-medium">I understand and want to delete all data</span>
+                                    </label>
+                                </div>
+                            )}
                     </div>
                     <DialogFooter>
                         <Button variant="outline" onClick={() => { setImportDialogOpen(false); }}>
                             Cancel
                         </Button>
-                        <Button onClick={handleImport} disabled={isImporting}>
+                        <Button
+                            onClick={handleImport}
+                            disabled={
+                                isImporting ||
+                                (importMode === "replace" &&
+                                    importData &&
+                                    (importData.netzentgelte.length === 0 || importData.hlzf.length === 0) &&
+                                    !deleteConfirmed)
+                            }
+                            variant={importMode === "replace" && importData &&
+                                (importData.netzentgelte.length === 0 || importData.hlzf.length === 0)
+                                ? "destructive" : "default"}
+                        >
                             {isImporting ? (
                                 <>
                                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                                     Importing...
                                 </>
                             ) : (
-                                "Import Data"
+                                importMode === "replace" && importData &&
+                                    (importData.netzentgelte.length === 0 || importData.hlzf.length === 0)
+                                    ? "Delete & Import"
+                                    : "Import Data"
                             )}
                         </Button>
                     </DialogFooter>

@@ -15,12 +15,20 @@ import {
     AlertCircle,
 } from "lucide-react";
 import type { DNO } from "@/lib/api";
+import { CrawlDialog } from "./CrawlDialog";
 
 interface DNOHeaderProps {
     dno: DNO;
     isAdmin: boolean;
     onEditClick: () => void;
     onDeleteClick: () => void;
+    // Crawl dialog props
+    onTriggerCrawl: (params: {
+        years: number[];
+        dataType: "all" | "netzentgelte" | "hlzf";
+        jobType: "full" | "crawl" | "extract";
+    }) => void;
+    isCrawlPending: boolean;
 }
 
 export function DNOHeader({
@@ -28,6 +36,8 @@ export function DNOHeader({
     isAdmin,
     onEditClick,
     onDeleteClick,
+    onTriggerCrawl,
+    isCrawlPending,
 }: DNOHeaderProps) {
     return (
         <div className="flex items-start justify-between">
@@ -49,7 +59,7 @@ export function DNOHeader({
                     </div>
                 </div>
             </div>
-            <div className="flex gap-2 flex-wrap">
+            <div className="flex gap-2 flex-wrap items-center">
                 {dno.website && (
                     <Button variant="outline" asChild>
                         <a href={dno.website} target="_blank" rel="noopener noreferrer">
@@ -74,6 +84,15 @@ export function DNOHeader({
                         Edit
                     </Button>
                 )}
+
+                {/* Crawl Dialog - rightmost position */}
+                <CrawlDialog
+                    dnoName={dno.name}
+                    crawlable={dno.crawlable !== false}
+                    hasLocalFiles={!!dno.has_local_files}
+                    onTrigger={onTriggerCrawl}
+                    isPending={isCrawlPending}
+                />
 
                 {/* Crawlability warning badge */}
                 {dno.crawlable === false && (

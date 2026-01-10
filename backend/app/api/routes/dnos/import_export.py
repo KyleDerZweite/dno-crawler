@@ -175,29 +175,46 @@ async def import_dno_data(
     try:
         # Handle replace mode - delete existing data first
         if request.mode == "replace":
-            # Delete only for the years being imported
-            netz_years = set(r.year for r in request.netzentgelte)
-            hlzf_years = set(r.year for r in request.hlzf)
-
-            if netz_years:
+            # If arrays are empty, delete ALL data for this DNO (user wants to clear)
+            # If arrays have data, only delete for the years being imported
+            
+            if len(request.netzentgelte) == 0:
+                # Empty array means: delete ALL netzentgelte for this DNO
                 await db.execute(
-                    delete(NetzentgelteModel).where(
-                        and_(
-                            NetzentgelteModel.dno_id == dno_id,
-                            NetzentgelteModel.year.in_(netz_years),
+                    delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id)
+                )
+                logger.info("import_deleted_all_netzentgelte", dno_id=dno_id)
+            else:
+                # Non-empty: delete only for the years being imported
+                netz_years = set(r.year for r in request.netzentgelte)
+                if netz_years:
+                    await db.execute(
+                        delete(NetzentgelteModel).where(
+                            and_(
+                                NetzentgelteModel.dno_id == dno_id,
+                                NetzentgelteModel.year.in_(netz_years),
+                            )
                         )
                     )
-                )
 
-            if hlzf_years:
+            if len(request.hlzf) == 0:
+                # Empty array means: delete ALL hlzf for this DNO
                 await db.execute(
-                    delete(HLZFModel).where(
-                        and_(
-                            HLZFModel.dno_id == dno_id,
-                            HLZFModel.year.in_(hlzf_years),
+                    delete(HLZFModel).where(HLZFModel.dno_id == dno_id)
+                )
+                logger.info("import_deleted_all_hlzf", dno_id=dno_id)
+            else:
+                # Non-empty: delete only for the years being imported
+                hlzf_years = set(r.year for r in request.hlzf)
+                if hlzf_years:
+                    await db.execute(
+                        delete(HLZFModel).where(
+                            and_(
+                                HLZFModel.dno_id == dno_id,
+                                HLZFModel.year.in_(hlzf_years),
+                            )
                         )
                     )
-                )
 
         # Import Netzentgelte
         for record in request.netzentgelte:

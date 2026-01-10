@@ -45,7 +45,14 @@ For EACH voltage level found, extract:
 - arbeit: Work price (Arbeitspreis) for ≥ 2500h in ct/kWh, or "-" if not available
 
 If only one set of prices exists (no usage distinction), use leistung and arbeit fields only.
-Use "-" for any price that doesn't exist for this DNO/voltage level (not null).
+
+IMPORTANT formatting rules:
+- Use decimal POINT for numbers (e.g., "26.88" NOT "26,88")
+- Use "-" for any of these markers:
+  - "k.A." or "keine Angabe" (no information)
+  - "entfällt" (not applicable)
+  - "n/a", empty cells, or missing data
+- Do NOT use null - always use "-" for missing values
 
 Return the structure:
 {{
@@ -98,9 +105,13 @@ For EACH voltage level found, extract:
 - herbst: Time window(s) for Sep-Nov
 
 Values for each season:
-- Time window format: "HH:MM-HH:MM" (e.g., "07:30-15:30")
+- Time window format: "HH:MM-HH:MM" with NO SPACES around the dash (e.g., "07:30-15:30" NOT "07:30 - 15:30")
+- Remove any "Uhr" suffix from times (e.g., "16:30 Uhr bis 19:30 Uhr" → "16:30-19:30")
 - Multiple windows: Separate with "\\n" (e.g., "07:30-13:00\\n17:00-19:30")
-- No peak load times: Use "-" if explicitly marked as "entfällt" or no times for that season
+- No peak load times: Use "-" for any of these markers:
+  - "entfällt" (not applicable)
+  - "k.A." or "keine Angabe" (no information)
+  - Empty cells or missing data
 - Note: It is NORMAL for Spring (Frühling) and Summer (Sommer) to have no peak times (use "-")
 
 Return the structure:

@@ -342,10 +342,15 @@ class FinalizeStep(BaseStep):
                 existing.extraction_source = source_meta.get("source")
                 existing.extraction_model = source_meta.get("model")
                 existing.extraction_source_format = source_meta.get("source_format")
-                # Apply auto-flag if sanity check failed
+                # Update verification status based on extraction result
                 if auto_flagged:
                     existing.verification_status = "flagged"
                     existing.flag_reason = auto_flag_reason
+                else:
+                    # Clear flags on successful re-extraction (unless verified)
+                    if existing.verification_status == "flagged":
+                        existing.verification_status = "pending"
+                        existing.flag_reason = None
                 logger.debug("hlzf_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source
@@ -435,10 +440,15 @@ class FinalizeStep(BaseStep):
                 existing.extraction_source = source_meta.get("source")
                 existing.extraction_model = source_meta.get("model")
                 existing.extraction_source_format = source_meta.get("source_format")
-                # Apply auto-flag if sanity check failed
+                # Update verification status based on extraction result
                 if auto_flagged:
                     existing.verification_status = "flagged"
                     existing.flag_reason = auto_flag_reason
+                else:
+                    # Clear flags on successful re-extraction (unless verified)
+                    if existing.verification_status == "flagged":
+                        existing.verification_status = "pending"
+                        existing.flag_reason = None
                 logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source
