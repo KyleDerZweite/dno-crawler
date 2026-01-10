@@ -429,57 +429,117 @@ class AIExtractor:
                 return f.read(), False
 
 
+
 def get_ai_extractor() -> AIExtractor | None:
     """
-    Get AI extractor if configured, else None.
+    DEPRECATED: Use the new AIGateway system instead.
+    
+    This function is kept for backwards compatibility with tests.
+    In production code, use the AIGateway via app.services.ai.gateway.
     
     Returns:
         AIExtractor instance or None if AI not configured
     """
-    if not settings.ai_enabled:
-        logger.debug("ai_not_configured", msg="Using regex-only extraction")
-        return None
-    return AIExtractor()
+    logger.warning(
+        "deprecated_get_ai_extractor",
+        msg="get_ai_extractor() is deprecated. Use AIGateway instead."
+    )
+    # This now always returns None as legacy env config is removed
+    # Callers should migrate to use AIGateway
+    return None
 
 
 async def extract_with_ai(
     file_path: str | Path,
-    prompt: str
+    prompt: str,
+    db_session=None
 ) -> dict[str, Any] | None:
     """
     Convenience function for AI extraction (auto-detects file type).
     
+    Uses the new AIGateway system with multi-provider fallback.
+    
     Args:
         file_path: Path to file (HTML, PDF, or image)
         prompt: Extraction prompt
+        db_session: Optional AsyncSession for database access.
+                   If not provided, creates new session.
         
     Returns:
         Extracted data dict, or None if AI not configured
     """
-    extractor = get_ai_extractor()
-    if extractor is None:
-        return None
-    return await extractor.extract(Path(file_path), prompt)
+    from app.db import get_db_session
+    from app.services.ai.gateway import AIGateway, NoProviderAvailableError, ai_enabled
+    
+    # Get or create database session
+    if db_session is None:
+        async with get_db_session() as db:
+            if not await ai_enabled(db):
+                logger.debug("ai_not_configured", msg="No AI providers configured")
+                return None
+            
+            gateway = AIGateway(db)
+            try:
+                return await gateway.extract(Path(file_path), prompt)
+            except NoProviderAvailableError as e:
+                logger.warning("ai_extraction_failed", error=str(e))
+                return None
+    else:
+        if not await ai_enabled(db_session):
+            logger.debug("ai_not_configured", msg="No AI providers configured")
+            return None
+        
+        gateway = AIGateway(db_session)
+        try:
+            return await gateway.extract(Path(file_path), prompt)
+        except NoProviderAvailableError as e:
+            logger.warning("ai_extraction_failed", error=str(e))
+            return None
 
 
 async def extract_html_with_ai(
     html_content: str,
-    prompt: str
+    prompt: str,
+    db_session=None
 ) -> dict[str, Any] | None:
     """
     Convenience function for AI extraction of HTML text content.
     
-    Uses text mode (cheaper than vision).
+    Uses text mode (cheaper than vision) via AIGateway.
     
     Args:
         html_content: HTML content as string
         prompt: Extraction prompt
+        db_session: Optional AsyncSession for database access.
         
     Returns:
         Extracted data dict, or None if AI not configured
     """
-    extractor = get_ai_extractor()
-    if extractor is None:
-        return None
-    return await extractor.extract_text(html_content, prompt)
+    from app.db import get_db_session
+    from app.services.ai.gateway import AIGateway, NoProviderAvailableError, ai_enabled
+    
+    if db_session is None:
+        async with get_db_session() as db:
+            if not await ai_enabled(db):
+                logger.debug("ai_not_configured", msg="No AI providers configured")
+                return None
+            
+            gateway = AIGateway(db)
+            try:
+                return await gateway.extract_text(html_content, prompt)
+            except NoProviderAvailableError as e:
+                logger.warning("ai_extraction_failed", error=str(e))
+                return None
+    else:
+        if not await ai_enabled(db_session):
+            logger.debug("ai_not_configured", msg="No AI providers configured")
+            return None
+        
+        gateway = AIGateway(db_session)
+        try:
+            return await gateway.extract_text(html_content, prompt)
+        except NoProviderAvailableError as e:
+            logger.warning("ai_extraction_failed", error=str(e))
+            return None
+
 

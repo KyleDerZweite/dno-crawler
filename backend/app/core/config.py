@@ -49,22 +49,9 @@ class Settings(BaseSettings):
     rate_limit_public: int = 10  # requests per minute for unauthenticated
     rate_limit_authenticated: int = 100  # requests per minute for authenticated
 
-
-    # AI Extraction (OpenAI-compatible API) - all optional, falls back to regex if not set
-    # URLs: Google AI Studio: https://generativelanguage.googleapis.com/v1beta/openai
-    #       OpenRouter: https://openrouter.ai/api/v1
-    #       Ollama: http://localhost:11434/v1
-    # Models: gemini-2.5-flash-lite, gemini-2.0-flash, gpt-4o, gpt-5-nano, qwen2.5-vl:8b
-    ai_api_url: str | None = Field(default=None, validation_alias="AI_API_URL")
-    ai_api_key: str | None = Field(default=None, validation_alias="AI_API_KEY")
-    ai_model: str | None = Field(default=None, validation_alias="AI_MODEL")
-    ai_rate_limit_retries: int = 3
-    ai_rate_limit_backoff: int = 60  # seconds to wait on 429
-
-    @property
-    def ai_enabled(self) -> bool:
-        """Check if AI extraction is configured."""
-        return bool(self.ai_api_url and self.ai_model)
+    # Note: AI configuration has been moved to database.
+    # Configure AI providers via Admin UI → AI Configuration.
+    # Legacy env vars (AI_API_URL, AI_API_KEY, AI_MODEL) are no longer used.
 
     # Crawler Politeness
     contact_email: str = Field(default="", validation_alias="CONTACT_EMAIL")

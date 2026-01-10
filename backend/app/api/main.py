@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.middleware import WideEventMiddleware
-from app.api.routes import admin, auth, dnos, files, health, jobs, search, verification
+from app.api.routes import admin, auth, dnos, files, health, jobs, oauth, search, verification
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -118,6 +118,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])  # Job management
     app.include_router(verification.router, prefix="/api/v1/verification", tags=["Verification"])  # Data verification
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
+    app.include_router(oauth.router, prefix="/api/v1/admin", tags=["OAuth"])  # OAuth under admin
 
     # Exception Handlers
     @app.exception_handler(RequestValidationError)

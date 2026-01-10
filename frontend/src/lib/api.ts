@@ -62,6 +62,59 @@ apiClient.interceptors.response.use(
 
 // Types
 
+// AI Provider Configuration Types
+export type AIProviderType = "openai" | "google" | "anthropic" | "openrouter" | "litellm" | "custom";
+export type AIAuthType = "api_key" | "oauth" | "cli";
+
+export interface AIProviderConfig {
+  id: number;
+  name: string;
+  provider_type: AIProviderType;
+  auth_type: AIAuthType;
+  model: string;
+  api_url: string | null;
+  has_api_key: boolean;
+  has_oauth: boolean;
+  supports_text: boolean;
+  supports_vision: boolean;
+  supports_files: boolean;
+  is_enabled: boolean;
+  priority: number;
+  status: "active" | "disabled" | "rate_limited" | "unhealthy" | "untested";
+  is_subscription: boolean;
+  last_success_at: string | null;
+  last_error_at: string | null;
+  last_error_message: string | null;
+  consecutive_failures: number;
+  total_requests: number;
+  total_tokens_used: number;
+  created_at: string | null;
+}
+
+export interface AIConfigCreate {
+  name: string;
+  provider_type: AIProviderType;
+  auth_type?: AIAuthType;
+  model: string;
+  api_key?: string;
+  api_url?: string;
+  supports_text?: boolean;
+  supports_vision?: boolean;
+  supports_files?: boolean;
+}
+
+export interface AIConfigUpdate {
+  name?: string;
+  model?: string;
+  api_key?: string;
+  api_url?: string;
+  supports_text?: boolean;
+  supports_vision?: boolean;
+  supports_files?: boolean;
+  is_enabled?: boolean;
+}
+
+
 export interface AddressComponents {
   street?: string;
   house_number?: string;
@@ -903,6 +956,176 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.delete("/admin/extract/bulk");
+      return data;
+    },
+
+    // AI Configuration
+    async getAIConfigs(): Promise<
+      ApiResponse<{
+        configs: AIProviderConfig[];
+        total: number;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/ai-config");
+      return data;
+    },
+
+    async createAIConfig(config: AIConfigCreate): Promise<
+      ApiResponse<{ id: number }>
+    > {
+      const { data } = await apiClient.post("/admin/ai-config", config);
+      return data;
+    },
+
+    async updateAIConfig(
+      configId: number,
+      config: AIConfigUpdate
+    ): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.patch(
+        `/admin/ai-config/${configId}`,
+        config
+      );
+      return data;
+    },
+
+    async deleteAIConfig(configId: number): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.delete(`/admin/ai-config/${configId}`);
+      return data;
+    },
+
+    async reorderAIConfigs(
+      configIds: number[]
+    ): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.post("/admin/ai-config/reorder", {
+        config_ids: configIds,
+      });
+      return data;
+    },
+
+    async testAIConfig(
+      configId: number
+    ): Promise<
+      ApiResponse<{
+        success: boolean;
+        provider: string;
+        model: string;
+        message?: string;
+        error?: string;
+      }>
+    > {
+      const { data } = await apiClient.post(
+        `/admin/ai-config/${configId}/test`
+      );
+      return data;
+    },
+
+    async getAIModels(
+      providerType: string
+    ): Promise<
+      ApiResponse<{
+        provider: string;
+        models: {
+          id: string;
+          name: string;
+          provider?: string;
+          provider_name?: string;
+          family?: string;
+          supports_vision: boolean;
+          supports_files: boolean;
+          supports_audio?: boolean;
+          supports_video?: boolean;
+          reasoning?: boolean;
+          tool_call?: boolean;
+          // Pricing (per million tokens)
+          cost_input?: number | null;
+          cost_output?: number | null;
+          cost_cache_read?: number | null;
+          // Limits
+          context_limit?: number | null;
+          output_limit?: number | null;
+          // Metadata
+          tier?: "high" | "efficient" | "budget" | "free";
+          release_date?: string | null;
+          knowledge_cutoff?: string | null;
+          open_weights?: boolean;
+        }[];
+        default_url: string | null;
+        custom_model_supported: boolean;
+        registry_status?: {
+          loaded: boolean;
+          loaded_at: string | null;
+          providers: number;
+          cache_file_exists: boolean;
+        };
+      }>
+    > {
+      const { data } = await apiClient.get(
+        `/admin/ai-config/models/${providerType}`
+      );
+      return data;
+    },
+
+    async refreshModelsRegistry(): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.post("/admin/ai-config/models/refresh");
+      return data;
+    },
+
+    async getAIStatus(): Promise<
+      ApiResponse<{
+        ai_enabled: boolean;
+        total_configs: number;
+        enabled_configs: number;
+        active_provider: {
+          id: number;
+          name: string;
+          provider_type: string;
+          model: string;
+        } | null;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/ai-config/status");
+      return data;
+    },
+
+    // OAuth credential detection
+    async detectCredentials(): Promise<
+      ApiResponse<{
+        credentials: {
+          [key: string]: {
+            available: boolean;
+            source?: string | null;
+            email?: string | null;
+            name?: string | null;
+            has_refresh_token?: boolean;
+            instructions?: string;
+            error?: string;
+          };
+        };
+        any_available: boolean;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/oauth/detect-credentials");
+      return data;
+    },
+
+    async getGoogleOAuthStatus(): Promise<
+      ApiResponse<{
+        authenticated: boolean;
+        user: { email: string | null; name: string | null } | null;
+        gemini_cli_available: boolean;
+        gemini_cli_email: string | null;
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/oauth/google/status");
+      return data;
+    },
+
+    async useGeminiCliCredentials(): Promise<
+      ApiResponse<{ email: string | null }>
+    > {
+      const { data } = await apiClient.post(
+        "/admin/oauth/google/use-gemini-cli"
+      );
       return data;
     },
   },

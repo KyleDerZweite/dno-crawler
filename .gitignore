@@ -129,3 +129,4 @@ Thumbs.db
 *.lock
 
 # End of .gitignore
+backend/data/cache/models_registry.json

@@ -13,6 +13,7 @@ from app.db.database import (
     init_db,
 )
 from app.db.models import (
+    AIProviderConfigModel,
     CrawlJobModel,
     CrawlJobStepModel,
     DataSourceModel,
@@ -51,6 +52,8 @@ __all__ = [
     "CrawlJobStepModel",
     "QueryLogModel",
     "SystemLogModel",
+    # Models - AI Provider
+    "AIProviderConfigModel",
     # Models - Source Data
     "DNOMastrData",
     "DNOVnbData",

@@ -870,3 +870,295 @@ async def delete_bulk_extract_jobs(
         message=f"Deleted {deleted_count} bulk extraction jobs",
         data={"deleted": deleted_count},
     )
+
+
+# ==============================================================================
+# AI Configuration
+# ==============================================================================
+
+
+class AIConfigCreate(BaseModel):
+    """Request model for creating AI provider config."""
+    name: str
+    provider_type: Literal["openai", "google", "anthropic", "openrouter", "litellm", "custom"]
+    auth_type: Literal["api_key", "oauth"] = "api_key"
+    model: str
+    api_key: str | None = None
+    api_url: str | None = None
+    supports_text: bool = True
+    supports_vision: bool = False
+    supports_files: bool = False
+
+
+class AIConfigUpdate(BaseModel):
+    """Request model for updating AI provider config."""
+    name: str | None = None
+    model: str | None = None
+    api_key: str | None = None
+    api_url: str | None = None
+    supports_text: bool | None = None
+    supports_vision: bool | None = None
+    supports_files: bool | None = None
+    is_enabled: bool | None = None
+
+
+class AIConfigReorder(BaseModel):
+    """Request model for reordering AI configs."""
+    config_ids: list[int]
+
+
+@router.get("/ai-config")
+async def list_ai_configs(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """List all AI provider configurations."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    configs = await service.list_all()
+    
+    # Transform to response format (don't expose encrypted secrets)
+    items = []
+    for config in configs:
+        items.append({
+            "id": config.id,
+            "name": config.name,
+            "provider_type": config.provider_type,
+            "auth_type": config.auth_type,
+            "model": config.model,
+            "api_url": config.api_url,
+            "has_api_key": bool(config.api_key_encrypted),
+            "has_oauth": bool(config.oauth_refresh_token_encrypted),
+            "supports_text": config.supports_text,
+            "supports_vision": config.supports_vision,
+            "supports_files": config.supports_files,
+            "is_enabled": config.is_enabled,
+            "priority": config.priority,
+            "status": config.status_display,
+            "is_subscription": config.is_subscription,
+            "last_success_at": config.last_success_at.isoformat() if config.last_success_at else None,
+            "last_error_at": config.last_error_at.isoformat() if config.last_error_at else None,
+            "last_error_message": config.last_error_message,
+            "consecutive_failures": config.consecutive_failures,
+            "total_requests": config.total_requests,
+            "total_tokens_used": config.total_tokens_used,
+            "created_at": config.created_at.isoformat() if config.created_at else None,
+        })
+    
+    return APIResponse(
+        success=True,
+        data={"configs": items, "total": len(items)},
+    )
+
+
+@router.post("/ai-config")
+async def create_ai_config(
+    request: AIConfigCreate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Create a new AI provider configuration."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    
+    config = await service.create(
+        name=request.name,
+        provider_type=request.provider_type,
+        auth_type=request.auth_type,
+        model=request.model,
+        api_key=request.api_key,
+        api_url=request.api_url,
+        supports_text=request.supports_text,
+        supports_vision=request.supports_vision,
+        supports_files=request.supports_files,
+        created_by=admin.sub,
+    )
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message=f"Created AI provider config: {config.name}",
+        data={"id": config.id},
+    )
+
+
+@router.patch("/ai-config/{config_id}")
+async def update_ai_config(
+    config_id: int,
+    request: AIConfigUpdate,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Update an AI provider configuration."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    
+    config = await service.update(
+        config_id=config_id,
+        name=request.name,
+        model=request.model,
+        api_key=request.api_key,
+        api_url=request.api_url,
+        supports_text=request.supports_text,
+        supports_vision=request.supports_vision,
+        supports_files=request.supports_files,
+        is_enabled=request.is_enabled,
+        modified_by=admin.sub,
+    )
+    
+    if not config:
+        return APIResponse(
+            success=False,
+            message="Configuration not found",
+        )
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message=f"Updated AI provider config: {config.name}",
+    )
+
+
+@router.delete("/ai-config/{config_id}")
+async def delete_ai_config(
+    config_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Delete an AI provider configuration."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    deleted = await service.delete(config_id)
+    
+    if not deleted:
+        return APIResponse(
+            success=False,
+            message="Configuration not found",
+        )
+    
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="AI provider config deleted",
+    )
+
+
+@router.post("/ai-config/reorder")
+async def reorder_ai_configs(
+    request: AIConfigReorder,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Reorder AI provider configurations (for fallback priority)."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    await service.reorder(request.config_ids)
+    await db.commit()
+    
+    return APIResponse(
+        success=True,
+        message="Provider order updated",
+    )
+
+
+@router.post("/ai-config/{config_id}/test")
+async def test_ai_config(
+    config_id: int,
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Test an AI provider configuration."""
+    from app.services.ai.gateway import AIGateway
+    
+    gateway = AIGateway(db)
+    result = await gateway.test_provider(config_id)
+    
+    return APIResponse(
+        success=result.get("success", False),
+        message=result.get("message") or result.get("error"),
+        data=result,
+    )
+
+
+@router.get("/ai-config/models/{provider_type}")
+async def list_provider_models(
+    provider_type: str,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """List available models for a provider from models.dev registry."""
+    from app.services.ai.config_service import AIConfigService, get_models_registry_status
+    
+    # Use async method to get models from registry
+    models = await AIConfigService.get_models_for_provider(provider_type)
+    default_url = AIConfigService.get_default_url(provider_type)
+    registry_status = get_models_registry_status()
+    
+    return APIResponse(
+        success=True,
+        data={
+            "provider": provider_type,
+            "models": models,
+            "default_url": default_url,
+            "custom_model_supported": True,  # Always allow custom model input
+            "registry_status": registry_status,
+        },
+    )
+
+
+@router.post("/ai-config/models/refresh")
+async def refresh_models_registry(
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Refresh the models registry from models.dev API."""
+    from app.services.ai.config_service import refresh_models_registry as do_refresh
+    
+    success = await do_refresh()
+    
+    if success:
+        return APIResponse(
+            success=True,
+            message="Models registry refreshed successfully",
+        )
+    else:
+        return APIResponse(
+            success=False,
+            message="Failed to refresh models registry",
+        )
+
+
+@router.get("/ai-config/status")
+async def get_ai_status(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Get overall AI configuration status."""
+    from app.services.ai.config_service import AIConfigService
+    
+    service = AIConfigService(db)
+    all_configs = await service.list_all()
+    enabled_configs = await service.list_enabled()
+    active_config = await service.get_active_config()
+    
+    return APIResponse(
+        success=True,
+        data={
+            "ai_enabled": len(enabled_configs) > 0,
+            "total_configs": len(all_configs),
+            "enabled_configs": len(enabled_configs),
+            "active_provider": {
+                "id": active_config.id,
+                "name": active_config.name,
+                "provider_type": active_config.provider_type,
+                "model": active_config.model,
+            } if active_config else None,
+        },
+    )
+

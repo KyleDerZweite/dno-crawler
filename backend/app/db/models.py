@@ -638,3 +638,125 @@ class SystemLogModel(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now(), index=True
     )
+
+
+# ==============================================================================
+# AI Provider Configuration
+# ==============================================================================
+
+
+class AIProviderConfigModel(Base, TimestampMixin):
+    """AI provider configuration for multi-provider support.
+    
+    Supports multiple authentication methods:
+    - OAuth (for subscription plans: ChatGPT Plus, Claude Pro, Google AI Pro)
+    - API Key (for OpenRouter, direct API access)
+    
+    Features:
+    - Priority-based fallback ordering (drag-and-drop in admin UI)
+    - Subscription preference (OAuth configs prioritized over API keys)
+    - Health tracking (consecutive failures, rate limit detection)
+    - Model capability tracking (text, vision, file support)
+    """
+    __tablename__ = "ai_provider_configs"
+    __table_args__ = (
+        Index("idx_ai_provider_enabled_priority", "is_enabled", "priority"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+
+    # -------------------------------------------------------------------------
+    # Identity
+    # -------------------------------------------------------------------------
+    name: Mapped[str] = mapped_column(String(100), nullable=False)  # "My ChatGPT Plus"
+    provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    # Allowed: "openai" | "google" | "anthropic" | "openrouter" | "litellm" | "custom"
+
+    # -------------------------------------------------------------------------
+    # Authentication
+    # -------------------------------------------------------------------------
+    auth_type: Mapped[str] = mapped_column(String(20), nullable=False)
+    # "oauth" | "api_key"
+
+    # For API Key auth
+    api_url: Mapped[str | None] = mapped_column(String(500))  # Custom endpoint URL
+    api_key_encrypted: Mapped[str | None] = mapped_column(Text)  # Fernet encrypted
+
+    # For OAuth auth (encrypted tokens)
+    oauth_access_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    oauth_refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
+    oauth_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    oauth_scope: Mapped[str | None] = mapped_column(Text)  # Granted scopes
+
+    # -------------------------------------------------------------------------
+    # Model Configuration
+    # -------------------------------------------------------------------------
+    model: Mapped[str] = mapped_column(String(100), nullable=False)  # "gpt-4o", "gemini-2.0-flash"
+
+    # Model capabilities (detected via test or user-configured)
+    supports_text: Mapped[bool] = mapped_column(Boolean, default=True)
+    supports_vision: Mapped[bool] = mapped_column(Boolean, default=False)
+    supports_files: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # -------------------------------------------------------------------------
+    # Priority & Status
+    # -------------------------------------------------------------------------
+    is_enabled: Mapped[bool] = mapped_column(Boolean, default=True, index=True)
+    priority: Mapped[int] = mapped_column(Integer, default=0)  # Lower = higher priority
+
+    # -------------------------------------------------------------------------
+    # Health Tracking
+    # -------------------------------------------------------------------------
+    last_success_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_error_message: Mapped[str | None] = mapped_column(Text)
+    consecutive_failures: Mapped[int] = mapped_column(Integer, default=0)
+    rate_limited_until: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    # -------------------------------------------------------------------------
+    # Usage Stats
+    # -------------------------------------------------------------------------
+    total_requests: Mapped[int] = mapped_column(Integer, default=0)
+    total_tokens_used: Mapped[int] = mapped_column(Integer, default=0)
+
+    # -------------------------------------------------------------------------
+    # Audit
+    # -------------------------------------------------------------------------
+    created_by: Mapped[str | None] = mapped_column(String(255))  # Admin user sub
+    last_modified_by: Mapped[str | None] = mapped_column(String(255))
+
+    @property
+    def is_subscription(self) -> bool:
+        """Check if this config uses a subscription (OAuth-based)."""
+        return self.auth_type == "oauth"
+
+    @property
+    def is_healthy(self) -> bool:
+        """Check if provider is currently healthy."""
+        from datetime import datetime, timezone
+        
+        # Check rate limiting
+        if self.rate_limited_until:
+            if datetime.now(timezone.utc) < self.rate_limited_until:
+                return False
+        
+        # Check consecutive failures (unhealthy after 3 failures)
+        if self.consecutive_failures >= 3:
+            return False
+        
+        return True
+
+    @property
+    def status_display(self) -> str:
+        """Get human-readable status."""
+        from datetime import datetime, timezone
+        
+        if not self.is_enabled:
+            return "disabled"
+        if self.rate_limited_until and datetime.now(timezone.utc) < self.rate_limited_until:
+            return "rate_limited"
+        if self.consecutive_failures >= 3:
+            return "unhealthy"
+        if self.last_success_at:
+            return "active"
+        return "untested"

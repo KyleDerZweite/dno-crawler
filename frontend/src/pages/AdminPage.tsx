@@ -58,6 +58,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
+import { AIConfigSection } from "@/features/admin/AIConfigSection";
 
 export function AdminPage() {
   const { isAdmin } = useAuth();
@@ -245,6 +246,9 @@ export function AdminPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* AI Configuration */}
+      <AIConfigSection />
 
       {/* Cached Files & Bulk Extraction */}
       <CachedFilesSection />

@@ -1,6 +1,6 @@
 import * as React from "react"
 import { Select } from "@base-ui/react"
-import { Check, ChevronDown, ChevronUp } from "lucide-react"
+import { Check, ChevronDown } from "lucide-react"
 
 import { cn } from "@/lib/utils"
 
@@ -58,7 +58,7 @@ const SelectTrigger = React.forwardRef<
   <Select.Trigger
     ref={ref}
     className={cn(
-      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 data-[disabled]:cursor-not-allowed data-[disabled]:opacity-50 [&>span]:line-clamp-1",
+      "flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 [&>span]:line-clamp-1",
       className
     )}
     {...props}
@@ -71,68 +71,33 @@ const SelectTrigger = React.forwardRef<
 ))
 SelectTrigger.displayName = "SelectTrigger"
 
-const SelectScrollUpButton = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof Select.ScrollUpArrow>
->(({ className, ...props }, ref) => (
-  <Select.ScrollUpArrow
-    ref={ref}
-    className={cn(
-      "flex cursor-default items-center justify-center py-1",
-      className
-    )}
-    {...props}
-  >
-    <ChevronUp className="h-4 w-4" />
-  </Select.ScrollUpArrow>
-))
-SelectScrollUpButton.displayName = "SelectScrollUpButton"
-
-const SelectScrollDownButton = React.forwardRef<
-  HTMLDivElement,
-  React.ComponentPropsWithoutRef<typeof Select.ScrollDownArrow>
->(({ className, ...props }, ref) => (
-  <Select.ScrollDownArrow
-    ref={ref}
-    className={cn(
-      "flex cursor-default items-center justify-center py-1",
-      className
-    )}
-    {...props}
-  >
-    <ChevronDown className="h-4 w-4" />
-  </Select.ScrollDownArrow>
-))
-SelectScrollDownButton.displayName = "SelectScrollDownButton"
-
 interface SelectContentProps extends React.ComponentPropsWithoutRef<typeof Select.Popup> {
   position?: "popper" | "item-aligned"
 }
 
+// Simple, clean dropdown - matching the style from DNO page
 const SelectContent = React.forwardRef<
   HTMLDivElement,
   SelectContentProps
->(({ className, children, position = "popper", ...props }, ref) => (
+>(({ className, children, ...props }, ref) => (
   <Select.Portal>
     <Select.Positioner
       side="bottom"
-      sideOffset={position === "popper" ? 4 : 0}
+      align="start"
+      sideOffset={4}
+      className="z-[9999]"
     >
       <Select.Popup
         ref={ref}
         className={cn(
-          "relative z-50 max-h-96 min-w-[8rem] overflow-hidden rounded-md border bg-popover text-popover-foreground shadow-md data-[open]:animate-in data-[closed]:animate-out data-[closed]:fade-out-0 data-[open]:fade-in-0 data-[closed]:zoom-out-95 data-[open]:zoom-in-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
-          position === "popper" &&
-          "data-[side=bottom]:translate-y-1 data-[side=left]:-translate-x-1 data-[side=right]:translate-x-1 data-[side=top]:-translate-y-1",
+          "w-[var(--anchor-width)] max-h-60 overflow-y-auto rounded-md border bg-popover text-popover-foreground shadow-lg",
           className
         )}
         {...props}
       >
-        <SelectScrollUpButton />
         <Select.List className="p-1">
           {children}
         </Select.List>
-        <SelectScrollDownButton />
       </Select.Popup>
     </Select.Positioner>
   </Select.Portal>
@@ -162,7 +127,7 @@ const SelectItem = React.forwardRef<HTMLDivElement, SelectItemProps>(
       ref={ref}
       value={value}
       className={cn(
-        "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-8 pr-2 text-sm outline-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+        "relative flex w-full cursor-pointer select-none items-center rounded-sm py-2 pl-8 pr-2 text-sm outline-none hover:bg-accent hover:text-accent-foreground data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
         className
       )}
       {...props}
@@ -200,6 +165,4 @@ export {
   SelectLabel,
   SelectItem,
   SelectSeparator,
-  SelectScrollUpButton,
-  SelectScrollDownButton,
 }
