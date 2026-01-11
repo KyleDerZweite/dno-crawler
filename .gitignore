@@ -130,3 +130,4 @@ Thumbs.db
 
 # End of .gitignore
 backend/data/cache/models_registry.json
+data/auth/*

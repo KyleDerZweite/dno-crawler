@@ -881,7 +881,7 @@ class AIConfigCreate(BaseModel):
     """Request model for creating AI provider config."""
     name: str
     provider_type: Literal["openai", "google", "anthropic", "openrouter", "litellm", "custom"]
-    auth_type: Literal["api_key", "oauth"] = "api_key"
+    auth_type: Literal["api_key", "oauth", "cli"] = "api_key"
     model: str
     api_key: str | None = None
     api_url: str | None = None
@@ -973,7 +973,7 @@ async def create_ai_config(
         supports_text=request.supports_text,
         supports_vision=request.supports_vision,
         supports_files=request.supports_files,
-        created_by=admin.sub,
+        created_by=admin.id,
     )
     
     await db.commit()
@@ -1007,7 +1007,7 @@ async def update_ai_config(
         supports_vision=request.supports_vision,
         supports_files=request.supports_files,
         is_enabled=request.is_enabled,
-        modified_by=admin.sub,
+        modified_by=admin.id,
     )
     
     if not config:
@@ -1088,18 +1088,148 @@ async def test_ai_config(
     )
 
 
+class AIConfigTestRequest(BaseModel):
+    """Request to test an AI configuration before saving."""
+    provider_type: str
+    auth_type: str = "api_key"  # "api_key" or "cli"
+    model: str
+    api_key: str | None = None
+    api_url: str | None = None
+
+
+@router.post("/ai-config/test")
+async def test_ai_config_preview(
+    request: AIConfigTestRequest,
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Test an AI provider configuration BEFORE saving it.
+    
+    Sends a quick test message to verify the credentials work.
+    """
+    import time
+    from types import SimpleNamespace
+    from app.services.ai.gateway import PROVIDER_CLASSES
+
+    start_time = time.time()
+    
+    try:
+        # Get the provider class
+        provider_class = PROVIDER_CLASSES.get(request.provider_type)
+        if not provider_class:
+            return APIResponse(
+                success=False,
+                message=f"Unknown provider type: {request.provider_type}",
+            )
+        
+        # Create a mock config object mimicking AIProviderConfigModel
+        mock_config = SimpleNamespace(
+            id=0,
+            name="Test Config",
+            provider_type=request.provider_type,
+            model=request.model,
+            api_key_encrypted=request.api_key,  # Will be treated as plain text in test
+            api_url=request.api_url,
+            auth_type=request.auth_type,
+            is_subscription=(request.auth_type == "cli"),
+            supports_vision=True,
+            supports_files=True,
+            supports_text=True,
+            is_enabled=True,
+            oauth_refresh_token_encrypted=None,
+        )
+        
+        # Create provider instance
+        provider = provider_class(mock_config)
+        
+        # Override the API key decryption for testing (use plain key)
+        if request.api_key:
+            provider.api_key = request.api_key
+        
+        # Run health check (sends test message)
+        is_healthy = await provider.health_check()
+        
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        
+        if is_healthy:
+            return APIResponse(
+                success=True,
+                message=f"Connection successful! Model responded in {elapsed_ms}ms",
+                data={
+                    "model": request.model,
+                    "response": "OK",
+                    "elapsed_ms": elapsed_ms,
+                },
+            )
+        else:
+            return APIResponse(
+                success=False,
+                message=f"Health check failed after {elapsed_ms}ms",
+                data={
+                    "model": request.model,
+                    "elapsed_ms": elapsed_ms,
+                },
+            )
+        
+    except Exception as e:
+        elapsed_ms = int((time.time() - start_time) * 1000)
+        logger.warning("ai_config_test_failed", error=str(e), provider=request.provider_type)
+        return APIResponse(
+            success=False,
+            message=f"Connection failed: {str(e)}",
+            data={
+                "model": request.model,
+                "elapsed_ms": elapsed_ms,
+                "error": str(e),
+            },
+        )
+
+
 @router.get("/ai-config/models/{provider_type}")
 async def list_provider_models(
     provider_type: str,
     admin: Annotated[AuthUser, Depends(require_admin)],
+    query: str | None = None,
+    supports_vision: bool | None = None,
+    supports_files: bool | None = None,
+    limit: int = 25,
 ) -> APIResponse:
-    """List available models for a provider from models.dev registry."""
+    """List available models for a provider.
+    
+    Two-stage approach:
+    - Without query: Returns curated/suggested models (FALLBACK_MODELS)
+    - With query: Searches the full models.dev registry
+    
+    This optimizes the UI by showing recommended models first, then
+    enabling fuzzy search against the full registry when user types.
+    """
     from app.services.ai.config_service import AIConfigService, get_models_registry_status
     
-    # Use async method to get models from registry
-    models = await AIConfigService.get_models_for_provider(provider_type)
     default_url = AIConfigService.get_default_url(provider_type)
     registry_status = get_models_registry_status()
+    
+    # If no query provided, return suggested models only
+    if not query:
+        models = AIConfigService.get_suggested_models(provider_type)
+        return APIResponse(
+            success=True,
+            data={
+                "provider": provider_type,
+                "models": models,
+                "default_url": default_url,
+                "custom_model_supported": True,
+                "registry_status": registry_status,
+                "source": "suggested",
+            },
+        )
+    
+    # With query, search the full registry
+    models = await AIConfigService.search_models_for_provider(
+        provider_type=provider_type,
+        query=query,
+        supports_vision=supports_vision,
+        supports_files=supports_files,
+        limit=limit,
+    )
     
     return APIResponse(
         success=True,
@@ -1107,8 +1237,10 @@ async def list_provider_models(
             "provider": provider_type,
             "models": models,
             "default_url": default_url,
-            "custom_model_supported": True,  # Always allow custom model input
+            "custom_model_supported": True,
             "registry_status": registry_status,
+            "source": "search",
+            "query": query,
         },
     )
 

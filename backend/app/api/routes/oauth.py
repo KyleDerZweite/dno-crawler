@@ -45,13 +45,14 @@ async def detect_cli_credentials(
     # Check Google/Gemini CLI
     try:
         cred_manager = get_credential_manager()
-        gemini_creds = cred_manager.get_gemini_cli_credentials()
+        # Use load_credentials() which checks /data/auth/ first, then ~/.gemini/
+        gemini_creds = cred_manager.load_credentials()
         
         if gemini_creds:
             user_info = cred_manager.get_user_info()
             detected["google"] = {
                 "available": True,
-                "source": "gemini-cli",
+                "source": "oauth" if gemini_creds.get("user_email") else "gemini-cli",
                 "email": user_info.get("email") if user_info else None,
                 "name": user_info.get("name") if user_info else None,
                 "has_refresh_token": "refresh_token" in gemini_creds,
@@ -60,7 +61,7 @@ async def detect_cli_credentials(
             detected["google"] = {
                 "available": False,
                 "source": None,
-                "instructions": "Run 'gemini auth login' to authenticate",
+                "instructions": "Run 'gemini auth login' or use OAuth to authenticate",
             }
     except Exception as e:
         detected["google"] = {
@@ -133,7 +134,7 @@ async def start_google_oauth(
     else:
         # Construct from settings
         base_url = getattr(settings, 'base_url', None) or "http://localhost:8000"
-        redirect_uri = f"{base_url}/api/admin/oauth/google/callback"
+        redirect_uri = f"{base_url}/api/v1/admin/oauth/google/callback"
     
     flow = GoogleOAuthFlow(redirect_uri=redirect_uri)
     auth_url, state, code_verifier = flow.generate_authorization_url()
@@ -165,13 +166,122 @@ async def start_google_oauth(
 async def google_oauth_callback_get(
     code: Annotated[str, Query(description="Authorization code from Google")],
     state: Annotated[str, Query(description="State parameter for verification")],
-) -> APIResponse:
+):
     """Handle Google OAuth callback (GET - browser redirect).
     
     Google redirects here after user authorizes.
-    This endpoint exchanges the code for tokens.
+    This endpoint exchanges the code for tokens and returns HTML
+    that closes the popup window.
     """
-    return await _handle_google_callback(code, state)
+    from fastapi.responses import HTMLResponse
+    
+    result = await _handle_google_callback_internal(code, state)
+    
+    # Return HTML that closes the popup and notifies parent
+    if result["success"]:
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OAuth Success</title>
+    <style>
+        body {{
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+            color: white;
+        }}
+        .container {{
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+        }}
+        .icon {{ font-size: 4rem; margin-bottom: 1rem; }}
+        h1 {{ margin: 0 0 0.5rem 0; font-size: 1.5rem; }}
+        p {{ margin: 0; opacity: 0.9; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✓</div>
+        <h1>Authentication Successful!</h1>
+        <p>Signed in as {result['email']}</p>
+        <p style="margin-top: 1rem; font-size: 0.875rem; opacity: 0.7;">This window will close automatically...</p>
+    </div>
+    <script>
+        // Notify parent window of success
+        if (window.opener) {{
+            window.opener.postMessage({{
+                type: 'oauth_complete',
+                success: true,
+                email: '{result['email']}',
+                name: '{result.get('name', '')}'
+            }}, '*');
+        }}
+        // Close popup after brief delay
+        setTimeout(() => window.close(), 1500);
+    </script>
+</body>
+</html>
+"""
+    else:
+        html = f"""
+<!DOCTYPE html>
+<html>
+<head>
+    <title>OAuth Failed</title>
+    <style>
+        body {{
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+            color: white;
+        }}
+        .container {{
+            text-align: center;
+            padding: 2rem;
+            background: rgba(255,255,255,0.1);
+            border-radius: 1rem;
+            backdrop-filter: blur(10px);
+            max-width: 400px;
+        }}
+        .icon {{ font-size: 4rem; margin-bottom: 1rem; }}
+        h1 {{ margin: 0 0 0.5rem 0; font-size: 1.5rem; }}
+        p {{ margin: 0; opacity: 0.9; word-break: break-word; }}
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="icon">✗</div>
+        <h1>Authentication Failed</h1>
+        <p>{result['message']}</p>
+        <p style="margin-top: 1rem; font-size: 0.875rem; opacity: 0.7;">You can close this window and try again.</p>
+    </div>
+    <script>
+        // Notify parent window of failure
+        if (window.opener) {{
+            window.opener.postMessage({{
+                type: 'oauth_complete',
+                success: false,
+                error: '{result['message']}'
+            }}, '*');
+        }}
+    </script>
+</body>
+</html>
+"""
+    
+    return HTMLResponse(content=html)
 
 
 @router.post("/google/callback")
@@ -183,21 +293,36 @@ async def google_oauth_callback_post(
     
     Frontend can POST the code/state after intercepting the redirect.
     """
-    return await _handle_google_callback(request.code, request.state)
+    result = await _handle_google_callback_internal(request.code, request.state)
+    if result["success"]:
+        return APIResponse(
+            success=True,
+            message=result["message"],
+            data={
+                "email": result.get("email"),
+                "name": result.get("name"),
+                "expires_at": result.get("expires_at"),
+            },
+        )
+    else:
+        return APIResponse(
+            success=False,
+            message=result["message"],
+        )
 
 
-async def _handle_google_callback(code: str, state: str) -> APIResponse:
-    """Process OAuth callback and store credentials."""
+async def _handle_google_callback_internal(code: str, state: str) -> dict:
+    """Process OAuth callback and store credentials. Returns a dict."""
     from app.services.ai.oauth.google import GoogleOAuthFlow, get_credential_manager
     
     # Verify state
     pending = _oauth_pending_states.get(state)
     if not pending:
         logger.warning("google_oauth_invalid_state", state=state[:8] + "...")
-        return APIResponse(
-            success=False,
-            message="Invalid or expired OAuth state. Please try again.",
-        )
+        return {
+            "success": False,
+            "message": "Invalid or expired OAuth state. Please try again.",
+        }
     
     # Exchange code for tokens
     try:
@@ -222,22 +347,20 @@ async def _handle_google_callback(code: str, state: str) -> APIResponse:
             email=credentials.get("user_email"),
         )
         
-        return APIResponse(
-            success=True,
-            message=f"Successfully authenticated as {credentials.get('user_email')}",
-            data={
-                "email": credentials.get("user_email"),
-                "name": credentials.get("user_name"),
-                "expires_at": credentials.get("expires_at"),
-            },
-        )
+        return {
+            "success": True,
+            "message": f"Successfully authenticated as {credentials.get('user_email')}",
+            "email": credentials.get("user_email"),
+            "name": credentials.get("user_name"),
+            "expires_at": credentials.get("expires_at"),
+        }
         
     except Exception as e:
         logger.error("google_oauth_callback_failed", error=str(e))
-        return APIResponse(
-            success=False,
-            message=f"OAuth failed: {str(e)}",
-        )
+        return {
+            "success": False,
+            "message": f"OAuth failed: {str(e)}",
+        }
 
 
 @router.get("/google/status")

@@ -4,7 +4,6 @@ Extraction subpackage for data extraction from various sources.
 Modules:
 - pdf_extractor: Regex-based PDF extraction
 - html_extractor: HTML table extraction
-- llm_extractor: LLM-based fallback extraction
 """
 
 from app.services.extraction.pdf_extractor import (

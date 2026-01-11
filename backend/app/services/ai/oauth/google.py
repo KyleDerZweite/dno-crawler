@@ -52,8 +52,11 @@ OAUTH_SCOPES = [
 GEMINI_CLI_DIR = Path.home() / ".gemini"
 GEMINI_CLI_CREDS = GEMINI_CLI_DIR / "oauth_creds.json"
 
-# Our own storage for OAuth tokens (compatible with gemini-cli format)
-OUR_CREDS_DIR = Path(__file__).parent.parent.parent.parent.parent / "data" / "auth"
+# Our own storage for OAuth tokens - use mounted /data volume
+# This is writable in Docker containers
+import os
+_storage_path = os.environ.get("STORAGE_PATH", "/data")
+OUR_CREDS_DIR = Path(_storage_path) / "auth"
 
 
 class GoogleOAuthFlow:
@@ -148,6 +151,7 @@ class GoogleOAuthFlow:
                 GOOGLE_TOKEN_URL,
                 data={
                     "client_id": self.client_id,
+                    "client_secret": GEMINI_CLI_CLIENT_SECRET,  # Required even with PKCE
                     "code": code,
                     "code_verifier": code_verifier,
                     "grant_type": "authorization_code",

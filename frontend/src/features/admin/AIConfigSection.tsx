@@ -1,4 +1,6 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
+import { useToast } from "@/hooks/use-toast";
+import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { AIProviderConfig, AIProviderType, AIConfigCreate } from "@/lib/api";
@@ -41,6 +43,7 @@ import {
     Key,
     ChevronDown,
     Check,
+    Zap,
 } from "lucide-react";
 
 // Provider display info with logos from models.dev
@@ -201,7 +204,9 @@ function fuzzyMatch(query: string, target: string): boolean {
     return qi === q.length;
 }
 
-// Model autocomplete component with fuzzy search
+// Model autocomplete component with two-stage search
+// Stage 1: Show curated suggested models by default
+// Stage 2: Search the full registry when user types
 function ModelAutocomplete({
     value,
     onChange,
@@ -209,6 +214,7 @@ function ModelAutocomplete({
     requireVision,
     requireFiles,
     onCapabilitiesChange,
+    providerType,
 }: {
     value: string;
     onChange: (value: string) => void;
@@ -216,11 +222,16 @@ function ModelAutocomplete({
     requireVision?: boolean;
     requireFiles?: boolean;
     onCapabilitiesChange?: (vision: boolean, files: boolean) => void;
+    providerType?: string;
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const [inputValue, setInputValue] = useState(value);
+    const [searchQuery, setSearchQuery] = useState("");
+    const [isSearching, setIsSearching] = useState(false);
+    const [searchResults, setSearchResults] = useState<AIModel[]>([]);
     const dropdownRef = useRef<HTMLDivElement>(null);
     const inputRef = useRef<HTMLInputElement>(null);
+    const searchTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Sync inputValue with external value changes
     useEffect(() => {
@@ -238,6 +249,50 @@ function ModelAutocomplete({
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
 
+    // Debounced search against full registry
+    useEffect(() => {
+        // Clear previous timeout
+        if (searchTimeoutRef.current) {
+            clearTimeout(searchTimeoutRef.current);
+        }
+
+        // Only search if we have a query and provider
+        if (!searchQuery || searchQuery.length < 2 || !providerType) {
+            setSearchResults([]);
+            setIsSearching(false);
+            return;
+        }
+
+        setIsSearching(true);
+
+        // Debounce the search by 300ms
+        searchTimeoutRef.current = setTimeout(async () => {
+            try {
+                const response = await api.admin.getAIModels(providerType, {
+                    query: searchQuery,
+                    supports_vision: requireVision ? true : undefined,
+                    supports_files: requireFiles ? true : undefined,
+                    limit: 15,
+                });
+
+                if (response.data?.models) {
+                    setSearchResults(response.data.models as AIModel[]);
+                }
+            } catch (error) {
+                console.error("Model search failed:", error);
+                setSearchResults([]);
+            } finally {
+                setIsSearching(false);
+            }
+        }, 300);
+
+        return () => {
+            if (searchTimeoutRef.current) {
+                clearTimeout(searchTimeoutRef.current);
+            }
+        };
+    }, [searchQuery, providerType, requireVision, requireFiles]);
+
     // Pre-filter models by required capabilities
     const capabilityFilteredModels = models.filter(m => {
         if (requireVision && !m.supports_vision) return false;
@@ -245,20 +300,34 @@ function ModelAutocomplete({
         return true;
     });
 
-    // Then apply fuzzy search filter
-    const filteredModels = inputValue.length > 0
-        ? capabilityFilteredModels.filter(m => fuzzyMatch(inputValue, m.id) || fuzzyMatch(inputValue, m.name))
-        : capabilityFilteredModels;
+    // Determine which models to show
+    const displayModels = useMemo(() => {
+        // If we have search results from the registry, show those
+        if (searchQuery.length >= 2 && searchResults.length > 0) {
+            return searchResults;
+        }
+
+        // Otherwise filter the suggested models locally
+        if (inputValue.length > 0) {
+            return capabilityFilteredModels.filter(m =>
+                fuzzyMatch(inputValue, m.id) || fuzzyMatch(inputValue, m.name)
+            );
+        }
+
+        return capabilityFilteredModels;
+    }, [inputValue, searchQuery, searchResults, capabilityFilteredModels]);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newValue = e.target.value;
         setInputValue(newValue);
+        setSearchQuery(newValue);
         onChange(newValue);
         setIsOpen(true);
     };
 
     const handleSelect = (model: AIModel) => {
         setInputValue(model.id);
+        setSearchQuery("");
         onChange(model.id);
         setIsOpen(false);
         // Update capabilities based on selected model
@@ -273,7 +342,7 @@ function ModelAutocomplete({
         }
     };
 
-    const showDropdown = isOpen && filteredModels.length > 0;
+    const showDropdown = isOpen && (displayModels.length > 0 || isSearching);
 
     return (
         <div className="space-y-2" ref={dropdownRef}>
@@ -286,25 +355,35 @@ function ModelAutocomplete({
                     value={inputValue}
                     onChange={handleInputChange}
                     onFocus={handleFocus}
-                    placeholder={models.length > 0 ? "Search or enter model ID..." : "Enter model ID..."}
+                    placeholder={models.length > 0 ? "Search models or enter custom ID..." : "Enter model ID..."}
                     className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2"
                 />
 
-                {/* Dropdown indicator */}
-                {models.length > 0 && (
-                    <button
-                        type="button"
-                        onClick={() => setIsOpen(!isOpen)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-accent rounded transition-colors"
-                    >
-                        <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-                    </button>
-                )}
+                {/* Dropdown indicator / loading spinner */}
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                    {isSearching && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                    )}
+                    {models.length > 0 && (
+                        <button
+                            type="button"
+                            onClick={() => setIsOpen(!isOpen)}
+                            className="p-1 hover:bg-accent rounded transition-colors"
+                        >
+                            <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+                        </button>
+                    )}
+                </div>
 
                 {/* Dropdown Menu */}
                 {showDropdown && (
                     <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-popover border rounded-md shadow-lg max-h-48 overflow-y-auto">
-                        {filteredModels.map((model) => {
+                        {searchQuery.length >= 2 && searchResults.length > 0 && (
+                            <div className="px-3 py-1.5 text-xs text-muted-foreground border-b bg-muted/50">
+                                🔍 Search results from registry
+                            </div>
+                        )}
+                        {displayModels.map((model) => {
                             const isSelected = model.id === inputValue;
                             return (
                                 <button
@@ -325,10 +404,16 @@ function ModelAutocomplete({
                                 </button>
                             );
                         })}
+                        {isSearching && (
+                            <div className="px-3 py-2.5 text-sm text-muted-foreground flex items-center gap-2">
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                                Searching registry...
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
-            {inputValue && filteredModels.length === 0 && models.length > 0 && (
+            {inputValue && displayModels.length === 0 && models.length > 0 && !isSearching && (
                 <p className="text-xs text-muted-foreground">
                     Using custom model: <span className="font-medium text-foreground">{inputValue}</span>
                 </p>
@@ -571,13 +656,18 @@ function AddProviderDialog({
 }) {
     const [providerType, setProviderType] = useState<AIProviderType>("openrouter");
     const [name, setName] = useState("");
+    const [nameManuallyEdited, setNameManuallyEdited] = useState(false);
     const [apiKey, setApiKey] = useState("");
     const [apiUrl, setApiUrl] = useState("");
     const [model, setModel] = useState("");
     const [supportsVision, setSupportsVision] = useState(true);
     const [supportsFiles, setSupportsFiles] = useState(false);
-    const [authType, setAuthType] = useState<"api_key" | "cli">("api_key");
-    const [useCliCreds, setUseCliCreds] = useState(false);
+    const [authType, setAuthType] = useState<"api_key" | "oauth">("api_key");
+    const [isOAuthPending, setIsOAuthPending] = useState(false);
+    const [oauthError, setOauthError] = useState<string | null>(null);
+    const queryClient = useQueryClient();
+    const { toast } = useToast();
+    const { showError } = useErrorToast();
 
     // Detect CLI credentials when dialog opens
     const { data: credsData } = useQuery({
@@ -600,20 +690,119 @@ function AddProviderDialog({
     const models = modelsData?.data?.models || [];
     const defaultUrl = modelsData?.data?.default_url || "";
 
-    // When provider changes, check for CLI creds
+    // Generate auto name based on provider, model, and auth type
+    const generateAutoName = () => {
+        const providerName = PROVIDER_INFO[providerType]?.name || providerType;
+        const modelName = models.find(m => m.id === model)?.name || model;
+
+        if (providerType === "google" && authType === "oauth") {
+            return googleCredEmail
+                ? `${providerName} (${googleCredEmail})`
+                : `${providerName} (OAuth)`;
+        }
+
+        if (modelName) {
+            return `${providerName} - ${modelName}`;
+        }
+
+        return providerName;
+    };
+
+    // Update auto-generated name when dependencies change (if not manually edited)
+    useEffect(() => {
+        if (!nameManuallyEdited && open) {
+            const autoName = generateAutoName();
+            setName(autoName);
+        }
+    }, [providerType, model, authType, googleCredEmail, nameManuallyEdited, open, models]);
+
+    // When provider changes
     const handleProviderChange = (v: string) => {
         const provider = v as AIProviderType;
         setProviderType(provider);
         setModel("");
+        setNameManuallyEdited(false); // Reset to allow auto-naming
 
-        // Auto-select CLI auth for Google if creds available
-        if (provider === "google" && detectedCreds.google?.available) {
-            setAuthType("cli");
-            setUseCliCreds(true);
-            setName(`Google (${detectedCreds.google.email || "OAuth"})`);
+        // Default to OAuth for Google if credentials are available
+        if (provider === "google" && googleCredAvailable) {
+            setAuthType("oauth");
         } else {
             setAuthType("api_key");
-            setUseCliCreds(false);
+        }
+    };
+
+    // Handle name field changes
+    const handleNameChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const newValue = e.target.value;
+        setName(newValue);
+        setNameManuallyEdited(newValue.length > 0);
+    };
+
+    // Handle name field blur - regenerate if empty
+    const handleNameBlur = () => {
+        if (name.trim() === "") {
+            setNameManuallyEdited(false);
+            setName(generateAutoName());
+        }
+    };
+
+    // Handle auth type change
+    const handleAuthTypeChange = (newAuthType: "api_key" | "oauth") => {
+        setAuthType(newAuthType);
+        setNameManuallyEdited(false); // Allow name to update with new auth type
+        setOauthError(null);
+    };
+
+    // Handle OAuth flow start
+    const handleStartOAuthFlow = async () => {
+        setIsOAuthPending(true);
+        setOauthError(null);
+
+        try {
+            // Start the OAuth flow - get auth URL
+            const response = await api.admin.startGoogleOAuth();
+
+            if (!response.success || !response.data?.auth_url) {
+                throw new Error(response.message || "Failed to start OAuth flow");
+            }
+
+            const authUrl = response.data.auth_url;
+
+            // Open popup for OAuth
+            const popup = window.open(
+                authUrl,
+                "google_oauth",
+                "width=500,height=600,scrollbars=yes,resizable=yes"
+            );
+
+            if (!popup) {
+                throw new Error("Popup was blocked. Please allow popups for this site.");
+            }
+
+            // Poll for popup closure and refresh credentials
+            const pollInterval = setInterval(async () => {
+                if (popup.closed) {
+                    clearInterval(pollInterval);
+                    setIsOAuthPending(false);
+
+                    // Refresh credentials to check if OAuth succeeded
+                    await queryClient.invalidateQueries({ queryKey: ["admin", "detect-credentials"] });
+                }
+            }, 500);
+
+            // Set a timeout to stop polling after 5 minutes
+            setTimeout(() => {
+                clearInterval(pollInterval);
+                if (!popup.closed) {
+                    popup.close();
+                }
+                setIsOAuthPending(false);
+            }, 5 * 60 * 1000);
+
+        } catch (error) {
+            console.error("OAuth flow failed:", error);
+            setOauthError(error instanceof Error ? error.message : "OAuth flow failed");
+            setIsOAuthPending(false);
         }
     };
 
@@ -621,35 +810,123 @@ function AddProviderDialog({
     const createMutation = useMutation({
         mutationFn: (config: AIConfigCreate) => api.admin.createAIConfig(config),
         onSuccess: () => {
+            toast({
+                title: "Provider Added",
+                description: `Successfully added ${name || generateAutoName()}`,
+            });
             onSuccess();
             // Reset form
             setName("");
+            setNameManuallyEdited(false);
             setApiKey("");
             setApiUrl("");
             setModel("");
             setAuthType("api_key");
-            setUseCliCreds(false);
+            setTestResult(null);
+        },
+        onError: (error) => {
+            showError(error, {
+                title: "Failed to Add Provider",
+                fallbackMessage: "Could not save the AI provider configuration. Please try again.",
+            });
         },
     });
 
-    const handleSubmit = () => {
-        if (!name || !model) return;
+    // Logout OAuth mutation
+    const logoutMutation = useMutation({
+        mutationFn: () => api.admin.logoutGoogleOAuth(),
+        onSuccess: () => {
+            // Refresh credentials detection
+            queryClient.invalidateQueries({ queryKey: ["admin", "detect-credentials"] });
+        },
+    });
 
-        createMutation.mutate({
-            name,
+    // Test connection state
+    const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+    const [isTesting, setIsTesting] = useState(false);
+
+    const handleTestConnection = async () => {
+        if (!model) {
+            setTestResult({ success: false, message: "Please select a model first" });
+            return;
+        }
+
+        // Basic validation first
+        if (authType === "api_key" && !apiKey && providerType !== "litellm" && providerType !== "custom") {
+            setTestResult({ success: false, message: "API key is required" });
+            return;
+        }
+
+        if (authType === "oauth" && !googleCredAvailable) {
+            setTestResult({ success: false, message: "OAuth credentials not available. Please authenticate first." });
+            return;
+        }
+
+        setIsTesting(true);
+        setTestResult(null);
+
+        try {
+            // Call the real test endpoint
+            const response = await api.admin.testAIConfigPreview({
+                provider_type: providerType,
+                auth_type: authType === "oauth" ? "cli" : "api_key",
+                model: model,
+                api_key: authType === "api_key" ? apiKey : undefined,
+                api_url: apiUrl || defaultUrl || undefined,
+            });
+
+            if (response.success) {
+                const data = response.data;
+                setTestResult({
+                    success: true,
+                    message: response.message || `✓ Model responded: "${data?.response || 'OK'}" (${data?.elapsed_ms}ms)`,
+                });
+            } else {
+                setTestResult({
+                    success: false,
+                    message: response.message || "Connection test failed",
+                });
+            }
+        } catch (error) {
+            console.error("Test connection failed:", error);
+            setTestResult({
+                success: false,
+                message: error instanceof Error ? error.message : "Test failed - check console for details"
+            });
+        } finally {
+            setIsTesting(false);
+        }
+    };
+
+    const handleSubmit = () => {
+        // Use generated name if empty
+        const finalName = name.trim() || generateAutoName();
+
+        if (!finalName || !model) {
+            showError(new Error("Name and model are required"), {
+                title: "Validation Error",
+            });
+            return;
+        }
+
+        const config = {
+            name: finalName,
             provider_type: providerType,
-            auth_type: authType,
+            auth_type: authType === "oauth" ? "cli" : "api_key", // CLI uses OAuth credentials from Gemini CLI
             model: model,
             api_key: authType === "api_key" ? apiKey : undefined,
             api_url: apiUrl || defaultUrl || undefined,
             supports_text: true,
             supports_vision: supportsVision,
             supports_files: supportsFiles,
-        });
+        };
+
+        createMutation.mutate(config as AIConfigCreate);
     };
 
     const needsApiUrl = providerType === "litellm" || providerType === "custom";
-    const needsApiKey = authType === "api_key" && !useCliCreds;
+    const needsApiKey = authType === "api_key";
+    const showAuthTypeToggle = providerType === "google"; // Only Google supports OAuth currently
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -669,19 +946,125 @@ function AddProviderDialog({
                         googleCredAvailable={googleCredAvailable}
                     />
 
-                    {/* CLI Credentials Detected Alert */}
-                    {providerType === "google" && googleCredAvailable && (
-                        <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
-                            <div className="flex items-center gap-2 text-green-500 font-medium mb-1">
-                                <CheckCircle2 className="h-4 w-4" />
-                                Gemini CLI credentials found!
+                    {/* Authentication Type Toggle (for Google) */}
+                    {showAuthTypeToggle && (
+                        <div className="space-y-3">
+                            <Label>Authentication Method</Label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {/* OAuth Option */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleAuthTypeChange("oauth")}
+                                    className={`p-3 rounded-lg border text-left transition-all ${authType === "oauth"
+                                        ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                        : "border-border hover:border-primary/50 hover:bg-accent/50"
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-2 font-medium mb-1">
+                                        {googleCredAvailable ? (
+                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
+                                        ) : (
+                                            <RefreshCw className="h-4 w-4" />
+                                        )}
+                                        OAuth / CLI
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        {googleCredAvailable
+                                            ? `Uses existing Gemini CLI credentials (${googleCredEmail})`
+                                            : "Authenticate via Google OAuth (like Gemini CLI)"
+                                        }
+                                    </p>
+                                </button>
+
+                                {/* API Key Option */}
+                                <button
+                                    type="button"
+                                    onClick={() => handleAuthTypeChange("api_key")}
+                                    className={`p-3 rounded-lg border text-left transition-all ${authType === "api_key"
+                                        ? "border-primary bg-primary/10 ring-2 ring-primary/20"
+                                        : "border-border hover:border-primary/50 hover:bg-accent/50"
+                                        }`}
+                                >
+                                    <div className="flex items-center gap-2 font-medium mb-1">
+                                        <Key className="h-4 w-4" />
+                                        API Key
+                                    </div>
+                                    <p className="text-xs text-muted-foreground">
+                                        Use a Google AI Studio API key
+                                    </p>
+                                </button>
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                                Using account: <span className="font-medium text-foreground">{googleCredEmail}</span>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-1">
-                                No API key needed - uses your Google account's Gemini quota.
-                            </p>
+
+                            {/* OAuth not available - show setup instructions */}
+                            {authType === "oauth" && !googleCredAvailable && (
+                                <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
+                                    <div className="flex items-center gap-2 text-amber-500 font-medium mb-1">
+                                        <AlertTriangle className="h-4 w-4" />
+                                        OAuth not yet configured
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Authenticate with your Google account to use Gemini. This uses the same OAuth flow as the Gemini CLI.
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1 opacity-75">
+                                        💡 Your existing Gemini CLI credentials will work automatically if detected.
+                                    </p>
+                                    {oauthError && (
+                                        <p className="text-xs text-red-500 mt-2">
+                                            ⚠️ {oauthError}
+                                        </p>
+                                    )}
+                                    <Button
+                                        variant="outline"
+                                        size="sm"
+                                        className="mt-2"
+                                        onClick={handleStartOAuthFlow}
+                                        disabled={isOAuthPending}
+                                    >
+                                        {isOAuthPending ? (
+                                            <>
+                                                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                                                Authenticating...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                                                Start OAuth Flow
+                                            </>
+                                        )}
+                                    </Button>
+                                </div>
+                            )}
+
+                            {/* OAuth available - show account info */}
+                            {authType === "oauth" && googleCredAvailable && (
+                                <div className="rounded-lg border border-green-500/30 bg-green-500/10 p-3">
+                                    <div className="flex items-center justify-between mb-1">
+                                        <div className="flex items-center gap-2 text-green-500 font-medium">
+                                            <CheckCircle2 className="h-4 w-4" />
+                                            Gemini CLI credentials detected
+                                        </div>
+                                        <Button
+                                            variant="ghost"
+                                            size="sm"
+                                            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+                                            onClick={() => logoutMutation.mutate()}
+                                            disabled={logoutMutation.isPending}
+                                        >
+                                            {logoutMutation.isPending ? (
+                                                <Loader2 className="h-3 w-3 animate-spin" />
+                                            ) : (
+                                                "Use different account"
+                                            )}
+                                        </Button>
+                                    </div>
+                                    <p className="text-sm text-muted-foreground">
+                                        Using account: <span className="font-medium text-foreground">{googleCredEmail}</span>
+                                    </p>
+                                    <p className="text-xs text-muted-foreground mt-1">
+                                        No API key needed - uses your Google account's Gemini quota.
+                                    </p>
+                                </div>
+                            )}
                         </div>
                     )}
 
@@ -689,10 +1072,14 @@ function AddProviderDialog({
                     <div className="space-y-2">
                         <Label>Display Name</Label>
                         <Input
-                            placeholder="e.g., My OpenRouter Key"
+                            placeholder={generateAutoName()}
                             value={name}
-                            onChange={(e) => setName(e.target.value)}
+                            onChange={handleNameChange}
+                            onBlur={handleNameBlur}
                         />
+                        <p className="text-xs text-muted-foreground">
+                            Auto-generated if left empty
+                        </p>
                     </div>
 
                     {/* API URL (for LiteLLM/Custom) */}
@@ -707,7 +1094,7 @@ function AddProviderDialog({
                         </div>
                     )}
 
-                    {/* API Key - only shown when not using CLI credentials */}
+                    {/* API Key - only shown when using API key auth */}
                     {needsApiKey && (
                         <div className="space-y-2">
                             <Label className="flex items-center gap-2">
@@ -716,7 +1103,7 @@ function AddProviderDialog({
                             </Label>
                             <Input
                                 type="password"
-                                placeholder="sk-..."
+                                placeholder={providerType === "google" ? "AIza..." : "sk-..."}
                                 value={apiKey}
                                 onChange={(e) => setApiKey(e.target.value)}
                             />
@@ -726,10 +1113,14 @@ function AddProviderDialog({
                     {/* Model Selection */}
                     <ModelAutocomplete
                         value={model}
-                        onChange={setModel}
+                        onChange={(newModel) => {
+                            setModel(newModel);
+                            setNameManuallyEdited(false); // Allow name to update with new model
+                        }}
                         models={models}
                         requireVision={supportsVision}
                         requireFiles={supportsFiles}
+                        providerType={providerType}
                         onCapabilitiesChange={(vision, files) => {
                             setSupportsVision(vision);
                             setSupportsFiles(files);
@@ -760,13 +1151,41 @@ function AddProviderDialog({
                     </div>
                 </div>
 
-                <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)}>
-                        Cancel
-                    </Button>
+                {/* Test Result */}
+                {testResult && (
+                    <div className={`p-3 rounded-lg border ${testResult.success
+                        ? "border-green-500/30 bg-green-500/10"
+                        : "border-red-500/30 bg-red-500/10"
+                        }`}>
+                        <p className={`text-sm ${testResult.success ? "text-green-500" : "text-red-500"}`}>
+                            {testResult.success ? "✓" : "✗"} {testResult.message}
+                        </p>
+                    </div>
+                )}
+
+                <DialogFooter className="gap-2 sm:gap-0">
+                    <div className="flex gap-2 w-full sm:w-auto">
+                        <Button
+                            variant="outline"
+                            onClick={handleTestConnection}
+                            disabled={!model || isTesting}
+                            className="flex-1 sm:flex-none"
+                        >
+                            {isTesting ? (
+                                <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                            ) : (
+                                <Zap className="h-4 w-4 mr-2" />
+                            )}
+                            Test
+                        </Button>
+                        <Button variant="outline" onClick={() => onOpenChange(false)}>
+                            Cancel
+                        </Button>
+                    </div>
                     <Button
+                        type="button"
                         onClick={handleSubmit}
-                        disabled={!name || !model || createMutation.isPending}
+                        disabled={!model || createMutation.isPending || (authType === "api_key" && !apiKey && providerType !== "litellm" && providerType !== "custom")}
                     >
                         {createMutation.isPending ? (
                             <Loader2 className="h-4 w-4 animate-spin mr-2" />

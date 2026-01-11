@@ -287,6 +287,63 @@ class AIConfigService:
         return FALLBACK_MODELS.get(provider_type, [])
     
     @staticmethod
+    def get_suggested_models(provider_type: str) -> list[dict]:
+        """Get the curated list of suggested/recommended models for a provider.
+        
+        This returns only the FALLBACK_MODELS - a hand-picked list of the best
+        and most current models. Used as the default display before user searches.
+        """
+        return FALLBACK_MODELS.get(provider_type, [])
+    
+    @staticmethod
+    async def search_models_for_provider(
+        provider_type: str,
+        query: str = "",
+        supports_vision: bool | None = None,
+        supports_files: bool | None = None,
+        limit: int = 25,
+    ) -> list[dict]:
+        """Search models for a provider from the full models.dev registry.
+        
+        Used when the user actively searches/types to find models beyond
+        the suggested list. Returns fuzzy-matched results from the full registry.
+        
+        Args:
+            provider_type: Provider to search (openai, google, anthropic, etc.)
+            query: Search query for model name/ID
+            supports_vision: Optional filter for vision capability
+            supports_files: Optional filter for file/PDF capability
+            limit: Max results to return
+            
+        Returns:
+            List of matching models from the registry
+        """
+        try:
+            from app.services.ai.models_registry import search_models as registry_search
+            
+            models = await registry_search(
+                query=query,
+                provider=provider_type if provider_type not in ("litellm", "custom") else None,
+                supports_vision=supports_vision,
+                supports_files=supports_files,
+                limit=limit,
+            )
+            return models
+        except Exception as e:
+            logger.warning("models_registry_search_failed", error=str(e), query=query)
+            
+            # Fallback: filter FALLBACK_MODELS locally
+            fallback = FALLBACK_MODELS.get(provider_type, [])
+            if not query:
+                return fallback[:limit]
+            
+            query_lower = query.lower()
+            return [
+                m for m in fallback
+                if query_lower in m["id"].lower() or query_lower in m["name"].lower()
+            ][:limit]
+    
+    @staticmethod
     async def get_models_for_provider(provider_type: str) -> list[dict]:
         """Get available models for a provider from models.dev registry.
         

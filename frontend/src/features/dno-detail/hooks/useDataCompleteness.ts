@@ -45,7 +45,7 @@ export function useDataCompleteness({
         const allYears = new Set<number>();
         netzentgelte.forEach((item) => allYears.add(item.year));
         hlzf.forEach((item) => allYears.add(item.year));
-        const yearsCount = allYears.size || 1;
+        const yearsCount = Math.max(3, allYears.size || 0);
 
         // Determine voltage levels this DNO actually has data for
         // Only count a voltage level if it has at least one real value (not just "-")

@@ -128,21 +128,51 @@ class ExtractStep(BaseStep):
         # ===== STEP 3: Try AI if configured =====
         ai_result = None
         prompt = None
-        if settings.ai_enabled:
+        
+        from app.services.ai.gateway import AIGateway
+        gateway = AIGateway(db)
+        
+        # Determine needs based on file extension
+        # Note: PDF needs separate handling in gateway but effectively needs file support
+        # logic here mirrors gateway.extract()
+        suffix = path.suffix.lower()
+        needs_vision = suffix in {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
+        needs_files = suffix == ".pdf"
+        
+        configs = await gateway.get_sorted_configs(
+            needs_vision=needs_vision,
+            needs_files=needs_files
+        )
+        is_ai_enabled = len(configs) > 0
+        primary_model = configs[0].model if configs else "unknown"
+
+        logger.info(
+            "ai_config_debug",
+            file=path.name,
+            suffix=suffix,
+            needs_vision=needs_vision,
+            needs_files=needs_files,
+            configs_found=len(configs),
+            primary_model=primary_model,
+            is_ai_enabled=is_ai_enabled
+        )
+
+        if is_ai_enabled:
             logger.info(
                 "trying_ai_fallback",
                 dno=dno_name,
                 year=job.year,
                 data_type=job.data_type,
-                model=settings.ai_model,
+                model=primary_model,
             )
 
             prompt = self._build_prompt(dno_name, job.year, job.data_type)
-            ai_result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt)
+            ai_result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt, db)
 
             if ai_result:
                 extracted_data = ai_result.get("data", [])
                 extraction_meta = ai_result.get("_extraction_meta", {})
+                used_model = extraction_meta.get("model", "unknown")
 
                 # ===== POST-PROCESS AI RESULTS =====
                 # Clean up common formatting issues (k.A., Uhr, German decimals, spaces)
@@ -161,20 +191,20 @@ class ExtractStep(BaseStep):
                         dno=dno_name,
                         year=job.year,
                         data_type=job.data_type,
-                        model=settings.ai_model,
+                        model=used_model,
                     )
 
                     # Still use AI result (may have partial data) but flag for review
                     ctx["extracted_data"] = extracted_data
                     ctx["extraction_notes"] = f"AI extraction - FLAGGED: {ai_reason}"
                     ctx["extraction_method"] = "ai"
-                    ctx["extraction_model"] = settings.ai_model
+                    ctx["extraction_model"] = used_model
                     ctx["auto_flagged"] = True
                     ctx["auto_flag_reason"] = f"AI extraction sanity check failed: {ai_reason}"
 
                     ctx["extraction_source_meta"] = {
                         "source": "ai",
-                        "model": settings.ai_model,
+                        "model": used_model,
                         "source_format": file_format,
                         "fallback_reason": reason,
                         "flagged": True,
@@ -185,7 +215,7 @@ class ExtractStep(BaseStep):
                         "prompt": prompt,
                         "response": extraction_meta.get("raw_response"),
                         "file_metadata": file_metadata,
-                        "model": extraction_meta.get("model"),
+                        "model": used_model,
                         "mode": extraction_meta.get("mode"),
                         "usage": extraction_meta.get("usage"),
                         "regex_fallback_reason": reason,
@@ -209,7 +239,7 @@ class ExtractStep(BaseStep):
                         regex_result=records,
                         regex_fail_reason=reason,
                         ai_result=extracted_data,
-                        ai_model=settings.ai_model,
+                        ai_model=used_model,
                         prompt_used=prompt,
                         ai_fail_reason=ai_reason,
                     )
@@ -223,18 +253,18 @@ class ExtractStep(BaseStep):
                     dno=dno_name,
                     year=job.year,
                     data_type=job.data_type,
-                    model=settings.ai_model,
+                    model=used_model,
                 )
 
                 ctx["extracted_data"] = extracted_data
                 ctx["extraction_notes"] = ai_result.get("notes", "")
                 ctx["extraction_method"] = "ai"
-                ctx["extraction_model"] = settings.ai_model
+                ctx["extraction_model"] = used_model
 
                 # Mark this as AI fallback (regex failed first)
                 ctx["extraction_source_meta"] = {
                     "source": "ai",
-                    "model": settings.ai_model,
+                    "model": used_model,
                     "source_format": file_format,
                     "fallback_reason": reason,  # Why regex failed
                 }
@@ -243,7 +273,7 @@ class ExtractStep(BaseStep):
                     "prompt": prompt,
                     "response": extraction_meta.get("raw_response"),
                     "file_metadata": file_metadata,
-                    "model": extraction_meta.get("model"),
+                    "model": used_model,
                     "mode": extraction_meta.get("mode"),
                     "usage": extraction_meta.get("usage"),
                     "regex_fallback_reason": reason,
@@ -266,11 +296,11 @@ class ExtractStep(BaseStep):
                     regex_result=records,
                     regex_fail_reason=reason,
                     ai_result=extracted_data,
-                    ai_model=settings.ai_model,
+                    ai_model=used_model,
                     prompt_used=prompt,
                 )
 
-                return f"Extracted {len(extracted_data)} records using AI fallback ({settings.ai_model}) - regex failed: {reason}"
+                return f"Extracted {len(extracted_data)} records using AI fallback ({used_model}) - regex failed: {reason}"
 
         # ===== STEP 4: Both failed or AI not configured - use regex but flag =====
         logger.warning(
@@ -280,12 +310,12 @@ class ExtractStep(BaseStep):
             dno=dno_name,
             year=job.year,
             data_type=job.data_type,
-            ai_enabled=settings.ai_enabled,
-            ai_attempted=ai_result is not None if settings.ai_enabled else False,
+            ai_enabled=is_ai_enabled,
+            ai_attempted=ai_result is not None if is_ai_enabled else False,
         )
 
         # Capture debug sample when AI was attempted but completely failed (rate limited, API error)
-        if settings.ai_enabled and ai_result is None:
+        if is_ai_enabled and ai_result is None:
             dno_slug = ctx.get("dno_slug", "unknown")
             sample_capture = SampleCapture()
             await sample_capture.capture(
@@ -298,7 +328,7 @@ class ExtractStep(BaseStep):
                 regex_result=records,
                 regex_fail_reason=reason,
                 ai_result=None,
-                ai_model=settings.ai_model,
+                ai_model="unknown",
                 prompt_used=prompt,
                 ai_fail_reason="AI extraction returned None (rate limited or API error)",
             )
@@ -418,13 +448,20 @@ class ExtractStep(BaseStep):
         dno_name: str,
         year: int,
         data_type: str,
-        prompt: str
+        prompt: str,
+        db: AsyncSession
     ) -> dict | None:
         """Extract data using AI (auto-routes to text or vision mode)."""
         try:
-            from app.services.extraction.ai_extractor import extract_with_ai
+            from app.services.ai.gateway import AIGateway, NoProviderAvailableError
 
-            return await extract_with_ai(file_path, prompt)
+            # Gateway requires DB session
+            gateway = AIGateway(db)
+            return await gateway.extract(file_path, prompt)
+            
+        except NoProviderAvailableError as e:
+            logger.warning("ai_extraction_failed_no_provider", error=str(e))
+            return None
         except Exception as e:
             logger.warning("ai_extraction_failed", error=str(e))
             return None

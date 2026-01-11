@@ -1019,8 +1019,32 @@ export const api = {
       return data;
     },
 
+    async testAIConfigPreview(config: {
+      provider_type: string;
+      auth_type: string;
+      model: string;
+      api_key?: string;
+      api_url?: string;
+    }): Promise<
+      ApiResponse<{
+        model: string;
+        response?: string;
+        elapsed_ms: number;
+        error?: string;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/ai-config/test", config);
+      return data;
+    },
+
     async getAIModels(
-      providerType: string
+      providerType: string,
+      options?: {
+        query?: string;
+        supports_vision?: boolean;
+        supports_files?: boolean;
+        limit?: number;
+      }
     ): Promise<
       ApiResponse<{
         provider: string;
@@ -1051,6 +1075,8 @@ export const api = {
         }[];
         default_url: string | null;
         custom_model_supported: boolean;
+        source?: "suggested" | "search";
+        query?: string;
         registry_status?: {
           loaded: boolean;
           loaded_at: string | null;
@@ -1060,7 +1086,15 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.get(
-        `/admin/ai-config/models/${providerType}`
+        `/admin/ai-config/models/${providerType}`,
+        {
+          params: {
+            query: options?.query,
+            supports_vision: options?.supports_vision,
+            supports_files: options?.supports_files,
+            limit: options?.limit,
+          },
+        }
       );
       return data;
     },
@@ -1126,6 +1160,37 @@ export const api = {
       const { data } = await apiClient.post(
         "/admin/oauth/google/use-gemini-cli"
       );
+      return data;
+    },
+
+    async startGoogleOAuth(redirectUri?: string): Promise<
+      ApiResponse<{
+        auth_url: string;
+        state: string;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/oauth/google/start", {
+        redirect_uri: redirectUri,
+      });
+      return data;
+    },
+
+    async completeGoogleOAuth(code: string, state: string): Promise<
+      ApiResponse<{
+        email: string | null;
+        name: string | null;
+        expires_at: string | null;
+      }>
+    > {
+      const { data } = await apiClient.post("/admin/oauth/google/callback", {
+        code,
+        state,
+      });
+      return data;
+    },
+
+    async logoutGoogleOAuth(): Promise<ApiResponse<null>> {
+      const { data } = await apiClient.post("/admin/oauth/google/logout");
       return data;
     },
   },
