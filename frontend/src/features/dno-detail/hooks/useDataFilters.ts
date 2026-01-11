@@ -4,7 +4,7 @@
 
 import { useState, useMemo, useEffect, useCallback } from "react";
 import type { Netzentgelte, HLZF } from "@/lib/api";
-import { isValidValue } from "../utils/data-utils";
+import { isValidValue, VOLTAGE_LEVEL_ORDER, sortByVoltageLevel } from "../utils/data-utils";
 
 interface FilterOptions {
     years: number[];
@@ -23,6 +23,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
     const [yearFilter, setYearFilter] = useState<number[]>([]);
     const [yearFilterInitialized, setYearFilterInitialized] = useState(false);
     const [voltageLevelFilter, setVoltageLevelFilter] = useState<string[]>([]);
+    const [voltageFilterInitialized, setVoltageFilterInitialized] = useState(false);
 
     // Calculate available filter options from data
     // Only include voltage levels that have actual data (not just "-" values)
@@ -55,7 +56,22 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
 
         return {
             years: Array.from(years).sort((a, b) => b - a),
-            voltageLevels: Array.from(voltageLevels).sort(),
+            voltageLevels: Array.from(voltageLevels).sort((a, b) => {
+                const indexA = VOLTAGE_LEVEL_ORDER.indexOf(a);
+                const indexB = VOLTAGE_LEVEL_ORDER.indexOf(b);
+
+                // If both are in the known list, sort by index
+                if (indexA !== -1 && indexB !== -1) {
+                    return indexA - indexB;
+                }
+
+                // If only one is in the list, that one comes first
+                if (indexA !== -1) return -1;
+                if (indexB !== -1) return 1;
+
+                // If neither is in the list, sort alphabetically
+                return a.localeCompare(b);
+            }),
         };
     }, [netzentgelte, hlzf]);
 
@@ -77,6 +93,14 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
         setYearFilter([defaultYear]);
         setYearFilterInitialized(true);
     }, [filterOptions.years, yearFilterInitialized]);
+
+    // Initialize voltage level filter to include all available levels EXCEPT "HöS" and "HöS/HS"
+    useEffect(() => {
+        if (voltageFilterInitialized || filterOptions.voltageLevels.length === 0) return;
+
+        setVoltageLevelFilter(filterOptions.voltageLevels.filter(l => l !== "HöS" && l !== "HöS/HS"));
+        setVoltageFilterInitialized(true);
+    }, [filterOptions.voltageLevels, voltageFilterInitialized]);
 
     // Toggle year filter
     const toggleYearFilter = useCallback((year: number) => {
@@ -105,7 +129,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
     // Apply filters to netzentgelte
     // Also filter out records with no actual data (all values are "-" or null)
     const filteredNetzentgelte = useMemo(() => {
-        return netzentgelte.filter((item) => {
+        const filtered = netzentgelte.filter((item) => {
             if (yearFilter.length > 0 && !yearFilter.includes(item.year)) return false;
             if (voltageLevelFilter.length > 0 && !voltageLevelFilter.includes(item.voltage_level))
                 return false;
@@ -116,12 +140,13 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
                 isValidValue(item.arbeit_unter_2500h);
             return hasData;
         });
+        return sortByVoltageLevel(filtered);
     }, [netzentgelte, yearFilter, voltageLevelFilter]);
 
     // Apply filters to HLZF
     // Also filter out records with no actual data (all values are "-" or null)
     const filteredHLZF = useMemo(() => {
-        return hlzf.filter((item) => {
+        const filtered = hlzf.filter((item) => {
             if (yearFilter.length > 0 && !yearFilter.includes(item.year)) return false;
             if (voltageLevelFilter.length > 0 && !voltageLevelFilter.includes(item.voltage_level))
                 return false;
@@ -132,6 +157,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
                 isValidValue(item.sommer);
             return hasData;
         });
+        return sortByVoltageLevel(filtered);
     }, [hlzf, yearFilter, voltageLevelFilter]);
 
     return {
