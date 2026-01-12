@@ -81,6 +81,11 @@ class DNOModel(Base, TimestampMixin):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
 
+    __table_args__ = (
+        # Trigram index for fuzzy search optimization
+        Index('ix_dnos_name_trgm', 'name', postgresql_using='gin', postgresql_ops={'name': 'gin_trgm_ops'}),
+    )
+
     # -------------------------------------------------------------------------
     # Resolved/Display Fields (populated from source merge logic)
     # -------------------------------------------------------------------------

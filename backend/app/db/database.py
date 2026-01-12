@@ -139,6 +139,8 @@ async def init_db() -> None:
     """
     try:
         async with engine.begin() as conn:
+            # Enable extensions
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
         logger.info("Database tables initialized")
     except Exception as e:

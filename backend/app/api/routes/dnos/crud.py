@@ -309,17 +309,20 @@ async def list_dnos_detailed(
 
     # Apply search filter if provided
     if q:
-        search_filter = or_(
-            DNOModel.name.ilike(f"%{q}%"),
-            DNOModel.official_name.ilike(f"%{q}%"),
-            DNOModel.region.ilike(f"%{q}%"),
-            DNOModel.vnb_id.ilike(f"%{q}%")
-        )
-        query = query.where(search_filter)
+        # Use Trigram Similarity for fuzzy matching
+        # Order by similarity descending (most similar first)
+        similarity = func.similarity(DNOModel.name, q)
+        
+        # We filter where similarity is > 0.3 to avoid irrelevant results (e.g. just sharing "Stadtwerke")
+        # sorting is the primary mechanism.
+        similarity_score = 0.31
+        query = query.filter(similarity > similarity_score).order_by(similarity.desc())
 
-        # Count with filter
-        count_query = select(func.count()).select_from(DNOModel).where(search_filter)
+        # Count with filter (approximation for pagination)
+        count_query = select(func.count()).select_from(DNOModel).where(similarity > similarity_score)
     else:
+        # Default sort
+        query = query.order_by(DNOModel.name)
         # Total count without filter
         count_query = select(func.count()).select_from(DNOModel)
 
@@ -337,7 +340,7 @@ async def list_dnos_detailed(
     offset = (page - 1) * per_page
 
     # Paginated query
-    query = query.order_by(DNOModel.name).offset(offset).limit(per_page)
+    query = query.offset(offset).limit(per_page)
     result = await db.execute(query)
     dnos = result.scalars().all()
 
