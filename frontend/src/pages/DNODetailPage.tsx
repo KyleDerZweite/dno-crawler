@@ -743,9 +743,14 @@ export function DNODetailPage() {
                                 </div>
                             </div>
                             <Button
-                                onClick={handleExport}
-                                disabled={isExporting || exportDataTypes.length === 0}
-                                className="w-full"
+                                variant="ghost"
+                                size="sm"
+                                disabled={
+                                    dataLoading ||
+                                    netzentgelte.length === 0 ||
+                                    isExporting
+                                }
+                                onClick={() => handleExport()}
                             >
                                 {isExporting ? (
                                     <>
@@ -993,10 +998,10 @@ export function DNODetailPage() {
                             onClick={handleImport}
                             disabled={
                                 isImporting ||
-                                (importMode === "replace" &&
+                                ((importMode === "replace" &&
                                     importData &&
                                     (importData.netzentgelte.length === 0 || importData.hlzf.length === 0) &&
-                                    !deleteConfirmed)
+                                    !deleteConfirmed) || false)
                             }
                             variant={importMode === "replace" && importData &&
                                 (importData.netzentgelte.length === 0 || importData.hlzf.length === 0)

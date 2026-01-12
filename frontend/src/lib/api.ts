@@ -66,6 +66,15 @@ apiClient.interceptors.response.use(
 export type AIProviderType = "openai" | "google" | "anthropic" | "openrouter" | "litellm" | "custom";
 export type AIAuthType = "api_key" | "oauth" | "cli";
 
+export interface ThinkingCapability {
+  method: "level" | "budget";
+  options?: string[]; // For level: ["low", "medium", "high"]
+  min?: number;      // For budget
+  max?: number;      // For budget
+  default?: string | number;
+  can_disable?: boolean;
+}
+
 export interface AIProviderConfig {
   id: number;
   name: string;
@@ -82,6 +91,7 @@ export interface AIProviderConfig {
   priority: number;
   status: "active" | "disabled" | "rate_limited" | "unhealthy" | "untested";
   is_subscription: boolean;
+  model_parameters: Record<string, any> | null;
   last_success_at: string | null;
   last_error_at: string | null;
   last_error_message: string | null;
@@ -101,6 +111,7 @@ export interface AIConfigCreate {
   supports_text?: boolean;
   supports_vision?: boolean;
   supports_files?: boolean;
+  model_parameters?: Record<string, any>;
 }
 
 export interface AIConfigUpdate {
@@ -112,6 +123,7 @@ export interface AIConfigUpdate {
   supports_vision?: boolean;
   supports_files?: boolean;
   is_enabled?: boolean;
+  model_parameters?: Record<string, any>;
 }
 
 
@@ -1072,6 +1084,7 @@ export const api = {
           release_date?: string | null;
           knowledge_cutoff?: string | null;
           open_weights?: boolean;
+          thinking_capability?: ThinkingCapability;
         }[];
         default_url: string | null;
         custom_model_supported: boolean;

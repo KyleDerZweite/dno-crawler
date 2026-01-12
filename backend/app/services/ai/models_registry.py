@@ -45,6 +45,71 @@ OPENROUTER_PROVIDERS = {
     "deepseek", "cohere", "qwen", "nvidia", "perplexity"
 }
 
+# Fallback/Known models with explicit capabilities (Source of Truth for Thinking)
+FALLBACK_MODELS = {
+    "openai": [
+        # Hypothetical Future Models (Assumed standard behavior)
+        {"id": "gpt-5", "name": "GPT-5", "supports_vision": True, "supports_files": False, "tier": "efficient"},
+        {"id": "gpt-5.2", "name": "GPT-5.2", "supports_vision": True, "supports_files": False, "tier": "efficient"},
+        {"id": "gpt-5-mini", "name": "GPT-5 Mini", "supports_vision": True, "supports_files": False, "tier": "budget"},
+        
+        # Reasoning Models (Level-based)
+        {"id": "o3-mini", "name": "o3 Mini (Reasoning)", "supports_vision": True, "supports_files": False, "tier": "efficient", 
+         "thinking_capability": {"method": "level", "options": ["low", "medium", "high"], "default": "medium", "can_disable": False}},
+        {"id": "o4-mini", "name": "o4 Mini (Reasoning)", "supports_vision": True, "supports_files": False, "tier": "efficient",
+         "thinking_capability": {"method": "level", "options": ["low", "medium", "high"], "default": "medium", "can_disable": False}},
+        
+        # Standard
+        {"id": "gpt-4o", "name": "GPT-4o", "supports_vision": True, "supports_files": False, "tier": "efficient"}
+    ],
+    "google": [
+        # Gemini 3 Series (Level-based)
+        {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "level", "options": ["minimal", "low", "medium", "high"], "default": "high", "can_disable": False}}, 
+         # Note: 'minimal' is the closest to off for G3 Flash
+         
+        {"id": "gemini-3-pro-preview", "name": "Gemini 3 Pro", "supports_vision": True, "supports_files": True, "tier": "high",
+         "thinking_capability": {"method": "level", "options": ["low", "high"], "default": "high", "can_disable": False}},
+
+        # Gemini 2.5 Series (Budget-based)
+        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 0, "max": 24576, "default": -1, "can_disable": True, "dynamic_param": -1}},
+         # Note: -1 enables Dynamic Thinking
+
+        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "supports_vision": True, "supports_files": True, "tier": "budget",
+         "thinking_capability": {"method": "budget", "min": 512, "max": 24576, "default": 0, "can_disable": True, "dynamic_param": -1}},
+         # Lite defaults to NO thinking (0), but can be forced via budget or dynamic (-1)
+
+        # Legacy / Experimental
+        {"id": "gemini-2.0-flash-thinking-exp", "name": "Gemini 2.0 Flash Thinking", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True}}
+    ],
+    "anthropic": [
+        # Hypothetical Future Models (Assumed to inherit Sonnet 3.7 traits)
+        {"id": "claude-sonnet-4-5-20250929", "name": "Claude 4.5 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": 16000, "can_disable": True}},
+        
+        {"id": "claude-haiku-4-5", "name": "Claude 4.5 Haiku", "supports_vision": True, "supports_files": True, "tier": "budget"},
+        
+        # Claude 3.7 (Budget-based)
+        {"id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": 16000, "can_disable": True}}
+    ],
+    "openrouter": [
+        {"id": "openai/gpt-5", "name": "GPT-5", "supports_vision": True, "supports_files": False, "tier": "efficient"},
+        
+        {"id": "google/gemini-2.0-flash-thinking-exp", "name": "Gemini 2.0 Flash Thinking", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True}},
+         
+        {"id": "anthropic/claude-3.7-sonnet", "name": "Claude 3.7 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": 16000, "can_disable": True}},
+         
+        {"id": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "supports_vision": False, "supports_files": False, "tier": "budget"}
+    ],
+    "litellm": [],
+    "custom": []
+}
+
 
 class ModelsRegistry:
     """Dynamic model registry with caching from models.dev API."""
@@ -139,6 +204,14 @@ class ModelsRegistry:
         except Exception as e:
             logger.warning("models_cache_save_failed", error=str(e))
 
+    def _get_known_capability(self, model_id: str) -> dict | None:
+        """Get known capability for a model ID from FALLBACK_MODELS."""
+        for provider_models in FALLBACK_MODELS.values():
+            for model in provider_models:
+                if model["id"] == model_id:
+                    return model.get("thinking_capability")
+        return None
+
     def _transform_model(self, provider_id: str, model_id: str, model_data: dict) -> dict:
         """Transform models.dev model format to our format."""
         modalities = model_data.get("modalities", {})
@@ -164,6 +237,9 @@ class ModelsRegistry:
         else:
             tier = "high"
 
+        # Check for known thinking capabilities
+        thinking_capability = self._get_known_capability(model_id)
+
         return {
             "id": model_id,
             "name": model_data.get("name", model_id),
@@ -180,6 +256,9 @@ class ModelsRegistry:
             "reasoning": model_data.get("reasoning", False),
             "tool_call": model_data.get("tool_call", False),
             "structured_output": model_data.get("structured_output", False),
+
+            # Thinking Capability (Injected from FALLBACK_MODELS)
+            "thinking_capability": thinking_capability,
 
             # Pricing (per million tokens)
             "cost_input": cost.get("input"),

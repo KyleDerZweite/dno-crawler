@@ -2,8 +2,15 @@ import { useState, useRef, useEffect, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api } from "@/lib/api";
-import type { AIProviderConfig, AIProviderType, AIConfigCreate, AIConfigUpdate } from "@/lib/api";
+import {
+    api,
+    type AIProviderConfig,
+    type AIProviderType,
+    type AIConfigCreate,
+    type AIConfigUpdate,
+    type ThinkingCapability,
+    type AIAuthType,
+} from "@/lib/api";
 import {
     Card,
     CardContent,
@@ -25,6 +32,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import {
     Brain,
     Plus,
@@ -180,12 +188,84 @@ function ProviderDropdown({
     );
 }
 
+// Custom Number Input with Up/Down arrows
+function NumberInput({
+    value,
+    onChange,
+    min = 0,
+    max,
+    step = 1,
+    disabled = false,
+    className = "",
+}: {
+    value: number;
+    onChange: (val: number) => void;
+    min?: number;
+    max?: number;
+    step?: number;
+    disabled?: boolean;
+    className?: string;
+}) {
+    const handleIncrement = () => {
+        if (disabled) return;
+        const newValue = value + step;
+        if (max !== undefined && newValue > max) return;
+        onChange(newValue);
+    };
+
+    const handleDecrement = () => {
+        if (disabled) return;
+        const newValue = value - step;
+        if (min !== undefined && newValue < min) return;
+        onChange(newValue);
+    };
+
+    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+        const val = parseInt(e.target.value);
+        if (isNaN(val)) return;
+        onChange(val);
+    };
+
+    return (
+        <div className={`relative flex items-center ${className}`}>
+            <Input
+                type="number"
+                value={value}
+                onChange={handleChange}
+                min={min}
+                max={max}
+                disabled={disabled}
+                className="pr-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+            />
+            <div className="absolute right-1 flex flex-col gap-0.5">
+                <button
+                    type="button"
+                    onClick={handleIncrement}
+                    disabled={disabled || (max !== undefined && value >= max)}
+                    className="p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground disabled:opacity-30 h-4 flex items-center justify-center"
+                >
+                    <ChevronDown className="h-3 w-3 rotate-180" />
+                </button>
+                <button
+                    type="button"
+                    onClick={handleDecrement}
+                    disabled={disabled || (min !== undefined && value <= min)}
+                    className="p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground disabled:opacity-30 h-4 flex items-center justify-center"
+                >
+                    <ChevronDown className="h-3 w-3" />
+                </button>
+            </div>
+        </div>
+    );
+}
+
 // Model type from API
 interface AIModel {
     id: string;
     name: string;
     supports_vision?: boolean;
     supports_files?: boolean;
+    thinking_capability?: ThinkingCapability;
 }
 
 // Fuzzy match function - checks if query chars appear in order within target
@@ -221,7 +301,7 @@ function ModelAutocomplete({
     models: AIModel[];
     requireVision?: boolean;
     requireFiles?: boolean;
-    onCapabilitiesChange?: (vision: boolean, files: boolean) => void;
+    onCapabilitiesChange?: (vision: boolean, files: boolean, thinking?: ThinkingCapability) => void;
     providerType?: string;
 }) {
     const [isOpen, setIsOpen] = useState(false);
@@ -332,7 +412,11 @@ function ModelAutocomplete({
         setIsOpen(false);
         // Update capabilities based on selected model
         if (onCapabilitiesChange) {
-            onCapabilitiesChange(model.supports_vision ?? false, model.supports_files ?? false);
+            onCapabilitiesChange(
+                model.supports_vision ?? false,
+                model.supports_files ?? false,
+                model.thinking_capability
+            );
         }
     };
 
@@ -443,7 +527,17 @@ function ProviderDialog({
     const [model, setModel] = useState("");
     const [supportsVision, setSupportsVision] = useState(true);
     const [supportsFiles, setSupportsFiles] = useState(false);
-    const [authType, setAuthType] = useState<"api_key" | "oauth">("api_key");
+
+    // Thinking Config State
+    const [thinkingCapability, setThinkingCapability] = useState<ThinkingCapability | null>(null);
+    const [thinkingEnabled, setThinkingEnabled] = useState(false);
+    const [thinkingLevel, setThinkingLevel] = useState<string>("medium");
+    const [thinkingBudget, setThinkingBudget] = useState<number>(0);
+
+    // Manual Thinking Config for Custom Models
+    const [manualThinkingMethod, setManualThinkingMethod] = useState<"none" | "level" | "budget">("none");
+
+    const [authType, setAuthType] = useState<AIAuthType>("api_key");
     const [isOAuthPending, setIsOAuthPending] = useState(false);
     const [oauthError, setOauthError] = useState<string | null>(null);
     const queryClient = useQueryClient();
@@ -461,8 +555,26 @@ function ProviderDialog({
             setApiUrl(initialConfig.api_url || "");
             setSupportsVision(initialConfig.supports_vision);
             setSupportsFiles(initialConfig.supports_files);
-            // NOTE: We cannot pre-fill API Key for security reasons, user must re-enter if they want to change it
+            // NOTE: We cannot pre-fill API Key for security reasons
             setApiKey("");
+
+            // Initialize Thinking Configuration
+            const params = initialConfig.model_parameters || {};
+            if (params.thinking_level) {
+                setThinkingEnabled(true);
+                setThinkingLevel(params.thinking_level);
+                // If we don't have capability info yet, assume manual level or native level
+                // We'll let the UI resolve based on capability later, but for state:
+                if (!thinkingCapability) setManualThinkingMethod("level");
+            } else if (params.thinking_budget) {
+                setThinkingEnabled(true);
+                setThinkingBudget(params.thinking_budget);
+                if (!thinkingCapability) setManualThinkingMethod("budget");
+            } else {
+                setThinkingEnabled(false);
+                setManualThinkingMethod("none");
+            }
+
         } else if (!initialConfig && open) {
             // Reset to defaults for Create mode
             setProviderType("openrouter");
@@ -474,8 +586,19 @@ function ProviderDialog({
             setApiKey("");
             setSupportsVision(true);
             setSupportsFiles(false);
+            setThinkingEnabled(false);
+            setThinkingLevel("medium");
+            setThinkingBudget(0);
+            setManualThinkingMethod("none");
         }
     }, [initialConfig, open]);
+
+    // Enforce mandatory thinking if model capability requires it
+    useEffect(() => {
+        if (thinkingCapability?.can_disable === false && !thinkingEnabled) {
+            setThinkingEnabled(true);
+        }
+    }, [thinkingCapability, thinkingEnabled]);
 
     // Detect CLI credentials when dialog opens
     const { data: credsData } = useQuery({
@@ -673,14 +796,7 @@ function ProviderDialog({
         },
     });
 
-    // Logout OAuth mutation
-    const logoutMutation = useMutation({
-        mutationFn: () => api.admin.logoutGoogleOAuth(),
-        onSuccess: () => {
-            // Refresh credentials detection
-            queryClient.invalidateQueries({ queryKey: ["admin", "detect-credentials"] });
-        },
-    });
+
 
     // Test connection state
     const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
@@ -767,6 +883,21 @@ function ProviderDialog({
             return;
         }
 
+        const modelParameters: Record<string, any> = {};
+
+        if (thinkingEnabled) {
+            // Determine effective method
+            const effectiveMethod = manualThinkingMethod !== "none"
+                ? manualThinkingMethod
+                : (thinkingCapability ? (thinkingCapability.method === "budget" ? "budget" : "level") : "none");
+
+            if (effectiveMethod === "budget") {
+                modelParameters.thinking_budget = thinkingBudget;
+            } else if (effectiveMethod === "level") {
+                modelParameters.thinking_level = thinkingLevel;
+            }
+        }
+
         if (isEditMode && initialConfig) {
             const updateData: AIConfigUpdate = {
                 name: finalName,
@@ -776,6 +907,7 @@ function ProviderDialog({
                 supports_text: true,
                 supports_vision: supportsVision,
                 supports_files: supportsFiles,
+                model_parameters: modelParameters,
             };
             updateMutation.mutate({ id: initialConfig.id, data: updateData });
         } else {
@@ -789,6 +921,7 @@ function ProviderDialog({
                 supports_text: true,
                 supports_vision: supportsVision,
                 supports_files: supportsFiles,
+                model_parameters: modelParameters,
             };
             createMutation.mutate(createData);
         }
@@ -927,7 +1060,6 @@ function ProviderDialog({
                         </div>
                     )}
 
-                    {/* Model Selection */}
                     <ModelAutocomplete
                         value={model}
                         onChange={(newModel) => {
@@ -938,11 +1070,133 @@ function ProviderDialog({
                         requireVision={supportsVision}
                         requireFiles={supportsFiles}
                         providerType={providerType}
-                        onCapabilitiesChange={(vision, files) => {
+                        onCapabilitiesChange={(vision, files, thinking) => {
                             setSupportsVision(vision);
                             setSupportsFiles(files);
+                            setThinkingCapability(thinking || null);
+
+                            // Auto-enable if model supports thinking and user hasn't explicitly disabled (logic could be complex, simple for now)
+                            // Or just set default params based on capability
+                            if (thinking) {
+                                if (thinking.method === "budget") {
+                                    setThinkingBudget(thinking.min || 1024);
+                                }
+                            }
                         }}
                     />
+
+                    {/* Thinking Configuration */}
+                    <div className="space-y-3 pt-2 border-t">
+                        <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <Brain className="h-4 w-4 text-primary" />
+                                <Label htmlFor="enable-thinking" className="cursor-pointer">Thinking (CoT)</Label>
+                                {thinkingCapability && (
+                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                                        Native
+                                    </Badge>
+                                )}
+                            </div>
+                            <Switch
+                                id="enable-thinking"
+                                checked={thinkingEnabled}
+                                disabled={thinkingCapability?.can_disable === false}
+                                onCheckedChange={(checked) => {
+                                    if (thinkingCapability?.can_disable === false && !checked) return;
+                                    setThinkingEnabled(checked);
+                                    // If enabling and no native capability, default to manual budget
+                                    if (checked && !thinkingCapability && manualThinkingMethod === "none") {
+                                        setManualThinkingMethod("budget");
+                                    }
+                                    // If disabling, we don't necessarily need to reset manual method, keeps state for re-enable
+                                }}
+                            />
+                        </div>
+
+                        {thinkingEnabled && (
+                            <div className="p-4 bg-muted/40 border rounded-md space-y-4 animate-in fade-in slide-in-from-top-1">
+
+                                {/* Manual Config Toggle (Only if no native capability) */}
+                                {!thinkingCapability && (
+                                    <div className="flex flex-col gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
+                                        <div className="flex items-center gap-2 text-xs text-amber-600 font-medium">
+                                            <AlertTriangle className="h-3.5 w-3.5" />
+                                            Manual Configuration Required
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            This model does not advertise native thinking support. You can manually force thinking parameters.
+                                        </p>
+
+                                        <div className="flex items-center gap-2 mt-1">
+                                            <Label className="text-xs">Method:</Label>
+                                            <div className="flex bg-background rounded-md border p-0.5">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setManualThinkingMethod("budget")}
+                                                    className={`px-3 py-1 text-xs rounded-sm transition-colors ${manualThinkingMethod === "budget" ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-accent text-muted-foreground"}`}
+                                                >
+                                                    Token Budget
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setManualThinkingMethod("level")}
+                                                    className={`px-3 py-1 text-xs rounded-sm transition-colors ${manualThinkingMethod === "level" ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-accent text-muted-foreground"}`}
+                                                >
+                                                    Reasoning Level
+                                                </button>
+                                            </div>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Token Budget Input */}
+                                {(thinkingCapability?.method === "budget" || manualThinkingMethod === "budget") && (
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between items-center">
+                                            <Label>Token Budget</Label>
+                                            <Badge variant="outline" className="font-mono text-xs">
+                                                {thinkingBudget.toLocaleString()} tokens
+                                            </Badge>
+                                        </div>
+                                        <NumberInput
+                                            value={thinkingBudget}
+                                            onChange={setThinkingBudget}
+                                            min={thinkingCapability?.min || 1024}
+                                            max={thinkingCapability?.max || 64000}
+                                            step={1024}
+                                            className="w-full"
+                                        />
+                                        <div className="flex justify-between text-[11px] text-muted-foreground">
+                                            <span>Min: {thinkingCapability?.min || 1024}</span>
+                                            <span>Max: {thinkingCapability?.max || 64000}</span>
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Level Dropdown */}
+                                {(thinkingCapability?.method === "level" || manualThinkingMethod === "level") && (
+                                    <div className="space-y-2">
+                                        <Label>Reasoning Effort</Label>
+                                        <div className="relative">
+                                            <select
+                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                                                value={thinkingLevel}
+                                                onChange={(e) => setThinkingLevel(e.target.value)}
+                                            >
+                                                <option value="low">Low</option>
+                                                <option value="medium">Medium</option>
+                                                <option value="high">High</option>
+                                            </select>
+                                            <ChevronDown className="absolute right-3 top-3 h-4 w-4 opacity-50 pointer-events-none" />
+                                        </div>
+                                        <p className="text-[11px] text-muted-foreground">
+                                            Controls the depth of reasoning.
+                                        </p>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
 
                     {/* Capabilities */}
                     <div className="space-y-3">
@@ -969,14 +1223,22 @@ function ProviderDialog({
                 </div>
 
                 {/* Test Result */}
-                {testResult && (
-                    <div className={`p-3 rounded-lg border ${testResult.success
-                        ? "border-green-500/30 bg-green-500/10"
-                        : "border-red-500/30 bg-red-500/10"
+                {(testResult || oauthError) && (
+                    <div className={`p-3 rounded-lg border ${testResult
+                        ? (testResult.success ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10")
+                        : "border-red-500/30 bg-red-500/10" // OAuth error is always red
                         }`}>
-                        <p className={`text-sm ${testResult.success ? "text-green-500" : "text-red-500"}`}>
-                            {testResult.success ? "✓" : "✗"} {testResult.message}
-                        </p>
+                        {testResult && (
+                            <p className={`text-sm ${testResult.success ? "text-green-500" : "text-red-500"}`}>
+                                {testResult.success ? "✓" : "✗"} {testResult.message}
+                            </p>
+                        )}
+                        {oauthError && (
+                            <p className="text-sm text-red-500 flex items-center gap-2">
+                                <AlertTriangle className="h-3 w-3" />
+                                OAuth Error: {oauthError}
+                            </p>
+                        )}
                     </div>
                 )}
 

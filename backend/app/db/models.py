@@ -703,6 +703,9 @@ class AIProviderConfigModel(Base, TimestampMixin):
     supports_vision: Mapped[bool] = mapped_column(Boolean, default=False)
     supports_files: Mapped[bool] = mapped_column(Boolean, default=False)
 
+    # Extended configuration (e.g., thinking budget, reasoning effort)
+    model_parameters: Mapped[dict | None] = mapped_column(JSON)
+
     # -------------------------------------------------------------------------
     # Priority & Status
     # -------------------------------------------------------------------------

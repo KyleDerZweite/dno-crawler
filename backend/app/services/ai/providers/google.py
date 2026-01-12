@@ -284,6 +284,38 @@ class GoogleProvider(AIProviderInterface):
         """Generate content using the appropriate API."""
         model = self.config.model
 
+        # Prepare generation config if not present
+        if generation_config is None:
+            generation_config = {}
+
+        # Inject thinking config from model_parameters
+        model_params = self.config.model_parameters or {}
+        thinking_config = {}
+
+        # Handle Thinking Level (Gemini 3)
+        if "thinking_level" in model_params:
+            level = model_params["thinking_level"]  # low, high
+            if level:
+                thinking_config["includeThoughts"] = True
+                # Map our UI values to API logic if needed, but "low"/"high" usually match
+                # If using minimal, we might need special handling, but assume pass-through for now
+                pass
+
+        # Handle Thinking Budget (Gemini 2.5)
+        if "thinking_budget" in model_params:
+            budget = model_params["thinking_budget"]
+            if budget and int(budget) > 0:
+                thinking_config["includeThoughts"] = True
+                thinking_config["thinkingBudgetTokenLimit"] = int(budget)
+            elif budget == 0:
+                # Explicitly disable
+                thinking_config["includeThoughts"] = False
+                thinking_config["thinkingBudgetTokenLimit"] = 0
+
+        # Apply thinking config if set
+        if thinking_config:
+            generation_config["thinkingConfig"] = thinking_config
+
         # Prefer OAuth/CLI mode, fall back to API key
         if self.config.auth_type in ("oauth", "cli") or not self._get_api_key():
             return await self._call_code_assist_api(

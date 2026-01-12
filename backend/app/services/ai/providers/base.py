@@ -86,12 +86,40 @@ class BaseProvider(AIProviderInterface):
 
         client = self._get_client()
 
-        response = await client.chat.completions.create(
-            model=self.config.model,
-            messages=[{"role": "user", "content": full_prompt}],
-            response_format={"type": "json_object"},
-            max_tokens=self.MAX_OUTPUT_TOKENS,
-        )
+        # Prepare request arguments
+        request_kwargs = {
+            "model": self.config.model,
+            "messages": [{"role": "user", "content": full_prompt}],
+            "response_format": {"type": "json_object"},
+            "max_tokens": self.MAX_OUTPUT_TOKENS,
+        }
+
+        # Inject Thinking Parameters
+        model_params = self.config.model_parameters or {}
+        extra_body = {}
+
+        # 1. OpenAI Reasoning Effort (mapped from thinking_level)
+        if "thinking_level" in model_params:
+            # o1/o3 support "reasoning_effort": "low", "medium", "high"
+            level = model_params["thinking_level"]
+            if level and level in ("low", "medium", "high"):
+                request_kwargs["reasoning_effort"] = level
+
+        # 2. Anthropic Thinking (mapped from thinking_budget)
+        if "thinking_budget" in model_params:
+            budget = model_params["thinking_budget"]
+            if budget and int(budget) > 0:
+                # Anthropic API expects "thinking": { "type": "enabled", "budget_tokens": ... }
+                # Note: When using thinking, standard max_tokens might need to be higher
+                extra_body["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": int(budget)
+                }
+
+        if extra_body:
+            request_kwargs["extra_body"] = extra_body
+
+        response = await client.chat.completions.create(**request_kwargs)
 
         response_content = response.choices[0].message.content
         result = json.loads(response_content)
@@ -139,9 +167,10 @@ class BaseProvider(AIProviderInterface):
 
         client = self._get_client()
 
-        response = await client.chat.completions.create(
-            model=self.config.model,
-            messages=[{
+        # Prepare request arguments
+        request_kwargs = {
+            "model": self.config.model,
+            "messages": [{
                 "role": "user",
                 "content": [
                     {"type": "text", "text": prompt},
@@ -151,9 +180,33 @@ class BaseProvider(AIProviderInterface):
                     }
                 ]
             }],
-            response_format={"type": "json_object"},
-            max_tokens=self.MAX_OUTPUT_TOKENS,
-        )
+            "response_format": {"type": "json_object"},
+            "max_tokens": self.MAX_OUTPUT_TOKENS,
+        }
+
+        # Inject Thinking Parameters
+        model_params = self.config.model_parameters or {}
+        extra_body = {}
+
+        # 1. OpenAI Reasoning Effort
+        if "thinking_level" in model_params:
+            level = model_params["thinking_level"]
+            if level and level in ("low", "medium", "high"):
+                request_kwargs["reasoning_effort"] = level
+
+        # 2. Anthropic Thinking
+        if "thinking_budget" in model_params:
+            budget = model_params["thinking_budget"]
+            if budget and int(budget) > 0:
+                extra_body["thinking"] = {
+                    "type": "enabled",
+                    "budget_tokens": int(budget)
+                }
+
+        if extra_body:
+            request_kwargs["extra_body"] = extra_body
+
+        response = await client.chat.completions.create(**request_kwargs)
 
         response_content = response.choices[0].message.content
         result = json.loads(response_content)

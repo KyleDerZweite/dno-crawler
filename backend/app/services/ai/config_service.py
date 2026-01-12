@@ -18,6 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import AIProviderConfigModel
 from app.services.ai.encryption import encrypt_secret
 
+# Import shared model definitions (Source of Truth)
+from app.services.ai.models_registry import FALLBACK_MODELS
+
 logger = structlog.get_logger()
 
 # Cache TTL for active configs
@@ -29,42 +32,6 @@ PROVIDER_DEFAULT_URLS = {
     "google": "https://generativelanguage.googleapis.com/v1beta/openai",
     "anthropic": "https://api.anthropic.com/v1",
     "openrouter": "https://openrouter.ai/api/v1",
-}
-
-# Fallback model lists (used when models.dev API is unavailable)
-# See models_registry.py for dynamic model fetching
-FALLBACK_MODELS = {
-    "openai": [
-        {"id": "gpt-5", "name": "GPT-5", "supports_vision": True, "supports_files": False, "tier": "efficient"},
-        {"id": "gpt-5.2", "name": "GPT-5.2", "supports_vision": True, "supports_files": False, "tier": "efficient"},
-        {"id": "gpt-5-mini", "name": "GPT-5 Mini", "supports_vision": True, "supports_files": False, "tier": "budget"},
-        {"id": "gpt-5.1-codex-mini", "name": "GPT-5.1 Codex Mini", "supports_vision": True, "supports_files": False, "tier": "budget"},
-        {"id": "gpt-5-nano", "name": "GPT-5 Nano", "supports_vision": True, "supports_files": False, "tier": "budget"},
-        {"id": "o4-mini", "name": "o4 Mini (Reasoning)", "supports_vision": True, "supports_files": False, "tier": "efficient"},
-        {"id": "gpt-4o", "name": "GPT-4o", "supports_vision": True, "supports_files": False, "tier": "efficient"}
-    ],
-    "google": [
-        {"id": "gemini-3-flash-preview", "name": "Gemini 3 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient"},
-        {"id": "gemini-3-pro-preview", "name": "Gemini 3 Pro", "supports_vision": True, "supports_files": True, "tier": "high"},
-        {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient"},
-        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "supports_vision": True, "supports_files": True, "tier": "budget"}
-    ],
-    "anthropic": [
-        {"id": "claude-sonnet-4-5-20250929", "name": "Claude 4.5 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient"},
-        {"id": "claude-haiku-4-5", "name": "Claude 4.5 Haiku", "supports_vision": True, "supports_files": True, "tier": "budget"},
-        {"id": "claude-3-7-sonnet-20250219", "name": "Claude 3.7 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient"}
-    ],
-    "openrouter": [
-        {"id": "openai/gpt-5", "name": "GPT-5", "supports_vision": True, "supports_files": False, "tier": "efficient"},
-        {"id": "openai/gpt-5-nano", "name": "GPT-5 Nano", "supports_vision": True, "supports_files": False, "tier": "budget"},
-        {"id": "google/gemini-3-flash-preview", "name": "Gemini 3 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient"},
-        {"id": "anthropic/claude-sonnet-4.5", "name": "Claude 4.5 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient"},
-        {"id": "x-ai/grok-3", "name": "Grok 3", "supports_vision": True, "supports_files": False, "tier": "efficient"},
-        {"id": "deepseek/deepseek-v3.2", "name": "DeepSeek V3.2", "supports_vision": False, "supports_files": False, "tier": "budget"},
-        {"id": "qwen/qwen2.5-vl-72b-instruct", "name": "Qwen 2.5 VL 72B", "supports_vision": True, "supports_files": False, "tier": "efficient"}
-    ],
-    "litellm": [],
-    "custom": []
 }
 
 
@@ -121,6 +88,7 @@ class AIConfigService:
         supports_text: bool = True,
         supports_vision: bool = False,
         supports_files: bool = False,
+        model_parameters: dict | None = None,
         created_by: str | None = None,
     ) -> AIProviderConfigModel:
         """Create a new AI provider config."""
@@ -142,6 +110,7 @@ class AIConfigService:
             supports_text=supports_text,
             supports_vision=supports_vision,
             supports_files=supports_files,
+            model_parameters=model_parameters,
             priority=next_priority,
             created_by=created_by,
         )
@@ -169,6 +138,7 @@ class AIConfigService:
         supports_text: bool | None = None,
         supports_vision: bool | None = None,
         supports_files: bool | None = None,
+        model_parameters: dict | None = None,
         is_enabled: bool | None = None,
         modified_by: str | None = None,
     ) -> AIProviderConfigModel | None:
@@ -191,6 +161,8 @@ class AIConfigService:
             config.supports_vision = supports_vision
         if supports_files is not None:
             config.supports_files = supports_files
+        if model_parameters is not None:
+            config.model_parameters = model_parameters
         if is_enabled is not None:
             config.is_enabled = is_enabled
         if modified_by:

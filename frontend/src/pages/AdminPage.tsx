@@ -28,7 +28,6 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
 } from "@/components/ui/select";
 import {
   Collapsible,
@@ -55,10 +54,9 @@ import {
   FileWarning,
   HardDrive,
   Trash2,
-  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState, useRef, useEffect } from "react";
+import { useState } from "react";
 import { AIConfigSection } from "@/features/admin/AIConfigSection";
 
 export function AdminPage() {
