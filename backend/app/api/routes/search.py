@@ -116,14 +116,14 @@ class HLZFTimeRange(BaseModel):
 def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
     """
     Parse HLZF time string into structured time ranges.
-    
+
     Handles various formats:
     - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
     - "12:15-13:15\n16:45-19:45" (newline-separated)
     - "08:00 – 12:00" (en-dash with spaces)
     - "18:00 20:00" (space instead of hyphen - AI error)
     - "entfällt" or "-" (no data)
-    
+
     Returns list of HLZFTimeRange or None if no valid ranges.
     """
     import re
@@ -228,10 +228,10 @@ async def public_search(
 ):
     """
     Public Search API with Lazy Registration.
-    
+
     Accepts address, coordinates, or DNO name.
     Returns existing data or registers skeleton for future crawling.
-    
+
     **Rate Limits:**
     - 60 requests/minute per IP
     - 50 VNB API calls/minute globally

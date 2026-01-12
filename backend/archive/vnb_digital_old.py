@@ -53,7 +53,7 @@ class LocationResult:
 @dataclass
 class DNODetails:
     """Extended DNO details from VNBdigital GraphQL API.
-    
+
     Contains homepage URL and contact information for BFS crawl seeding.
     """
     vnb_id: str
@@ -164,10 +164,10 @@ query ($id: ID!) {
 class VNBDigitalClient:
     """
     Async client for VNB Digital GraphQL API.
-    
+
     Implements rate limiting to avoid overloading the API.
     Default: 1 request per second, configurable up to 10s between requests.
-    
+
     All methods are async for FastAPI compatibility.
     """
 
@@ -188,7 +188,7 @@ class VNBDigitalClient:
     ):
         """
         Initialize the VNB Digital API client.
-        
+
         Args:
             request_delay: Minimum seconds between requests (1.0 - 10.0)
             timeout: Request timeout in seconds
@@ -219,10 +219,10 @@ class VNBDigitalClient:
     async def search_address(self, address: str) -> LocationResult | None:
         """
         Search for an address and return location with coordinates.
-        
+
         Args:
             address: Full address string (e.g., "Musterstr 5, 50667 Köln")
-            
+
         Returns:
             LocationResult with coordinates, or None if not found
         """
@@ -284,11 +284,11 @@ class VNBDigitalClient:
     ) -> list[VNBResult]:
         """
         Look up VNBs for given coordinates.
-        
+
         Args:
             coordinates: Coordinates in "lat,lon" format
             voltage_types: Filter by voltage types (default: Niederspannung, Mittelspannung)
-            
+
         Returns:
             List of VNBResult objects
         """
@@ -362,13 +362,13 @@ class VNBDigitalClient:
     ) -> str | None:
         """
         Full resolution: Address → Coordinates → DNO name.
-        
+
         This is the main entry point for address-based DNO lookup.
-        
+
         Args:
             address: Full address string
             prefer_electricity: If True, prefer VNBs with STROM type
-            
+
         Returns:
             DNO name if found, None otherwise
         """
@@ -401,12 +401,12 @@ class VNBDigitalClient:
     ) -> str | None:
         """
         Direct coordinate-based DNO lookup.
-        
+
         Args:
             latitude: Latitude coordinate
             longitude: Longitude coordinate
             prefer_electricity: If True, prefer VNBs with STROM type
-            
+
         Returns:
             DNO name if found, None otherwise
         """
@@ -430,13 +430,13 @@ class VNBDigitalClient:
     async def get_vnb_details(self, vnb_id: str) -> DNODetails | None:
         """
         Fetch extended DNO details via VNBdigital GraphQL API.
-        
+
         Uses the vnb_vnb query to get homepage URL (website), contact email,
         phone, and address directly from the API.
-        
+
         Args:
             vnb_id: VNB ID (e.g., "7399" for RheinNetz)
-            
+
         Returns:
             DNODetails with homepage_url and contact info, or None on error
         """
@@ -499,13 +499,13 @@ class VNBDigitalClient:
     async def search_vnb(self, name: str) -> list[VNBSearchResult]:
         """
         Search for VNBs by name for autocomplete/validation.
-        
+
         Uses the vnb_search query and filters to only return VNB type results
         (excludes address/location results).
-        
+
         Args:
             name: Search term (DNO name or partial name)
-            
+
         Returns:
             List of VNBSearchResult matching the query
         """

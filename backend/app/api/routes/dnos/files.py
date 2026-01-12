@@ -69,10 +69,10 @@ async def upload_file(
 ) -> APIResponse:
     """
     Upload a file for a DNO.
-    
+
     Automatically detects data type and year from filename using weighted
     keyword scoring, then renames to canonical format: {data_type}-{year}.{ext}
-    
+
     This enables extraction for protected DNOs where automated crawling fails.
     """
     import aiofiles

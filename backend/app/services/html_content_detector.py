@@ -58,12 +58,12 @@ def detect_embedded_data(
 ) -> EmbeddedDataResult:
     """
     Analyze HTML content for embedded data tables.
-    
+
     Args:
         html_content: Raw HTML string
         data_type: "hlzf" or "netzentgelte"
         target_year: Optional target year to look for
-        
+
     Returns:
         EmbeddedDataResult with detection info
     """
@@ -159,9 +159,9 @@ def score_html_page_for_data(
 ) -> tuple[float, EmbeddedDataResult]:
     """
     Score an HTML page for embedded data relevance.
-    
+
     HLZF data is commonly in HTML tables, netzentgelte is mostly in PDFs.
-    
+
     Returns:
         (score_bonus, result) - score to add to page ranking
     """

@@ -30,7 +30,7 @@ logger = structlog.get_logger()
 class VNBDigitalClient:
     """
     Async client for VNB Digital GraphQL API.
-    
+
     Implements rate limiting to avoid overloading the API.
     Default: 1 request per second, configurable up to 10s between requests.
     """
@@ -52,7 +52,7 @@ class VNBDigitalClient:
     ):
         """
         Initialize the VNB Digital API client.
-        
+
         Args:
             request_delay: Minimum seconds between requests (1.0 - 10.0)
             timeout: Request timeout in seconds
@@ -83,10 +83,10 @@ class VNBDigitalClient:
     async def search_address(self, address: str) -> LocationResult | None:
         """
         Search for an address and return location with coordinates.
-        
+
         Args:
             address: Full address string (e.g., "Musterstr 5, 50667 Köln")
-            
+
         Returns:
             LocationResult with coordinates, or None if not found
         """
@@ -148,11 +148,11 @@ class VNBDigitalClient:
     ) -> list[VNBResult]:
         """
         Look up VNBs for given coordinates.
-        
+
         Args:
             coordinates: Coordinates in "lat,lon" format
             voltage_types: Filter by voltage types
-            
+
         Returns:
             List of VNBResult objects
         """
@@ -273,7 +273,7 @@ class VNBDigitalClient:
     async def get_vnb_details(self, vnb_id: str) -> DNODetails | None:
         """
         Fetch extended DNO details via VNBdigital GraphQL API.
-        
+
         Returns:
             DNODetails with homepage_url and contact info, or None on error
         """

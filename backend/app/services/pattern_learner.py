@@ -43,13 +43,13 @@ class PatternLearner:
         limit: int = 10,
     ) -> list[str]:
         """Get learned path patterns sorted by success rate.
-        
+
         Args:
             db: Database session
             data_type: "netzentgelte" | "hlzf"
             min_success_rate: Minimum success rate to include (0.0-1.0)
             limit: Maximum number of patterns to return
-            
+
         Returns:
             List of path patterns sorted by success rate (highest first)
         """
@@ -80,11 +80,11 @@ class PatternLearner:
 
     def expand_pattern(self, pattern: str, year: int) -> str:
         """Expand {year} placeholder to actual year.
-        
+
         Args:
             pattern: Pattern with {year} placeholder
             year: Year to substitute
-            
+
         Returns:
             Pattern with year substituted
         """
@@ -92,16 +92,16 @@ class PatternLearner:
 
     def _extract_path_patterns(self, url: str) -> list[str]:
         """Extract generalizable path patterns from URL.
-        
+
         Normalizes years to {year} placeholder and generates
         parent path variations for learning.
-        
+
         Args:
             url: Successful URL to learn from
-            
+
         Returns:
             List of normalized path patterns
-            
+
         Example:
             Input:  "https://dno.de/downloads/2023/strom/preisblatt.pdf"
             Output: [
@@ -157,13 +157,13 @@ class PatternLearner:
         data_type: str,
     ) -> list[str]:
         """Record successful URL and learn patterns from it.
-        
+
         Args:
             db: Database session
             url: Successful URL
             dno_slug: DNO identifier
             data_type: "netzentgelte" | "hlzf"
-            
+
         Returns:
             List of patterns that were updated/created
         """
@@ -186,11 +186,11 @@ class PatternLearner:
                 # Add DNO to successful list
                 dno_list = existing.successful_dno_slugs or {"slugs": []}
                 if dno_slug not in dno_list.get("slugs", []):
-                    dno_list["slugs"] = dno_list.get("slugs", []) + [dno_slug]
+                    dno_list["slugs"] = [*dno_list.get("slugs", []), dno_slug]
                     existing.successful_dno_slugs = dno_list
 
                 # Update data_type to "both" if it worked for different types
-                if existing.data_type != "both" and existing.data_type != data_type:
+                if existing.data_type not in ("both", data_type):
                     existing.data_type = "both"
             else:
                 # Create new pattern
@@ -223,7 +223,7 @@ class PatternLearner:
         pattern: str,
     ):
         """Increment fail count for a pattern that didn't work.
-        
+
         Args:
             db: Database session
             pattern: Pattern that was tried and failed
@@ -242,7 +242,7 @@ class PatternLearner:
 
 async def seed_initial_patterns(db: AsyncSession):
     """Seed database with common German DNO website patterns.
-    
+
     Call this once during initial setup or migration.
     """
     patterns = [

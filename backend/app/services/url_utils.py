@@ -62,16 +62,16 @@ STRIP_PARAMS = {
 
 def normalize_url(url: str) -> str:
     """Normalize URL for deduplication.
-    
+
     - Strip tracking params (?utm_*, ?session_id, etc)
     - Remove anchors (#section)
     - Normalize trailing slashes (keep for directories, remove for files)
     - Lowercase hostname
     - Sort remaining query parameters
-    
+
     Args:
         url: URL to normalize
-        
+
     Returns:
         Normalized URL string
     """
@@ -142,7 +142,7 @@ def extract_domain(url: str) -> str | None:
 
 class RobotsChecker:
     """Check robots.txt compliance for crawling.
-    
+
     Caches robots.txt per domain to avoid repeated fetches.
     """
 
@@ -155,10 +155,10 @@ class RobotsChecker:
 
     async def can_fetch(self, url: str) -> bool:
         """Check if URL can be fetched according to robots.txt.
-        
+
         Args:
             url: URL to check
-            
+
         Returns:
             True if allowed to fetch, False if disallowed
         """
@@ -204,7 +204,7 @@ class RobotsChecker:
 
 class UrlProber:
     """SSRF-safe URL validation with content-type checking.
-    
+
     Security features:
     - Blocks private/loopback/link-local IPs (only allows ip.is_global)
     - Validates each redirect hop
@@ -238,10 +238,7 @@ class UrlProber:
 
             # Port check
             port = parsed.port or (443 if parsed.scheme == "https" else 80)
-            if port not in ALLOWED_PORTS:
-                return False
-
-            return True
+            return port in ALLOWED_PORTS
         except Exception:
             return False
 
@@ -256,7 +253,7 @@ class UrlProber:
 
     async def _resolves_to_safe_ip(self, host: str) -> bool:
         """Check if host resolves only to global (public) IPs.
-        
+
         Blocks: private, loopback, link-local, multicast, reserved, unspecified.
         """
         def _check():
@@ -287,12 +284,12 @@ class UrlProber:
         head_only: bool = False,
     ) -> tuple[bool, str | None, str | None, int | None]:
         """Probe URL for existence and content type.
-        
+
         Args:
             url: URL to probe
             allowed_domains: Optional set of allowed domains (for SSRF protection)
             head_only: If True, only do HEAD request (faster for existence check)
-        
+
         Returns:
             (is_valid, content_type, final_url, content_length)
             - is_valid: True if URL is reachable and safe
@@ -405,13 +402,13 @@ class UrlProber:
 
     async def _peek_with_get(self, url: str) -> httpx.Response | None:
         """Fallback probe using streaming GET when HEAD is blocked.
-        
+
         Opens a streaming GET connection, reads just enough to get headers,
         then aborts. This works around servers that block HEAD requests.
-        
+
         Args:
             url: URL to probe
-            
+
         Returns:
             Response object with headers populated, or None on failure
         """
@@ -451,7 +448,7 @@ class UrlProber:
 
 class _PeekResponse:
     """Minimal response object for GET peek fallback.
-    
+
     Mimics the httpx.Response interface for the fields we need.
     """
 

@@ -198,7 +198,7 @@ SUPPORTED_EXTENSIONS = {".pdf", ".html", ".htm", ".xlsx", ".xls", ".csv", ".docx
 
 def _parse_file_info(file_path: Path, dno_slug: str) -> dict | None:
     """Parse file info from a cached file path.
-    
+
     Expected format: {dno_slug}-{data_type}-{year}.{ext}
     Example: netze-bw-gmbh-netzentgelte-2024.pdf
     """
@@ -234,7 +234,7 @@ async def list_cached_files(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get statistics about cached files and their extraction status.
-    
+
     Scans the downloads directory and cross-references with database to show:
     - Total files, by data type, by format
     - Extraction status (no data, flagged, verified, unverified)
@@ -369,7 +369,7 @@ async def preview_bulk_extract(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Preview what a bulk extraction would do without queueing jobs.
-    
+
     Returns counts of files that would be extracted based on mode:
     - flagged_only: Only files where existing data has verification_status = 'flagged'
     - default: Files with no data OR verification_status != 'verified'
@@ -546,9 +546,9 @@ async def trigger_bulk_extract(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Trigger bulk extraction jobs for cached files.
-    
+
     Jobs are queued with lower priority (2) so they don't block regular jobs.
-    
+
     Modes:
     - flagged_only: Only re-extract files where data is flagged
     - default: Extract files with no data, flagged, or unverified (skip verified)
@@ -739,7 +739,7 @@ async def get_bulk_extract_status(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get status of bulk extraction jobs (low priority jobs).
-    
+
     Returns counts of pending, running, completed, and failed bulk extract jobs.
     """
     # Query jobs with bulk_extract priority
@@ -800,7 +800,7 @@ async def cancel_bulk_extract(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Cancel all pending bulk extraction jobs.
-    
+
     Only cancels jobs that are still pending (not running or completed).
     """
     # Find all pending bulk extract jobs
@@ -841,7 +841,7 @@ async def delete_bulk_extract_jobs(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Delete ALL bulk extraction jobs to reset progress.
-    
+
     This effectively resets the 'Bulk Extraction Progress' bar.
     It deletes jobs with BULK_EXTRACT_PRIORITY (2).
     """
@@ -914,10 +914,10 @@ async def list_ai_configs(
 ) -> APIResponse:
     """List all AI provider configurations."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     configs = await service.list_all()
-    
+
     # Transform to response format (don't expose encrypted secrets)
     items = []
     for config in configs:
@@ -945,7 +945,7 @@ async def list_ai_configs(
             "total_tokens_used": config.total_tokens_used,
             "created_at": config.created_at.isoformat() if config.created_at else None,
         })
-    
+
     return APIResponse(
         success=True,
         data={"configs": items, "total": len(items)},
@@ -960,9 +960,9 @@ async def create_ai_config(
 ) -> APIResponse:
     """Create a new AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
-    
+
     config = await service.create(
         name=request.name,
         provider_type=request.provider_type,
@@ -975,9 +975,9 @@ async def create_ai_config(
         supports_files=request.supports_files,
         created_by=admin.id,
     )
-    
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message=f"Created AI provider config: {config.name}",
@@ -994,9 +994,9 @@ async def update_ai_config(
 ) -> APIResponse:
     """Update an AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
-    
+
     config = await service.update(
         config_id=config_id,
         name=request.name,
@@ -1009,15 +1009,15 @@ async def update_ai_config(
         is_enabled=request.is_enabled,
         modified_by=admin.id,
     )
-    
+
     if not config:
         return APIResponse(
             success=False,
             message="Configuration not found",
         )
-    
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message=f"Updated AI provider config: {config.name}",
@@ -1032,18 +1032,18 @@ async def delete_ai_config(
 ) -> APIResponse:
     """Delete an AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     deleted = await service.delete(config_id)
-    
+
     if not deleted:
         return APIResponse(
             success=False,
             message="Configuration not found",
         )
-    
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="AI provider config deleted",
@@ -1058,11 +1058,11 @@ async def reorder_ai_configs(
 ) -> APIResponse:
     """Reorder AI provider configurations (for fallback priority)."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     await service.reorder(request.config_ids)
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message="Provider order updated",
@@ -1077,10 +1077,10 @@ async def test_ai_config(
 ) -> APIResponse:
     """Test an AI provider configuration."""
     from app.services.ai.gateway import AIGateway
-    
+
     gateway = AIGateway(db)
     result = await gateway.test_provider(config_id)
-    
+
     return APIResponse(
         success=result.get("success", False),
         message=result.get("message") or result.get("error"),
@@ -1103,15 +1103,16 @@ async def test_ai_config_preview(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Test an AI provider configuration BEFORE saving it.
-    
+
     Sends a quick test message to verify the credentials work.
     """
     import time
     from types import SimpleNamespace
+
     from app.services.ai.gateway import PROVIDER_CLASSES
 
     start_time = time.time()
-    
+
     try:
         # Get the provider class
         provider_class = PROVIDER_CLASSES.get(request.provider_type)
@@ -1120,7 +1121,7 @@ async def test_ai_config_preview(
                 success=False,
                 message=f"Unknown provider type: {request.provider_type}",
             )
-        
+
         # Create a mock config object mimicking AIProviderConfigModel
         mock_config = SimpleNamespace(
             id=0,
@@ -1137,19 +1138,19 @@ async def test_ai_config_preview(
             is_enabled=True,
             oauth_refresh_token_encrypted=None,
         )
-        
+
         # Create provider instance
         provider = provider_class(mock_config)
-        
+
         # Override the API key decryption for testing (use plain key)
         if request.api_key:
             provider.api_key = request.api_key
-        
+
         # Run health check (sends test message)
         is_healthy = await provider.health_check()
-        
+
         elapsed_ms = int((time.time() - start_time) * 1000)
-        
+
         if is_healthy:
             return APIResponse(
                 success=True,
@@ -1169,13 +1170,13 @@ async def test_ai_config_preview(
                     "elapsed_ms": elapsed_ms,
                 },
             )
-        
+
     except Exception as e:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.warning("ai_config_test_failed", error=str(e), provider=request.provider_type)
         return APIResponse(
             success=False,
-            message=f"Connection failed: {str(e)}",
+            message=f"Connection failed: {e!s}",
             data={
                 "model": request.model,
                 "elapsed_ms": elapsed_ms,
@@ -1194,19 +1195,19 @@ async def list_provider_models(
     limit: int = 25,
 ) -> APIResponse:
     """List available models for a provider.
-    
+
     Two-stage approach:
     - Without query: Returns curated/suggested models (FALLBACK_MODELS)
     - With query: Searches the full models.dev registry
-    
+
     This optimizes the UI by showing recommended models first, then
     enabling fuzzy search against the full registry when user types.
     """
     from app.services.ai.config_service import AIConfigService, get_models_registry_status
-    
+
     default_url = AIConfigService.get_default_url(provider_type)
     registry_status = get_models_registry_status()
-    
+
     # If no query provided, return suggested models only
     if not query:
         models = AIConfigService.get_suggested_models(provider_type)
@@ -1221,7 +1222,7 @@ async def list_provider_models(
                 "source": "suggested",
             },
         )
-    
+
     # With query, search the full registry
     models = await AIConfigService.search_models_for_provider(
         provider_type=provider_type,
@@ -1230,7 +1231,7 @@ async def list_provider_models(
         supports_files=supports_files,
         limit=limit,
     )
-    
+
     return APIResponse(
         success=True,
         data={
@@ -1251,9 +1252,9 @@ async def refresh_models_registry(
 ) -> APIResponse:
     """Refresh the models registry from models.dev API."""
     from app.services.ai.config_service import refresh_models_registry as do_refresh
-    
+
     success = await do_refresh()
-    
+
     if success:
         return APIResponse(
             success=True,
@@ -1273,12 +1274,12 @@ async def get_ai_status(
 ) -> APIResponse:
     """Get overall AI configuration status."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     all_configs = await service.list_all()
     enabled_configs = await service.list_enabled()
     active_config = await service.get_active_config()
-    
+
     return APIResponse(
         success=True,
         data={

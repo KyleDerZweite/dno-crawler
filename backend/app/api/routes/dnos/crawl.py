@@ -31,12 +31,12 @@ async def trigger_crawl(
 ) -> APIResponse:
     """
     Trigger a job for a specific DNO.
-    
+
     Job types:
     - full: Full pipeline (crawl steps 0-3, then extract steps 4-6)
     - crawl: Crawl only (discover + download, steps 0-3)
     - extract: Extract only from existing file (steps 4-6)
-    
+
     Creates a new job that will be picked up by the appropriate worker.
     Any authenticated user (member or admin) can trigger this.
     Accepts either numeric ID or slug.

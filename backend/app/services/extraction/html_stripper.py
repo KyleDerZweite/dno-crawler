@@ -6,7 +6,7 @@ optionally splits multi-year pages into year-specific files for cache compatibil
 
 Usage:
     from app.services.extraction.html_stripper import HtmlStripper
-    
+
     stripper = HtmlStripper()
     years_found = stripper.strip_and_split(
         html_content="<html>...",
@@ -26,12 +26,12 @@ from bs4 import BeautifulSoup, Tag
 class HtmlStripper:
     """
     Strips HTML files to essential content for data extraction.
-    
+
     Removes:
     - <head>, <style>, <script> elements
     - Navigation, footer, header elements
     - Inline styles and unnecessary attributes
-    
+
     Keeps:
     - <table> elements with their headers
     - <h2>, <h3> headers that identify years/sections
@@ -57,10 +57,10 @@ class HtmlStripper:
     def strip_html(self, html: str) -> tuple[str, list[int]]:
         """
         Strip HTML to essential content.
-        
+
         Args:
             html: Raw HTML content
-            
+
         Returns:
             Tuple of (stripped_html, years_found)
         """
@@ -116,13 +116,13 @@ class HtmlStripper:
     ) -> list[tuple[int, Path]]:
         """
         Strip HTML and split into year-specific files.
-        
+
         Args:
             html_content: Raw HTML content
             output_dir: Directory to save files
             slug: DNO slug for filename
             data_type: Data type (hlzf, netzentgelte)
-            
+
         Returns:
             List of (year, file_path) tuples for created files
         """
@@ -164,7 +164,7 @@ class HtmlStripper:
 
     def _find_next_table(self, header: Tag) -> Tag | None:
         """Find the next table element after a header.
-        
+
         Uses find_next() to handle cases where the table is nested
         within a sibling div (e.g., accordion structures).
         """

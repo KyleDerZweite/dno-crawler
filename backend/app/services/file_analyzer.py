@@ -49,13 +49,13 @@ class FileAnalyzer:
     def _extract_year_from_6digit_date(self, date_str: str) -> int | None:
         """
         Extract year from a 6-digit date string.
-        
+
         Tries to parse as YYMMDD, DDMMYY, or MMDDYY format by validating
         that month (01-12) and day (01-31) are in valid ranges.
-        
+
         Args:
             date_str: 6-digit string like "260101"
-            
+
         Returns:
             4-digit year (e.g., 2026) or None if no valid format detected
         """
@@ -93,19 +93,16 @@ class FileAnalyzer:
     def analyze(self, file_path: Path | str) -> tuple[str | None, int | None]:
         """
         Analyze file to detect data type and year.
-        
+
         Uses filename-first approach with weighted keyword scoring.
-        
+
         Args:
             file_path: Path to file or filename string
-        
+
         Returns:
             (data_type, year) - either or both may be None if not detected
         """
-        if isinstance(file_path, str):
-            filename = file_path
-        else:
-            filename = file_path.name
+        filename = file_path if isinstance(file_path, str) else file_path.name
 
         return self._analyze_filename(filename)
 

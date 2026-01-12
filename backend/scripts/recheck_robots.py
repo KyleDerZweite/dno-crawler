@@ -39,7 +39,7 @@ async def recheck_robots_for_all(
 ) -> list[dict]:
     """
     Re-check robots.txt for all records with a website.
-    
+
     Only updates crawlable and blocked_reason fields.
     """
     log = logger.bind(total=len(records), limit=limit)
@@ -171,4 +171,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit(asyncio.run(main()))
+    sys.exit(asyncio.run(main()))

@@ -49,11 +49,11 @@ async def process_extract(
 ) -> dict:
     """
     Execute extract job (steps 4-6: extract, validate, finalize).
-    
+
     Args:
         ctx: ARQ context
         job_id: ID of the CrawlJobModel to process
-        
+
     Returns:
         Result dict with status
     """

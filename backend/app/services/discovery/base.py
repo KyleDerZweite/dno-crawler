@@ -30,7 +30,7 @@ class FileType(str, Enum):
 class DiscoveredDocument:
     """
     A discovered document (file or HTML page with data).
-    
+
     Represents a candidate data source found during discovery.
     """
     url: str
@@ -57,7 +57,7 @@ class DiscoveredDocument:
 class DiscoveryResult:
     """
     Result of a discovery operation.
-    
+
     Contains all candidates found, sorted by relevance.
     """
     start_url: str

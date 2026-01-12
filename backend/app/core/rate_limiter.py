@@ -18,7 +18,7 @@ logger = structlog.get_logger()
 class RateLimiter:
     """
     Dual-layer rate limiter for public API protection.
-    
+
     - Per-IP: Limits requests from individual clients
     - Global VNB: Limits total VNB Digital API calls across ALL users
     """
@@ -36,7 +36,7 @@ class RateLimiter:
     ):
         """
         Initialize rate limiter.
-        
+
         Args:
             redis: Redis connection
             ip_rate: Max requests per IP per window (default 60/min = 1/sec avg)
@@ -54,7 +54,7 @@ class RateLimiter:
     async def check_ip_limit(self, ip: str) -> None:
         """
         Check and increment IP rate limit.
-        
+
         Raises:
             HTTPException: 429 if rate limit exceeded
         """
@@ -81,7 +81,7 @@ class RateLimiter:
     async def check_vnb_quota(self) -> None:
         """
         Check global VNB API quota before making VNB Digital call.
-        
+
         Raises:
             HTTPException: 503 if quota exhausted
         """

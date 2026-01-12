@@ -32,15 +32,15 @@ async def export_dno_data(
 ) -> Response:
     """
     Export DNO data as downloadable JSON file.
-    
+
     Available to all authenticated users.
-    
+
     Args:
         dno_id: DNO ID
         data_types: Data types to export (netzentgelte, hlzf)
         years: Optional year filter
         include_metadata: Include DNO metadata in export
-    
+
     Returns:
         JSON file download
     """
@@ -131,13 +131,13 @@ async def import_dno_data(
 ) -> APIResponse:
     """
     Import JSON data with validation and sanitization.
-    
+
     Available to all authenticated users.
-    
+
     Modes:
     - merge: Add/update records, keep existing data
     - replace: Delete existing data, then insert new
-    
+
     Security:
     - Pydantic schema validation
     - Content sanitization (blocks injection attempts)
@@ -177,7 +177,7 @@ async def import_dno_data(
         if request.mode == "replace":
             # If arrays are empty, delete ALL data for this DNO (user wants to clear)
             # If arrays have data, only delete for the years being imported
-            
+
             if len(request.netzentgelte) == 0:
                 # Empty array means: delete ALL netzentgelte for this DNO
                 await db.execute(
@@ -186,7 +186,7 @@ async def import_dno_data(
                 logger.info("import_deleted_all_netzentgelte", dno_id=dno_id)
             else:
                 # Non-empty: delete only for the years being imported
-                netz_years = set(r.year for r in request.netzentgelte)
+                netz_years = {r.year for r in request.netzentgelte}
                 if netz_years:
                     await db.execute(
                         delete(NetzentgelteModel).where(
@@ -205,7 +205,7 @@ async def import_dno_data(
                 logger.info("import_deleted_all_hlzf", dno_id=dno_id)
             else:
                 # Non-empty: delete only for the years being imported
-                hlzf_years = set(r.year for r in request.hlzf)
+                hlzf_years = {r.year for r in request.hlzf}
                 if hlzf_years:
                     await db.execute(
                         delete(HLZFModel).where(

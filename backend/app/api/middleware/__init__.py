@@ -14,7 +14,7 @@ from app.api.middleware.wide_events import (
 
 __all__ = [
     "WideEventMiddleware",
-    "add_user_to_wide_event",
     "add_dno_to_wide_event",
     "add_job_to_wide_event",
+    "add_user_to_wide_event",
 ]

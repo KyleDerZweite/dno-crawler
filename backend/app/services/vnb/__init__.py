@@ -9,10 +9,10 @@ Components:
 
 Usage:
     from app.services.vnb import VNBDigitalClient, skeleton_service
-    
+
     client = VNBDigitalClient()
     vnbs = await client.lookup_by_coordinates("50.9375,6.9603")
-    
+
     dno, created = await skeleton_service.get_or_create_dno(db, name, vnb_id)
 """
 
@@ -33,21 +33,19 @@ from app.services.vnb.skeleton import (
 )
 
 __all__ = [
-    # Client
-    "VNBDigitalClient",
-    "vnb_client",
-
+    "DNODetails",
+    "LocationResult",
+    "NormalizedAddress",
     # Skeleton service
     "SkeletonService",
-    "skeleton_service",
-    "normalize_address",
-    "NormalizedAddress",
-    "generate_slug",
-    "snap_coordinate",
-
+    # Client
+    "VNBDigitalClient",
     # Data models
     "VNBResult",
-    "LocationResult",
-    "DNODetails",
     "VNBSearchResult",
+    "generate_slug",
+    "normalize_address",
+    "skeleton_service",
+    "snap_coordinate",
+    "vnb_client",
 ]

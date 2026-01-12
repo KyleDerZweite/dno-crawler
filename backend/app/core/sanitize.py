@@ -47,16 +47,16 @@ def sanitize_string(
 ) -> str:
     """
     Sanitize a string value to prevent injection attacks.
-    
+
     Args:
         value: The string to sanitize
         field_name: Name of the field (for error messages)
         max_length: Maximum allowed length
         allow_html_entities: If False, reject strings with HTML entities
-        
+
     Returns:
         Sanitized string (HTML escaped)
-        
+
     Raises:
         SanitizationError: If the value contains dangerous patterns
     """
@@ -99,7 +99,7 @@ def sanitize_string(
 def sanitize_time_string(value: str, field_name: str = "field") -> str:
     """
     Sanitize a time window string (e.g., "16:00-20:00").
-    
+
     Only allows:
     - Time format: HH:MM-HH:MM
     - Dash for "not applicable": -
@@ -126,13 +126,13 @@ def sanitize_dict(
 ) -> dict[str, Any]:
     """
     Sanitize all string fields in a dictionary.
-    
+
     Args:
         data: Dictionary to sanitize
         string_fields: List of field names to sanitize as strings
         time_fields: List of field names to sanitize as time strings
         max_string_length: Maximum length for string fields
-        
+
     Returns:
         Sanitized dictionary (new copy)
     """

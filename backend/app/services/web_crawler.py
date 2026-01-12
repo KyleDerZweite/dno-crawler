@@ -128,7 +128,7 @@ SKIP_DOMAINS = {
 
 class WebCrawler:
     """BFS web crawler with safety features.
-    
+
     Crawls websites breadth-first, prioritizing URLs likely to contain
     target data based on keyword matching and learned patterns.
     """
@@ -143,7 +143,7 @@ class WebCrawler:
         timeout: float = 10.0,
     ):
         """Initialize crawler.
-        
+
         Args:
             client: httpx AsyncClient for requests
             user_agent: User-Agent string for crawl requests
@@ -172,14 +172,14 @@ class WebCrawler:
         data_type: str | None = None,
     ) -> list[CrawlResult]:
         """BFS crawl from start_url, prioritizing relevant URLs.
-        
+
         Args:
             start_url: Homepage or entrypoint URL
             target_keywords: Keywords to look for in URLs/content
             priority_paths: Learned patterns to try first (with {year})
             target_year: Year to substitute in patterns
             data_type: Target data type for scoring ("netzentgelte" or "hlzf")
-            
+
         Returns:
             List of CrawlResult sorted by relevance score (highest first)
         """
@@ -369,7 +369,7 @@ class WebCrawler:
 
     def _is_token_url(self, url: str) -> bool:
         """Detect URLs that look like tokenized download links.
-        
+
         Many CMS platforms (TYPO3, etc.) use opaque token URLs for downloads
         like /media_token/abc123 or /get_file/xyz without file extensions.
         """
@@ -377,7 +377,7 @@ class WebCrawler:
 
     def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
         """Score URL based on relevance.
-        
+
         Higher score = more likely to contain target data.
         """
         from datetime import datetime
@@ -447,7 +447,7 @@ class WebCrawler:
         allowed_domains: set[str],
     ) -> list[str]:
         """Extract valid links from HTML.
-        
+
         Filters out external links, skip patterns, and normalizes URLs.
         """
         links = []
@@ -475,10 +475,7 @@ class WebCrawler:
                     continue
 
                 host_lower = host.lower()
-                if host_lower.startswith("www."):
-                    host_check = host_lower[4:]
-                else:
-                    host_check = host_lower
+                host_check = host_lower[4:] if host_lower.startswith("www.") else host_lower
 
                 # Skip external domains
                 if not any(host_check == d or host_check.endswith(f".{d}") for d in allowed_domains):

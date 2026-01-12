@@ -9,6 +9,7 @@ Run:
 """
 
 import asyncio
+import sys
 
 from app.services.vnb_digital import VNBDigitalClient
 
@@ -155,4 +156,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit(asyncio.run(main()))
+    sys.exit(asyncio.run(main()))

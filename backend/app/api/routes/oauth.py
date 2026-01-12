@@ -30,24 +30,24 @@ async def detect_cli_credentials(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Detect available CLI credentials for AI providers.
-    
+
     Checks for:
     - ~/.gemini/oauth_creds.json (gemini-cli)
     - ~/.codex/auth.json (codex-cli) [future]
     - ~/.claude/.credentials.json (claude-code) [future]
-    
+
     Returns detected credentials with user info for auto-configuration.
     """
     from app.services.ai.oauth.google import get_credential_manager
-    
+
     detected = {}
-    
+
     # Check Google/Gemini CLI
     try:
         cred_manager = get_credential_manager()
         # Use load_credentials() which checks /data/auth/ first, then ~/.gemini/
         gemini_creds = cred_manager.load_credentials()
-        
+
         if gemini_creds:
             user_info = cred_manager.get_user_info()
             detected["google"] = {
@@ -68,21 +68,21 @@ async def detect_cli_credentials(
             "available": False,
             "error": str(e),
         }
-    
+
     # Future: Check Anthropic/Claude Code
     detected["anthropic"] = {
         "available": False,
         "source": None,
         "instructions": "Run 'claude auth login' to authenticate (coming soon)",
     }
-    
+
     # Future: Check OpenAI/Codex
     detected["openai"] = {
         "available": False,
         "source": None,
         "instructions": "Run 'codex auth login' to authenticate (coming soon)",
     }
-    
+
     return APIResponse(
         success=True,
         data={
@@ -117,17 +117,17 @@ async def start_google_oauth(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Start Google OAuth flow.
-    
+
     Returns an authorization URL that the frontend should open in a new window.
     The user authenticates with Google, then is redirected back to our callback.
-    
+
     This uses the same OAuth client as gemini-cli, so:
     - Works with Google account's Gemini quota
     - Gets 1M+ token context with Google One AI Premium
     - Free tier: 60 req/min, 1000 req/day
     """
     from app.services.ai.oauth.google import GoogleOAuthFlow
-    
+
     # Determine callback URL
     if request.redirect_uri:
         redirect_uri = request.redirect_uri
@@ -135,23 +135,23 @@ async def start_google_oauth(
         # Construct from settings
         base_url = getattr(settings, 'base_url', None) or "http://localhost:8000"
         redirect_uri = f"{base_url}/api/v1/admin/oauth/google/callback"
-    
+
     flow = GoogleOAuthFlow(redirect_uri=redirect_uri)
     auth_url, state, code_verifier = flow.generate_authorization_url()
-    
+
     # Store state for verification (with code_verifier for PKCE)
     _oauth_pending_states[state] = {
         "code_verifier": code_verifier,
         "redirect_uri": redirect_uri,
         "initiated_by": admin.email,
     }
-    
+
     logger.info(
         "google_oauth_started",
         user=admin.email,
         redirect_uri=redirect_uri,
     )
-    
+
     return APIResponse(
         success=True,
         message="Open the authorization URL to authenticate with Google",
@@ -168,15 +168,15 @@ async def google_oauth_callback_get(
     state: Annotated[str, Query(description="State parameter for verification")],
 ):
     """Handle Google OAuth callback (GET - browser redirect).
-    
+
     Google redirects here after user authorizes.
     This endpoint exchanges the code for tokens and returns HTML
     that closes the popup window.
     """
     from fastapi.responses import HTMLResponse
-    
+
     result = await _handle_google_callback_internal(code, state)
-    
+
     # Return HTML that closes the popup and notifies parent
     if result["success"]:
         html = f"""
@@ -280,7 +280,7 @@ async def google_oauth_callback_get(
 </body>
 </html>
 """
-    
+
     return HTMLResponse(content=html)
 
 
@@ -290,7 +290,7 @@ async def google_oauth_callback_post(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Handle Google OAuth callback (POST - from frontend).
-    
+
     Frontend can POST the code/state after intercepting the redirect.
     """
     result = await _handle_google_callback_internal(request.code, request.state)
@@ -314,7 +314,7 @@ async def google_oauth_callback_post(
 async def _handle_google_callback_internal(code: str, state: str) -> dict:
     """Process OAuth callback and store credentials. Returns a dict."""
     from app.services.ai.oauth.google import GoogleOAuthFlow, get_credential_manager
-    
+
     # Verify state
     pending = _oauth_pending_states.get(state)
     if not pending:
@@ -323,30 +323,30 @@ async def _handle_google_callback_internal(code: str, state: str) -> dict:
             "success": False,
             "message": "Invalid or expired OAuth state. Please try again.",
         }
-    
+
     # Exchange code for tokens
     try:
         flow = GoogleOAuthFlow(redirect_uri=pending["redirect_uri"])
         flow.set_pending_state(state, pending["code_verifier"])
-        
+
         credentials = await flow.exchange_code(
             code=code,
             state=state,
             code_verifier=pending["code_verifier"],
         )
-        
+
         # Store credentials
         cred_manager = get_credential_manager()
         cred_manager.save_credentials(credentials, to_gemini_cli=True)
-        
+
         # Clean up pending state
         del _oauth_pending_states[state]
-        
+
         logger.info(
             "google_oauth_complete",
             email=credentials.get("user_email"),
         )
-        
+
         return {
             "success": True,
             "message": f"Successfully authenticated as {credentials.get('user_email')}",
@@ -354,12 +354,12 @@ async def _handle_google_callback_internal(code: str, state: str) -> dict:
             "name": credentials.get("user_name"),
             "expires_at": credentials.get("expires_at"),
         }
-        
+
     except Exception as e:
         logger.error("google_oauth_callback_failed", error=str(e))
         return {
             "success": False,
-            "message": f"OAuth failed: {str(e)}",
+            "message": f"OAuth failed: {e!s}",
         }
 
 
@@ -368,18 +368,18 @@ async def google_oauth_status(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Check Google OAuth authentication status.
-    
+
     Also checks for gemini-cli credentials that can be shared.
     """
     from app.services.ai.oauth.google import get_credential_manager
-    
+
     cred_manager = get_credential_manager()
     is_authenticated = cred_manager.is_authenticated()
     user_info = cred_manager.get_user_info() if is_authenticated else None
-    
+
     # Check gemini-cli credentials too
     gemini_cli_creds = cred_manager.get_gemini_cli_credentials()
-    
+
     return APIResponse(
         success=True,
         data={
@@ -396,16 +396,16 @@ async def google_oauth_logout(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Clear Google OAuth credentials.
-    
+
     Note: This only clears our credentials, not gemini-cli's.
     """
     from app.services.ai.oauth.google import get_credential_manager
-    
+
     cred_manager = get_credential_manager()
     cred_manager.clear_credentials()
-    
+
     logger.info("google_oauth_logout", user=admin.email)
-    
+
     return APIResponse(
         success=True,
         message="Google OAuth credentials cleared",
@@ -417,28 +417,28 @@ async def use_gemini_cli_credentials(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Use existing gemini-cli credentials.
-    
+
     If the user has already run 'gemini auth login', we can use those credentials.
     """
     from app.services.ai.oauth.google import get_credential_manager
-    
+
     cred_manager = get_credential_manager()
     gemini_cli_creds = cred_manager.get_gemini_cli_credentials()
-    
+
     if not gemini_cli_creds:
         return APIResponse(
             success=False,
             message="No gemini-cli credentials found. Please run 'gemini auth login' first, or use the OAuth flow.",
         )
-    
+
     # Copy gemini-cli creds to our storage
     cred_manager.save_credentials(gemini_cli_creds, to_gemini_cli=False)
-    
+
     logger.info(
         "using_gemini_cli_credentials",
         email=gemini_cli_creds.get("user_email"),
     )
-    
+
     return APIResponse(
         success=True,
         message=f"Now using gemini-cli credentials for {gemini_cli_creds.get('user_email')}",

@@ -97,11 +97,11 @@ class ImpressumExtractor:
     ) -> FullAddress | None:
         """
         Extract full address from DNO's Impressum page.
-        
+
         Args:
             homepage_url: DNO homepage URL (e.g., "https://www.rheinnetz.de/")
             vnb_street: Street address from VNB Digital (e.g., "Parkgürtel 24")
-            
+
         Returns:
             FullAddress with postal code + city, or None on failure
         """

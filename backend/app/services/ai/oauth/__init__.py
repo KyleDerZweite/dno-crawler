@@ -12,7 +12,7 @@ from app.services.ai.oauth.google import (
 )
 
 __all__ = [
-    "GoogleOAuthFlow",
     "GoogleCredentialManager",
+    "GoogleOAuthFlow",
     "get_credential_manager",
 ]

@@ -54,10 +54,10 @@ STREET_REPLACEMENTS = {
 def normalize_address(street_input: str, zip_code: str, city: str) -> NormalizedAddress:
     """
     Aggressive normalization for uniqueness, gentle cleaning for storage.
-    
+
     The "mashed" string is used for hash generation (deduplication).
     The "clean" components are stored for API calls to VNB Digital.
-    
+
     Examples:
         "Musterstraße 5" → hash("musterstr|5|12345")
         "An der Ronne 160" → hash("anderronne|160|12345")
@@ -99,7 +99,7 @@ def normalize_address(street_input: str, zip_code: str, city: str) -> Normalized
 def snap_coordinate(value: float) -> Decimal:
     """
     Snap coordinate to 6 decimal places for exact DB matching.
-    
+
     6 decimal places = ~11cm precision.
     Using Decimal avoids floating point comparison issues.
     """
@@ -123,7 +123,7 @@ def generate_slug(name: str) -> str:
 class SkeletonService:
     """
     Service for creating skeleton records with race-condition safety.
-    
+
     All methods are idempotent - safe to call multiple times with same input.
     Never triggers heavy crawl jobs.
     """
@@ -150,9 +150,9 @@ class SkeletonService:
     ) -> tuple[DNOModel, bool]:
         """
         Get existing or create new DNO skeleton.
-        
+
         Returns: (dno, created) - created=True if new record
-        
+
         Race-condition safe: uses IntegrityError fallback for concurrent creates.
         """
         log = self.log.bind(name=name, vnb_id=vnb_id)
@@ -245,7 +245,7 @@ class SkeletonService:
     ) -> LocationModel | None:
         """
         Find location by coordinates with spatial tolerance.
-        
+
         Tolerance 0.0001° ≈ 11 meters at equator.
         Uses ABS comparison to avoid float precision issues.
         """
@@ -270,9 +270,9 @@ class SkeletonService:
     ) -> tuple[LocationModel, bool]:
         """
         Get existing or create new location.
-        
+
         Returns: (location, created) - created=True if new record
-        
+
         Race-condition safe: uses IntegrityError fallback.
         """
         log = self.log.bind(address_hash=address.address_hash[:16], dno_id=dno_id)

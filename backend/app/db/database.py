@@ -24,7 +24,7 @@ class Base(DeclarativeBase):
 
 class DatabaseError(Exception):
     """Custom database error for better error handling"""
-    def __init__(self, message: str, original_error: Exception = None):
+    def __init__(self, message: str, original_error: Exception | None = None):
         self.message = message
         self.original_error = original_error
         super().__init__(self.message)
@@ -113,7 +113,7 @@ from contextlib import asynccontextmanager
 async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     """
     Context manager for getting database session in non-FastAPI contexts.
-    
+
     Useful for background workers and standalone scripts.
     """
     session = async_session_maker()
@@ -129,11 +129,11 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 
 async def init_db() -> None:
     """Initialize database tables.
-    
+
     Handles concurrent startup of multiple workers safely by:
     1. Using checkfirst=True to avoid creating existing objects
     2. Catching duplicate key errors (race condition between check and create)
-    
+
     If another worker creates tables between our check and create, we catch
     the error and continue - the tables exist, which is what we wanted.
     """

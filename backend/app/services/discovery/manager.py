@@ -37,7 +37,7 @@ HLZF_HTML_PATTERNS = [
 class DiscoveryManager:
     """
     Manages data discovery for a DNO.
-    
+
     Orchestrates multiple discovery strategies and returns
     the best candidates for download.
     """
@@ -61,19 +61,19 @@ class DiscoveryManager:
     ) -> DiscoveryResult:
         """
         Discover data files for a DNO.
-        
+
         Strategy:
         1. Try sitemap discovery (uses stored sitemap_urls if available)
         2. For HLZF, also scan HTML pages for embedded tables
         3. Fall back to BFS if no sitemap
-        
+
         Args:
             base_url: DNO website URL
             data_type: "netzentgelte" or "hlzf"
             target_year: Optional target year
             sitemap_urls: Pre-stored sitemap URLs from DNO record
             max_candidates: Max candidates to return
-        
+
         Returns:
             DiscoveryResult with scored candidates
         """
@@ -140,7 +140,7 @@ class DiscoveryManager:
     ):
         """
         Scan common HTML page patterns for embedded HLZF tables.
-        
+
         Many DNOs embed HLZF data directly in HTML tables rather than PDFs.
         """
         from urllib.parse import urlparse

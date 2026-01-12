@@ -11,9 +11,9 @@ from app.services.ai.providers.openai import OpenAIProvider
 from app.services.ai.providers.openrouter import OpenRouterProvider
 
 __all__ = [
+    "AnthropicProvider",
     "BaseProvider",
-    "OpenRouterProvider",
     "GoogleProvider",
     "OpenAIProvider",
-    "AnthropicProvider",
+    "OpenRouterProvider",
 ]

@@ -19,7 +19,7 @@ logger = structlog.get_logger()
 class PDFDownloader:
     """
     Download and validate PDF documents.
-    
+
     Handles downloading PDFs from URLs and validating their content
     matches expected DNO/year data.
     """
@@ -37,13 +37,13 @@ class PDFDownloader:
     ) -> Path | None:
         """
         Download PDF to local storage.
-        
+
         Args:
             url: URL to download from
             dno_name: Name of the DNO (used for directory/filename)
             year: Year of the data
             pdf_type: Type of PDF ("netzentgelte" or "regelungen")
-            
+
         Returns:
             Path to downloaded PDF, or None if download failed
         """
@@ -82,14 +82,14 @@ class PDFDownloader:
     ) -> bool:
         """
         "The Glance" - Read page 1 to verify this is the correct document.
-        
+
         Performs keyword checks to validate the document.
-        
+
         Args:
             pdf_path: Path to the PDF file
             dno_name: Expected DNO name
             year: Expected year
-            
+
         Returns:
             True if document appears valid, False otherwise
         """

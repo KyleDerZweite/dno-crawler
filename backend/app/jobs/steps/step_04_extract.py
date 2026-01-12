@@ -32,7 +32,6 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm.attributes import flag_modified
 
-from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
 from app.services.extraction.prompts import build_extraction_prompt
@@ -128,17 +127,17 @@ class ExtractStep(BaseStep):
         # ===== STEP 3: Try AI if configured =====
         ai_result = None
         prompt = None
-        
+
         from app.services.ai.gateway import AIGateway
         gateway = AIGateway(db)
-        
+
         # Determine needs based on file extension
         # Note: PDF needs separate handling in gateway but effectively needs file support
         # logic here mirrors gateway.extract()
         suffix = path.suffix.lower()
         needs_vision = suffix in {".pdf", ".png", ".jpg", ".jpeg", ".gif", ".webp"}
         needs_files = suffix == ".pdf"
-        
+
         configs = await gateway.get_sorted_configs(
             needs_vision=needs_vision,
             needs_files=needs_files
@@ -368,7 +367,7 @@ class ExtractStep(BaseStep):
     def _validate_extraction(self, records: list, data_type: str) -> tuple[bool, str]:
         """
         Validate extracted data passes sanity checks.
-        
+
         Returns:
             Tuple of (passed: bool, reason: str)
         """
@@ -380,7 +379,7 @@ class ExtractStep(BaseStep):
     def _validate_netzentgelte(self, records: list) -> tuple[bool, str]:
         """
         Check netzentgelte has sufficient records with price values.
-        
+
         Rules:
         - At least 2 records (small municipal utilities may only have MS and NS)
         - Each record must have at least leistung OR arbeit with actual value
@@ -415,7 +414,7 @@ class ExtractStep(BaseStep):
     def _validate_hlzf(self, records: list) -> tuple[bool, str]:
         """
         Check HLZF extraction quality.
-        
+
         Rules:
         - At least 2 voltage levels (small DNOs may only have MS, MS/NS, NS)
         - At least one record has winter or herbst time window (peak load is in cold months)
@@ -458,7 +457,7 @@ class ExtractStep(BaseStep):
             # Gateway requires DB session
             gateway = AIGateway(db)
             return await gateway.extract(file_path, prompt)
-            
+
         except NoProviderAvailableError as e:
             logger.warning("ai_extraction_failed_no_provider", error=str(e))
             return None

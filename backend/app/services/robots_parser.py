@@ -42,18 +42,17 @@ JS_PROTECTION_INDICATORS = [
 def parse_robots_txt(content: str, user_agent: str = "*") -> tuple[list[str], list[str]]:
     """
     Parse robots.txt content.
-    
+
     Args:
         content: Raw robots.txt content
         user_agent: User agent to match rules for (default: *)
-    
+
     Returns:
         (sitemap_urls, disallow_paths)
     """
     sitemap_urls = []
     disallow_paths = []
 
-    current_ua = None
     applies_to_us = False
 
     for line in content.splitlines():
@@ -91,7 +90,7 @@ def parse_robots_txt(content: str, user_agent: str = "*") -> tuple[list[str], li
 def detect_js_protection(content: str) -> tuple[bool, str | None]:
     """
     Detect if response indicates JavaScript protection.
-    
+
     Returns:
         (is_protected, protection_type)
     """
@@ -105,9 +104,8 @@ def detect_js_protection(content: str) -> tuple[bool, str | None]:
                 return True, "javascript_required"
 
     # Check for meta refresh to challenge page
-    if 'meta http-equiv="refresh"' in content_lower:
-        if "challenge" in content_lower:
-            return True, "javascript_challenge"
+    if 'meta http-equiv="refresh"' in content_lower and "challenge" in content_lower:
+        return True, "javascript_challenge"
 
     return False, None
 
@@ -119,14 +117,14 @@ async def fetch_robots_txt(
 ) -> RobotsResult:
     """
     Fetch and parse robots.txt from a website.
-    
+
     Detects JS protection, HTTP errors, and extracts sitemap/disallow rules.
-    
+
     Args:
         client: HTTP client
         website: Base website URL (e.g., https://www.example.de)
         timeout: Request timeout
-    
+
     Returns:
         RobotsResult with crawlability info
     """

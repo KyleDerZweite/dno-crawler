@@ -41,7 +41,7 @@ async def get_dno_data(
 
     # Query netzentgelte data
     netzentgelte_query = text("""
-        SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h, 
+        SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM netzentgelte
@@ -78,7 +78,7 @@ async def get_dno_data(
 
     # Query HLZF data
     hlzf_query = text("""
-        SELECT id, voltage_level, year, winter, fruehling, sommer, herbst, 
+        SELECT id, voltage_level, year, winter, fruehling, sommer, herbst,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM hlzf

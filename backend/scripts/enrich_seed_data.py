@@ -13,7 +13,7 @@ Supports two modes:
 Usage:
     # JSON output mode
     python enrich_seed_data.py [--input INPUT] [--output OUTPUT] [--limit LIMIT]
-    
+
     # Database mode (requires running PostgreSQL)
     python enrich_seed_data.py --db [--limit LIMIT]
 
@@ -48,7 +48,7 @@ logger = structlog.get_logger()
 async def politeness_delay(base_delay: float, min_jitter: float = 0.5, max_jitter: float = 1.5):
     """
     Apply a politeness delay with jitter.
-    
+
     Args:
         base_delay: Base delay in seconds
         min_jitter: Minimum jitter multiplier (e.g., 0.5 = 50% of base)
@@ -66,7 +66,7 @@ async def politeness_delay(base_delay: float, min_jitter: float = 0.5, max_jitte
 async def enrich_with_vnb_digital(client, record: dict, log) -> dict:
     """
     Enrich a single record with VNB Digital data.
-    
+
     Returns dict with enriched fields (may be empty).
     """
 
@@ -118,7 +118,7 @@ async def enrich_with_vnb_digital(client, record: dict, log) -> dict:
 async def enrich_with_bdew(client, record: dict, log) -> dict:
     """
     Enrich a single record with BDEW data.
-    
+
     Returns dict with bdew_code, bdew_internal_id, bdew_company_uid if found.
     """
     enriched = {}
@@ -251,7 +251,7 @@ async def enrich_dnos_database(
 ) -> dict[str, int]:
     """
     Enrich DNOs directly in database by populating source tables.
-    
+
     Fetches DNOs missing VNB/BDEW data and creates source records.
     """
     from sqlalchemy import select
@@ -496,4 +496,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit(asyncio.run(main()))
+    sys.exit(asyncio.run(main()))

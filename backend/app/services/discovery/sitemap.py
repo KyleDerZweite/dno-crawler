@@ -41,16 +41,16 @@ async def fetch_sitemap(
 ) -> str | None:
     """
     Try to fetch sitemap, first checking robots.txt for location.
-    
+
     Strategy:
     1. Fetch robots.txt and look for Sitemap: directive
     2. If found, use that URL
     3. If not, try common sitemap paths
-    
+
     Args:
         client: HTTP client
         base_url: Site base URL (e.g., https://www.example.de)
-        
+
     Returns:
         Sitemap XML content, or None if not found
     """
@@ -106,12 +106,12 @@ async def fetch_sitemap(
 def parse_sitemap(xml_content: str) -> list[str]:
     """
     Parse URLs from sitemap XML.
-    
+
     Handles both regular sitemaps and sitemap indexes.
-    
+
     Args:
         xml_content: Raw sitemap XML
-        
+
     Returns:
         List of URLs found
     """
@@ -162,10 +162,10 @@ async def discover_via_sitemap(
 ) -> DiscoveryResult:
     """
     Discover data files using sitemap.
-    
+
     Much faster than BFS - only needs 1 HTTP request for sitemap,
     then scores URLs without fetching them.
-    
+
     Args:
         client: HTTP client
         base_url: Site base URL
@@ -173,7 +173,7 @@ async def discover_via_sitemap(
         target_year: Optional target year
         sitemap_content: Pre-fetched sitemap content (or None to fetch fresh)
         max_candidates: Max candidates to return
-    
+
     Returns:
         DiscoveryResult with scored candidates
     """

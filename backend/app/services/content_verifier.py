@@ -121,15 +121,15 @@ class ContentVerifier:
         expected_year: int | None = None,
     ) -> VerificationResult:
         """Verify URL content matches expected data type.
-        
+
         Fetches partial content and analyzes it to determine if the
         resource actually contains the expected data type.
-        
+
         Args:
             url: URL to verify
             expected_data_type: "netzentgelte" or "hlzf"
             expected_year: Expected year (optional, for additional validation)
-            
+
         Returns:
             VerificationResult with confidence score and details
         """
@@ -183,7 +183,7 @@ class ContentVerifier:
         expected_year: int | None = None,
     ) -> VerificationResult:
         """Verify extracted text matches expected data type.
-        
+
         This is the synchronous version for already-downloaded content.
         """
         return self._verify_text(text, expected_data_type, expected_year)
@@ -239,11 +239,8 @@ class ContentVerifier:
                 structure_score += 2
 
         # Year validation (if expected)
-        year_found = False
-        if expected_year:
-            if str(expected_year) in text:
-                year_found = True
-                positive_score += 2
+        if expected_year and str(expected_year) in text:
+            positive_score += 2
 
         # Calculate confidence
         total_positive = len(positive)
@@ -454,14 +451,14 @@ class ContentVerifier:
 
 def score_for_data_type(url: str, data_type: str) -> float:
     """Calculate bonus/penalty score based on data type specificity.
-    
+
     This function provides additional scoring to the web crawler
     based on data-type-specific keywords in the URL.
-    
+
     Args:
         url: URL to score
         data_type: Expected data type
-        
+
     Returns:
         Score adjustment (positive = boost, negative = penalty)
     """

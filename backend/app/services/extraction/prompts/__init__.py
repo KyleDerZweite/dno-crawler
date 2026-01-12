@@ -133,12 +133,12 @@ Return the structure:
 def build_extraction_prompt(dno_name: str, year: int, data_type: str) -> str:
     """
     Build the appropriate extraction prompt based on data type.
-    
+
     Args:
         dno_name: Name of the DNO
         year: Year of the data
         data_type: Either "netzentgelte" or "hlzf"
-        
+
     Returns:
         Formatted prompt string for AI extraction
     """

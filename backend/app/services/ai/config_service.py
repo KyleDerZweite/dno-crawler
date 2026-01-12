@@ -8,16 +8,15 @@ Manages AI provider configurations in the database with:
 - Health status updates
 """
 
-from datetime import datetime, timedelta, timezone
-from functools import lru_cache
-from typing import Sequence
+from collections.abc import Sequence
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AIProviderConfigModel
-from app.services.ai.encryption import decrypt_secret, encrypt_secret
+from app.services.ai.encryption import encrypt_secret
 
 logger = structlog.get_logger()
 
@@ -71,10 +70,10 @@ FALLBACK_MODELS = {
 
 class AIConfigService:
     """Service for managing AI provider configurations."""
-    
+
     def __init__(self, db: AsyncSession):
         self.db = db
-    
+
     async def list_all(self) -> Sequence[AIProviderConfigModel]:
         """List all AI provider configs, ordered by priority."""
         result = await self.db.execute(
@@ -82,16 +81,16 @@ class AIConfigService:
             .order_by(AIProviderConfigModel.priority)
         )
         return result.scalars().all()
-    
+
     async def list_enabled(self) -> Sequence[AIProviderConfigModel]:
         """List enabled AI provider configs, ordered by priority."""
         result = await self.db.execute(
             select(AIProviderConfigModel)
-            .where(AIProviderConfigModel.is_enabled == True)
+            .where(AIProviderConfigModel.is_enabled)
             .order_by(AIProviderConfigModel.priority)
         )
         return result.scalars().all()
-    
+
     async def get_by_id(self, config_id: int) -> AIProviderConfigModel | None:
         """Get a config by ID."""
         result = await self.db.execute(
@@ -99,18 +98,18 @@ class AIConfigService:
             .where(AIProviderConfigModel.id == config_id)
         )
         return result.scalar_one_or_none()
-    
+
     async def get_active_config(self) -> AIProviderConfigModel | None:
         """Get the highest priority enabled config that is healthy."""
         configs = await self.list_enabled()
-        
+
         for config in configs:
             if config.is_healthy:
                 return config
-        
+
         # All unhealthy, return first enabled anyway
         return configs[0] if configs else None
-    
+
     async def create(
         self,
         name: str,
@@ -128,11 +127,11 @@ class AIConfigService:
         # Get next priority
         existing = await self.list_all()
         next_priority = len(existing)
-        
+
         # Use default URL if not provided
         if not api_url and provider_type in PROVIDER_DEFAULT_URLS:
             api_url = PROVIDER_DEFAULT_URLS[provider_type]
-        
+
         config = AIProviderConfigModel(
             name=name,
             provider_type=provider_type,
@@ -146,10 +145,10 @@ class AIConfigService:
             priority=next_priority,
             created_by=created_by,
         )
-        
+
         self.db.add(config)
         await self.db.flush()
-        
+
         logger.info(
             "ai_config_created",
             config_id=config.id,
@@ -157,9 +156,9 @@ class AIConfigService:
             model=model,
             created_by=created_by,
         )
-        
+
         return config
-    
+
     async def update(
         self,
         config_id: int,
@@ -177,7 +176,7 @@ class AIConfigService:
         config = await self.get_by_id(config_id)
         if not config:
             return None
-        
+
         if name is not None:
             config.name = name
         if model is not None:
@@ -196,35 +195,35 @@ class AIConfigService:
             config.is_enabled = is_enabled
         if modified_by:
             config.last_modified_by = modified_by
-        
+
         await self.db.flush()
-        
+
         logger.info(
             "ai_config_updated",
             config_id=config_id,
             modified_by=modified_by,
         )
-        
+
         return config
-    
+
     async def delete(self, config_id: int) -> bool:
         """Delete a config."""
         config = await self.get_by_id(config_id)
         if not config:
             return False
-        
+
         await self.db.delete(config)
         await self.db.flush()
-        
+
         logger.info("ai_config_deleted", config_id=config_id)
         return True
-    
+
     async def reorder(self, config_ids: list[int]) -> bool:
         """Reorder configs by setting priorities.
-        
+
         Args:
             config_ids: List of config IDs in desired order
-            
+
         Returns:
             True if successful
         """
@@ -234,67 +233,67 @@ class AIConfigService:
                 .where(AIProviderConfigModel.id == config_id)
                 .values(priority=priority)
             )
-        
+
         await self.db.flush()
         logger.info("ai_configs_reordered", order=config_ids)
         return True
-    
+
     async def mark_success(self, config_id: int, tokens_used: int = 0) -> None:
         """Mark a successful request."""
         await self.db.execute(
             update(AIProviderConfigModel)
             .where(AIProviderConfigModel.id == config_id)
             .values(
-                last_success_at=datetime.now(timezone.utc),
+                last_success_at=datetime.now(UTC),
                 consecutive_failures=0,
                 rate_limited_until=None,
                 total_requests=AIProviderConfigModel.total_requests + 1,
                 total_tokens_used=AIProviderConfigModel.total_tokens_used + tokens_used,
             )
         )
-    
+
     async def mark_failure(self, config_id: int, error_message: str) -> None:
         """Mark a failed request."""
         await self.db.execute(
             update(AIProviderConfigModel)
             .where(AIProviderConfigModel.id == config_id)
             .values(
-                last_error_at=datetime.now(timezone.utc),
+                last_error_at=datetime.now(UTC),
                 last_error_message=error_message,
                 consecutive_failures=AIProviderConfigModel.consecutive_failures + 1,
             )
         )
-    
+
     async def mark_rate_limited(self, config_id: int, retry_after_seconds: int = 60) -> None:
         """Mark a rate limit hit."""
-        until = datetime.now(timezone.utc) + timedelta(seconds=retry_after_seconds)
+        until = datetime.now(UTC) + timedelta(seconds=retry_after_seconds)
         await self.db.execute(
             update(AIProviderConfigModel)
             .where(AIProviderConfigModel.id == config_id)
             .values(
                 rate_limited_until=until,
-                last_error_at=datetime.now(timezone.utc),
+                last_error_at=datetime.now(UTC),
                 last_error_message=f"Rate limited until {until.isoformat()}",
             )
         )
-    
+
     @staticmethod
     def get_models_for_provider_sync(provider_type: str) -> list[dict]:
         """Get available models for a provider (sync fallback).
-        
+
         Use get_models_for_provider() for full model list from models.dev.
         """
         return FALLBACK_MODELS.get(provider_type, [])
-    
+
     @staticmethod
     def get_suggested_models(provider_type: str) -> list[dict]:
         """Get the curated list of suggested/recommended models for a provider.
-        
+
         This returns only the FALLBACK_MODELS - a hand-picked list of the best
         and most current models. Used as the default display before user searches.
         """
         return FALLBACK_MODELS.get(provider_type, [])
-    
+
     @staticmethod
     async def search_models_for_provider(
         provider_type: str,
@@ -304,23 +303,23 @@ class AIConfigService:
         limit: int = 25,
     ) -> list[dict]:
         """Search models for a provider from the full models.dev registry.
-        
+
         Used when the user actively searches/types to find models beyond
         the suggested list. Returns fuzzy-matched results from the full registry.
-        
+
         Args:
             provider_type: Provider to search (openai, google, anthropic, etc.)
             query: Search query for model name/ID
             supports_vision: Optional filter for vision capability
             supports_files: Optional filter for file/PDF capability
             limit: Max results to return
-            
+
         Returns:
             List of matching models from the registry
         """
         try:
             from app.services.ai.models_registry import search_models as registry_search
-            
+
             models = await registry_search(
                 query=query,
                 provider=provider_type if provider_type not in ("litellm", "custom") else None,
@@ -331,35 +330,37 @@ class AIConfigService:
             return models
         except Exception as e:
             logger.warning("models_registry_search_failed", error=str(e), query=query)
-            
+
             # Fallback: filter FALLBACK_MODELS locally
             fallback = FALLBACK_MODELS.get(provider_type, [])
             if not query:
                 return fallback[:limit]
-            
+
             query_lower = query.lower()
             return [
                 m for m in fallback
                 if query_lower in m["id"].lower() or query_lower in m["name"].lower()
             ][:limit]
-    
+
     @staticmethod
     async def get_models_for_provider(provider_type: str) -> list[dict]:
         """Get available models for a provider from models.dev registry.
-        
+
         Falls back to hardcoded list if registry unavailable.
         """
         try:
-            from app.services.ai.models_registry import get_models_for_provider as registry_get_models
+            from app.services.ai.models_registry import (
+                get_models_for_provider as registry_get_models,
+            )
             models = await registry_get_models(provider_type)
             if models:
                 return models
         except Exception as e:
             logger.warning("models_registry_unavailable", error=str(e))
-        
+
         # Fallback to hardcoded list
         return FALLBACK_MODELS.get(provider_type, [])
-    
+
     @staticmethod
     def get_default_url(provider_type: str) -> str | None:
         """Get default API URL for a provider."""

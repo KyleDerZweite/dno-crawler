@@ -124,7 +124,7 @@ class FinalizeStep(BaseStep):
     def _parse_german_float(self, value: str | float | None) -> float | None:
         """
         Parse a number that may be in German format (comma as decimal separator).
-        
+
         Handles:
         - '6,69' -> 6.69 (German decimal)
         - '1.234,56' -> 1234.56 (German thousands + decimal)
@@ -165,7 +165,7 @@ class FinalizeStep(BaseStep):
     def _normalize_voltage_level(self, raw: str) -> str:
         """
         Normalize voltage level names to a consistent abbreviated format.
-        
+
         Mappings:
         - Hochspannung, HöS, HS -> HS
         - Hochspannung mit Umspannung auf MS, HS/MS, Umspannung Hoch-/Mittelspannung, Umspannung zur Mittelspannung -> HS/MS
@@ -232,10 +232,10 @@ class FinalizeStep(BaseStep):
     def _normalize_hlzf_time(self, value: str | None) -> str | None:
         """
         Normalize HLZF time values to consistent HH:MM:SS format.
-        
+
         Handles:
         - "7:15" -> "07:15:00"
-        - "07:15" -> "07:15:00" 
+        - "07:15" -> "07:15:00"
         - "7:15:00" -> "07:15:00"
         - "7:15-13:15" -> "07:15:00-13:15:00"
         - "18:00 20:00" -> "18:00:00-20:00:00" (space instead of hyphen - AI error)
@@ -297,7 +297,7 @@ class FinalizeStep(BaseStep):
         force_override: bool = False,
     ) -> int:
         """Save HLZF records with upsert logic.
-        
+
         Args:
             force_override: If True, override even verified records. If False, skip verified records.
         """
@@ -346,11 +346,10 @@ class FinalizeStep(BaseStep):
                 if auto_flagged:
                     existing.verification_status = "flagged"
                     existing.flag_reason = auto_flag_reason
-                else:
-                    # Clear flags on successful re-extraction (unless verified)
-                    if existing.verification_status == "flagged":
-                        existing.verification_status = "pending"
-                        existing.flag_reason = None
+                # Clear flags on successful re-extraction (unless verified)
+                elif existing.verification_status == "flagged":
+                    existing.verification_status = "pending"
+                    existing.flag_reason = None
                 logger.debug("hlzf_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source
@@ -389,7 +388,7 @@ class FinalizeStep(BaseStep):
         force_override: bool = False,
     ) -> int:
         """Save Netzentgelte records with upsert logic.
-        
+
         Args:
             force_override: If True, override even verified records. If False, skip verified records.
         """
@@ -444,11 +443,10 @@ class FinalizeStep(BaseStep):
                 if auto_flagged:
                     existing.verification_status = "flagged"
                     existing.flag_reason = auto_flag_reason
-                else:
-                    # Clear flags on successful re-extraction (unless verified)
-                    if existing.verification_status == "flagged":
-                        existing.verification_status = "pending"
-                        existing.flag_reason = None
+                # Clear flags on successful re-extraction (unless verified)
+                elif existing.verification_status == "flagged":
+                    existing.verification_status = "pending"
+                    existing.flag_reason = None
                 logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
             else:
                 # Insert new record with extraction source

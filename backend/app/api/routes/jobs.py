@@ -32,7 +32,7 @@ async def list_jobs(
 ) -> dict:
     """
     List all crawl jobs with optional filtering.
-    
+
     Returns jobs with DNO names and queue position for pending jobs.
     Accessible to any authenticated user.
     """
@@ -60,7 +60,7 @@ async def list_jobs(
     jobs = result.scalars().all()
 
     # Fetch DNO names for display
-    dno_ids = list(set(job.dno_id for job in jobs))
+    dno_ids = list({job.dno_id for job in jobs})
     if dno_ids:
         dno_query = select(DNOModel).where(DNOModel.id.in_(dno_ids))
         dno_result = await db.execute(dno_query)
@@ -208,7 +208,7 @@ async def delete_job(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Delete a job permanently.
-    
+
     Permission: Admins can delete any job, creators can delete their own.
     """
     query = select(CrawlJobModel).where(CrawlJobModel.id == job_id)

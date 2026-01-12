@@ -11,15 +11,15 @@ from app.core.config import get_settings
 def build_user_agent(initiator_ip: str | None = None) -> str:
     """
     Build User-Agent string with appropriate contact info.
-    
+
     Priority:
     1. If CONTACT_EMAIL is configured → use email
     2. If in dev mode (mock auth) and initiator_ip provided → use IP
     3. Otherwise → reference repository
-    
+
     Args:
         initiator_ip: IP address of the user who initiated the crawl job
-        
+
     Returns:
         User-Agent string suitable for crawling requests
     """
@@ -42,16 +42,16 @@ def build_user_agent(initiator_ip: str | None = None) -> str:
 def require_contact_for_bfs(initiator_ip: str | None = None) -> str:
     """
     Get User-Agent for BFS crawling, enforcing contact requirement in production.
-    
+
     In production (Zitadel auth enabled), this requires CONTACT_EMAIL to be set.
     In development (mock auth), falls back to initiator IP.
-    
+
     Args:
         initiator_ip: IP address of the user who initiated the crawl job
-        
+
     Returns:
         User-Agent string
-        
+
     Raises:
         ValueError: If in production mode and no CONTACT_EMAIL is configured
     """

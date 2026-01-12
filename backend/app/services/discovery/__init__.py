@@ -10,7 +10,7 @@ Main components:
 
 Usage:
     from app.services.discovery import DiscoveryManager
-    
+
     async with httpx.AsyncClient() as client:
         manager = DiscoveryManager(client)
         result = await manager.discover(
@@ -18,7 +18,7 @@ Usage:
             data_type="netzentgelte",
             target_year=2025,
         )
-        
+
         for doc in result.documents[:5]:
             print(f"{doc.score}: {doc.url}")
 """
@@ -34,18 +34,16 @@ from app.services.discovery.scorer import detect_file_type, score_html_for_data,
 from app.services.discovery.sitemap import discover_via_sitemap
 
 __all__ = [
-    # Main manager
-    "DiscoveryManager",
-
     # Result types
     "DiscoveredDocument",
+    # Main manager
+    "DiscoveryManager",
     "DiscoveryResult",
     "DiscoveryStrategy",
     "FileType",
-
-    # Utilities
-    "score_url",
-    "score_html_for_data",
     "detect_file_type",
     "discover_via_sitemap",
+    "score_html_for_data",
+    # Utilities
+    "score_url",
 ]

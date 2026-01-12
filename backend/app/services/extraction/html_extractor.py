@@ -13,11 +13,11 @@ from bs4 import BeautifulSoup
 def extract_hlzf_from_html(html: str, year: int) -> list[dict[str, Any]]:
     """
     Extract HLZF data from website HTML containing HLZF tables.
-    
+
     Args:
         html: Raw HTML string containing HLZF table(s)
         year: Target year to extract data for
-        
+
     Returns:
         List of HLZF records by voltage level
     """

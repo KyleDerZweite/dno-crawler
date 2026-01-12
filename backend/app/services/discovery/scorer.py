@@ -42,13 +42,13 @@ def score_url(
 ) -> tuple[float, list[str], bool]:
     """
     Score a URL for relevance to target data type.
-    
+
     Args:
         url: URL to score
         data_type: "netzentgelte" or "hlzf"
         target_year: Optional target year
         link_text: Optional link anchor text
-    
+
     Returns:
         (score, keywords_found, has_target_year)
     """
@@ -102,9 +102,9 @@ def score_html_for_data(
 ) -> tuple[float, list[int]]:
     """
     Score HTML page for embedded data tables.
-    
+
     Uses html_content_detector for actual detection.
-    
+
     Returns:
         (score, years_found)
     """

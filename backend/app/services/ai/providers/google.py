@@ -11,7 +11,6 @@ Benefits:
 - Works with existing gemini-cli credentials
 """
 
-import base64
 import json
 from typing import Any
 
@@ -38,67 +37,67 @@ CODE_ASSIST_HEADERS = {
 
 class GoogleProvider(AIProviderInterface):
     """Google AI provider using Cloud Code Assist API.
-    
+
     This uses the same API as gemini-cli, which works with OAuth tokens
     and doesn't require API keys or billing.
-    
+
     Supports:
     - api_key: Traditional API key (falls back to generativelanguage.googleapis.com)
     - oauth/cli: OAuth credentials from gemini-cli
     """
-    
+
     MAX_OUTPUT_TOKENS = 8192
-    
+
     def __init__(self, config: AIProviderConfigModel):
         self.config = config
         self._http_client: httpx.AsyncClient | None = None
-    
+
     @property
     def provider_name(self) -> str:
         return "google"
-    
+
     @property
     def model_name(self) -> str:
         return self.config.model
-    
+
     def _get_api_key(self) -> str | None:
         """Get API key if configured."""
         if self.config.api_key_encrypted:
             return decrypt_secret(self.config.api_key_encrypted)
         return None
-    
+
     async def _get_http_client(self) -> httpx.AsyncClient:
         """Get HTTP client."""
         if self._http_client is None:
             self._http_client = httpx.AsyncClient(timeout=120.0)
         return self._http_client
-    
+
     async def _get_access_token(self) -> str | None:
         """Get OAuth access token."""
         cred_manager = get_credential_manager()
         return await cred_manager.get_valid_access_token()
-    
+
     async def _get_or_provision_project(self, access_token: str) -> str:
         """Get or provision a managed project for Cloud Code Assist.
-        
+
         This is what gemini-cli does - it calls loadCodeAssist to get/create
         a managed project ID.
         """
         # Check cache first
         if hasattr(self, '_cached_project_id') and self._cached_project_id:
             return self._cached_project_id
-        
+
         client = await self._get_http_client()
-        
+
         # Call loadCodeAssist to get managed project
         url = f"{GEMINI_CODE_ASSIST_ENDPOINT}/v1internal:loadCodeAssist"
-        
+
         metadata = {
             "ideType": "IDE_UNSPECIFIED",
-            "platform": "PLATFORM_UNSPECIFIED", 
+            "platform": "PLATFORM_UNSPECIFIED",
             "pluginType": "GEMINI",
         }
-        
+
         response = await client.post(
             url,
             json={"metadata": metadata},
@@ -108,7 +107,7 @@ class GoogleProvider(AIProviderInterface):
                 **CODE_ASSIST_HEADERS,
             },
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             project_id = data.get("cloudaicompanionProject")
@@ -116,26 +115,26 @@ class GoogleProvider(AIProviderInterface):
                 self._cached_project_id = project_id
                 logger.info("google_managed_project_found", project_id=project_id)
                 return project_id
-            
+
             # Need to onboard/provision project
             tier_id = data.get("currentTier", {}).get("id") or "FREE"
             return await self._onboard_project(access_token, tier_id)
-        
+
         logger.warning("google_loadCodeAssist_failed", status=response.status_code)
         raise Exception(f"Failed to get managed project: {response.text[:200]}")
-    
+
     async def _onboard_project(self, access_token: str, tier_id: str = "FREE") -> str:
         """Onboard user to get a managed project ID."""
         client = await self._get_http_client()
-        
+
         url = f"{GEMINI_CODE_ASSIST_ENDPOINT}/v1internal:onboardUser"
-        
+
         metadata = {
             "ideType": "IDE_UNSPECIFIED",
             "platform": "PLATFORM_UNSPECIFIED",
             "pluginType": "GEMINI",
         }
-        
+
         response = await client.post(
             url,
             json={"tierId": tier_id, "metadata": metadata},
@@ -145,7 +144,7 @@ class GoogleProvider(AIProviderInterface):
                 **CODE_ASSIST_HEADERS,
             },
         )
-        
+
         if response.status_code == 200:
             data = response.json()
             if data.get("done"):
@@ -154,9 +153,9 @@ class GoogleProvider(AIProviderInterface):
                     self._cached_project_id = project_id
                     logger.info("google_managed_project_provisioned", project_id=project_id)
                     return project_id
-        
+
         raise Exception(f"Failed to provision managed project: {response.text[:200]}")
-    
+
     async def _call_code_assist_api(
         self,
         model: str,
@@ -165,7 +164,7 @@ class GoogleProvider(AIProviderInterface):
         system_instruction: str | None = None,
     ) -> dict:
         """Call the Cloud Code Assist API (same as gemini-cli).
-        
+
         This wraps requests in the format expected by cloudcode-pa.googleapis.com.
         """
         access_token = await self._get_access_token()
@@ -174,46 +173,46 @@ class GoogleProvider(AIProviderInterface):
                 "No Google OAuth token available. "
                 "Please authenticate via Admin panel or run 'gemini auth login'"
             )
-        
+
         # Get or provision managed project
         project_id = await self._get_or_provision_project(access_token)
-        
+
         client = await self._get_http_client()
-        
+
         # Build the request payload in Cloud Code Assist format
         request_payload: dict[str, Any] = {
             "contents": contents,
         }
-        
+
         if generation_config:
             request_payload["generationConfig"] = generation_config
-        
+
         if system_instruction:
             request_payload["systemInstruction"] = {
                 "parts": [{"text": system_instruction}]
             }
-        
+
         # Wrap in the Cloud Code Assist format
         wrapped_body = {
             "project": project_id,
             "model": model,
             "request": request_payload,
         }
-        
+
         url = f"{GEMINI_CODE_ASSIST_ENDPOINT}/v1internal:generateContent"
-        
+
         headers = {
             "Authorization": f"Bearer {access_token}",
             "Content-Type": "application/json",
             **CODE_ASSIST_HEADERS,
         }
-        
+
         response = await client.post(
             url,
             json=wrapped_body,
             headers=headers,
         )
-        
+
         if response.status_code != 200:
             error_text = response.text[:500]
             logger.error(
@@ -222,14 +221,14 @@ class GoogleProvider(AIProviderInterface):
                 error=error_text,
             )
             raise Exception(f"Cloud Code Assist API error: {response.status_code} - {error_text}")
-        
+
         result = response.json()
-        
+
         # The response is wrapped in a "response" field
         if "response" in result:
             return result["response"]
         return result
-    
+
     async def _call_generative_language_api(
         self,
         model: str,
@@ -241,30 +240,30 @@ class GoogleProvider(AIProviderInterface):
         api_key = self._get_api_key()
         if not api_key:
             raise ValueError("No API key configured")
-        
+
         client = await self._get_http_client()
-        
+
         request_payload: dict[str, Any] = {
             "contents": contents,
         }
-        
+
         if generation_config:
             request_payload["generationConfig"] = generation_config
-        
+
         if system_instruction:
             request_payload["systemInstruction"] = {
                 "parts": [{"text": system_instruction}]
             }
-        
+
         # Use the standard Gemini API
         url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={api_key}"
-        
+
         response = await client.post(
             url,
             json=request_payload,
             headers={"Content-Type": "application/json"},
         )
-        
+
         if response.status_code != 200:
             error_text = response.text[:500]
             logger.error(
@@ -273,9 +272,9 @@ class GoogleProvider(AIProviderInterface):
                 error=error_text,
             )
             raise Exception(f"Generative Language API error: {response.status_code} - {error_text}")
-        
+
         return response.json()
-    
+
     async def _generate_content(
         self,
         contents: list[dict],
@@ -284,7 +283,7 @@ class GoogleProvider(AIProviderInterface):
     ) -> dict:
         """Generate content using the appropriate API."""
         model = self.config.model
-        
+
         # Prefer OAuth/CLI mode, fall back to API key
         if self.config.auth_type in ("oauth", "cli") or not self._get_api_key():
             return await self._call_code_assist_api(
@@ -300,7 +299,7 @@ class GoogleProvider(AIProviderInterface):
                 generation_config=generation_config,
                 system_instruction=system_instruction,
             )
-    
+
     async def extract_text(
         self,
         content: str,
@@ -312,9 +311,9 @@ class GoogleProvider(AIProviderInterface):
             model=self.model_name,
             content_len=len(content),
         )
-        
+
         system_instruction = "You are a data extraction specialist. Extract the requested information and return ONLY valid JSON, no other text."
-        
+
         full_prompt = f"""{prompt}
 
 ---
@@ -322,22 +321,22 @@ class GoogleProvider(AIProviderInterface):
 Content to extract from:
 
 {content}"""
-        
+
         contents = [
             {"role": "user", "parts": [{"text": full_prompt}]}
         ]
-        
+
         generation_config = {
             "responseMimeType": "application/json",
             "maxOutputTokens": self.MAX_OUTPUT_TOKENS,
         }
-        
+
         response = await self._generate_content(
             contents=contents,
             generation_config=generation_config,
             system_instruction=system_instruction,
         )
-        
+
         # Extract text from response
         response_text = ""
         if "candidates" in response:
@@ -346,9 +345,9 @@ Content to extract from:
                 parts = candidate["content"].get("parts", [])
                 if parts:
                     response_text = parts[0].get("text", "")
-        
+
         result = json.loads(response_text)
-        
+
         # Extract usage if available
         usage = None
         if "usageMetadata" in response:
@@ -358,13 +357,13 @@ Content to extract from:
                 "completion_tokens": metadata.get("candidatesTokenCount", 0),
                 "total_tokens": metadata.get("totalTokenCount", 0),
             }
-        
+
         logger.info(
             "google_extract_text_success",
             model=self.model_name,
             records=len(result.get("data", [])),
         )
-        
+
         result["_extraction_meta"] = {
             "raw_response": response_text,
             "mode": "text",
@@ -372,9 +371,9 @@ Content to extract from:
             "model": self.model_name,
             "usage": usage,
         }
-        
+
         return result
-    
+
     async def extract_vision(
         self,
         image_data: str,
@@ -387,9 +386,9 @@ Content to extract from:
             model=self.model_name,
             mime_type=mime_type,
         )
-        
+
         system_instruction = "You are a data extraction specialist. Extract the requested information and return ONLY valid JSON, no other text."
-        
+
         # Build multimodal content
         contents = [{
             "role": "user",
@@ -403,18 +402,18 @@ Content to extract from:
                 {"text": prompt}
             ]
         }]
-        
+
         generation_config = {
             "responseMimeType": "application/json",
             "maxOutputTokens": self.MAX_OUTPUT_TOKENS,
         }
-        
+
         response = await self._generate_content(
             contents=contents,
             generation_config=generation_config,
             system_instruction=system_instruction,
         )
-        
+
         # Extract text from response
         response_text = ""
         if "candidates" in response:
@@ -423,9 +422,9 @@ Content to extract from:
                 parts = candidate["content"].get("parts", [])
                 if parts:
                     response_text = parts[0].get("text", "")
-        
+
         result = json.loads(response_text)
-        
+
         # Extract usage if available
         usage = None
         if "usageMetadata" in response:
@@ -435,13 +434,13 @@ Content to extract from:
                 "completion_tokens": metadata.get("candidatesTokenCount", 0),
                 "total_tokens": metadata.get("totalTokenCount", 0),
             }
-        
+
         logger.info(
             "google_extract_vision_success",
             model=self.model_name,
             records=len(result.get("data", [])),
         )
-        
+
         result["_extraction_meta"] = {
             "raw_response": response_text,
             "mode": "vision",
@@ -450,9 +449,9 @@ Content to extract from:
             "model": self.model_name,
             "usage": usage,
         }
-        
+
         return result
-    
+
     async def health_check(self) -> bool:
         """Check if Google AI is accessible."""
         try:
@@ -466,13 +465,13 @@ Content to extract from:
         except Exception as e:
             logger.warning("google_health_check_failed", error=str(e))
             return False
-    
+
     @staticmethod
     def is_oauth_available() -> bool:
         """Check if OAuth credentials are available."""
         cred_manager = get_credential_manager()
         return cred_manager.is_authenticated()
-    
+
     @staticmethod
     def get_oauth_user_info() -> dict | None:
         """Get OAuth user info if authenticated."""

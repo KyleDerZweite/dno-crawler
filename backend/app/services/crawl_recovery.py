@@ -23,13 +23,13 @@ async def recover_stuck_crawl_jobs(
 ) -> int:
     """
     Reset DNOs and CrawlJobs stuck due to crashes/OOM.
-    
+
     Call this on application startup to recover from crashes.
-    
+
     Args:
         db: Database session
         timeout_hours: Consider jobs stuck if created longer than this ago
-        
+
     Returns:
         Number of recovered jobs
     """

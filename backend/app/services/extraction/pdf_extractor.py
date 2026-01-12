@@ -12,6 +12,7 @@ import pdfplumber
 import structlog
 
 from app.core.constants import normalize_voltage_level
+
 # Import voltage level normalization from shared constants
 
 logger = structlog.get_logger()
@@ -20,12 +21,12 @@ logger = structlog.get_logger()
 def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
     """
     Extract Netzentgelte data from a PDF file.
-    
+
     Looks for tables with voltage levels and prices (Leistungspreis, Arbeitspreis).
-    
+
     Args:
         pdf_path: Path to the PDF file
-        
+
     Returns:
         List of dictionaries with extracted Netzentgelte records
     """
@@ -75,29 +76,25 @@ def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     """
     Parse Netzentgelte data from raw text.
-    
+
     Handles multiple PDF formats:
     1. Standard: Voltage level followed by 4 numbers in a row
     2. With units: "17,84 EUR / kW a" style values
     3. Separate tables for <2500h and >=2500h
     """
     records = []
-    records_dict = {}  # voltage_level -> partial record
 
     # Pattern 1: Standard format - voltage level with 4 numbers on same line
     # Example: Hochspannungsnetz   26,88  8,58  230,39  0,44
     pattern1 = r"((?:Hochspannung|Mittelspannung|Niederspannung|Umspannung|MSP|NSP|HS|MS|NS)[^\n\d]*)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)"
-    
+
     # Pattern 2: Format with units embedded - extract just the number
     # Example: Mittelspannung (MSP)  17,84 EUR / kW a  5,12 Ct / kWh
     # Match: voltage level, then pairs of (number, unit)
-    pattern2_vl = r"(\d+)\s+(Mittelspannung|Niederspannung|Umspannung)[^\n]*(?:\(MSP\)|MSP|NSP|MSP/NSP)?"
-    pattern2_price = r"([\d,\.]+)\s*(?:EUR|€)\s*/\s*kW"
-    pattern2_work = r"([\d,\.]+)\s*(?:Ct|ct)\s*/\s*kWh"
 
     # Try Pattern 1 first
     matches = re.findall(pattern1, text, re.IGNORECASE)
-    
+
     for match in matches:
         voltage_level_raw = match[0].strip()
         voltage_level_raw = re.sub(r'\s+', ' ', voltage_level_raw).strip()
@@ -128,19 +125,19 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     # Try Pattern 2: Parse tables with units embedded
     # This format often has TWO separate tables (unter 2500h and über 2500h)
     # Look for sections marked by "bis zu 2.500 Stunden" and "über 2.500 Stunden"
-    
+
     unter_section = ""
     uber_section = ""
-    
+
     # Split text by usage threshold markers
     unter_match = re.search(r"bis\s+(?:zu\s+)?2\.?500\s+Stunden[^\n]*\n(.*?)(?=über\s+2\.?500\s+Stunden|$)", text, re.IGNORECASE | re.DOTALL)
     uber_match = re.search(r"über\s+2\.?500\s+Stunden[^\n]*\n(.*?)(?=bis\s+(?:zu\s+)?2\.?500\s+Stunden|$)", text, re.IGNORECASE | re.DOTALL)
-    
+
     if unter_match:
         unter_section = unter_match.group(1)
     if uber_match:
         uber_section = uber_match.group(1)
-    
+
     # Parse voltage levels from each section
     voltage_patterns = [
         (r"Mittelspannung\s*\(?MSP\)?", "MS"),
@@ -149,12 +146,12 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
         (r"Hochspannung\s*\(?(?:HS|HSP)\)?", "HS"),
         (r"Umspannung\s*(?:HS|HSP)\s*/?\s*(?:MS|MSP)", "HS/MS"),
     ]
-    
+
     def extract_prices_from_section(section_text: str) -> dict:
         """Extract voltage level -> (leistungspreis, arbeitspreis) from a section."""
         results = {}
         lines = section_text.split('\n')
-        
+
         for line in lines:
             for vl_pattern, vl_abbrev in voltage_patterns:
                 if re.search(vl_pattern, line, re.IGNORECASE):
@@ -162,27 +159,27 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
                     lp_match = re.search(r"([\d,\.]+)\s*(?:EUR|€)\s*/\s*kW", line, re.IGNORECASE)
                     # Extract Arbeitspreis (Ct/kWh)
                     ap_match = re.search(r"([\d,\.]+)\s*(?:Ct|ct)\s*/\s*kWh", line, re.IGNORECASE)
-                    
+
                     lp = float(lp_match.group(1).replace(',', '.')) if lp_match else None
                     ap = float(ap_match.group(1).replace(',', '.')) if ap_match else None
-                    
+
                     if lp is not None or ap is not None:
                         results[vl_abbrev] = (lp, ap)
                     break
-        
+
         return results
-    
+
     # Extract from both sections
     unter_prices = extract_prices_from_section(unter_section) if unter_section else {}
     uber_prices = extract_prices_from_section(uber_section) if uber_section else {}
-    
+
     # Combine into records
     all_vls = set(unter_prices.keys()) | set(uber_prices.keys())
-    
+
     for vl in all_vls:
         unter_lp, unter_ap = unter_prices.get(vl, (None, None))
         uber_lp, uber_ap = uber_prices.get(vl, (None, None))
-        
+
         records.append({
             "voltage_level": vl,
             "leistung_unter_2500h": unter_lp,
@@ -239,12 +236,12 @@ def _parse_netzentgelte_table(table: list[list], page_num: int) -> list[dict[str
 def find_pdf_url_for_dno(dno_name: str, year: int, pdf_type: str = "netzentgelte") -> str | None:
     """
     Find PDF URL for a DNO.
-    
+
     Args:
         dno_name: Name of the DNO
         year: Year to find data for
         pdf_type: "netzentgelte" or "regelungen"
-        
+
     Returns:
         URL to the PDF or None if not found
     """
@@ -274,12 +271,12 @@ def find_pdf_url_for_dno(dno_name: str, year: int, pdf_type: str = "netzentgelte
 def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
     """
     Extract HLZF (Hochlastzeitfenster) data from Regelungen PDF.
-    
+
     Looks for the characteristic HLZF table with voltage levels and seasonal time windows.
-    
+
     Args:
         pdf_path: Path to the Regelungen PDF file
-        
+
     Returns:
         List of dictionaries with HLZF records per voltage level
     """
@@ -297,7 +294,6 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
             # Find the HLZF table - typically has "Hochlastzeitfenster" header
             full_text = ""
-            hlzf_page = None
 
             for page_num, page in enumerate(pdf.pages, 1):
                 text = page.extract_text() or ""
@@ -330,7 +326,7 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
     """
     Parse HLZF data from a table.
-    
+
     Handles TWO table orientations:
     1. Standard: Voltage levels as rows, seasons as columns
     2. Inverted: Seasons as rows, voltage levels as columns (e.g., Stadtwerke Norderstedt)
@@ -343,14 +339,14 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
     # First, detect table orientation by checking header row
     header_row = table[0]
     header_str = " ".join(str(cell or "").lower() for cell in header_row)
-    
+
     # Check if header contains voltage level names (inverted table)
     voltage_keywords = ["mittelspannung", "niederspannung", "hochspannung", "umspannung", "msp", "nsp"]
     season_keywords = ["winter", "frühling", "fruehling", "sommer", "herbst"]
-    
+
     has_voltage_in_header = any(kw in header_str for kw in voltage_keywords)
     has_season_in_header = any(kw in header_str for kw in season_keywords)
-    
+
     if has_voltage_in_header and not has_season_in_header:
         # INVERTED TABLE: Voltage levels as columns, seasons as rows
         logger.debug("HLZF table detected as INVERTED (voltage levels as columns)")
@@ -364,7 +360,7 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
 def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[str, Any]]:
     """
     Parse HLZF table where voltage levels are columns and seasons are rows.
-    
+
     Example format (Stadtwerke Norderstedt):
     |           | Mittelspannung | Umspannung MSP/NSP | Niederspannung |
     |-----------|----------------|---------------------|----------------|
@@ -374,32 +370,32 @@ def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[st
     | Winter    | 16:30-19:45    | k.A.                | 16:30-19:30    |
     """
     records_dict = {}  # voltage_level -> {winter: ..., fruehling: ..., etc.}
-    
+
     # Parse header row to get voltage level columns
     header_row = table[0]
     voltage_columns = {}  # column_index -> normalized voltage level
-    
+
     for col_idx, cell in enumerate(header_row):
         cell_str = str(cell or "").strip()
         cell_lower = cell_str.lower()
-        
+
         # Check if this column is a voltage level
         if any(kw in cell_lower for kw in ["spannung", "msp", "nsp", "umspann"]):
             vl = normalize_voltage_level(cell_str)
             if vl:
                 voltage_columns[col_idx] = vl
                 records_dict[vl] = {"voltage_level": vl, "winter": None, "fruehling": None, "sommer": None, "herbst": None, "source_page": page_num}
-    
+
     if not voltage_columns:
         return []
-    
+
     # Parse data rows (seasons)
     for row in table[1:]:
         if not row or len(row) < 2:
             continue
-        
+
         first_col = str(row[0] or "").lower()
-        
+
         # Determine which season this row represents
         season_key = None
         if "winter" in first_col:
@@ -410,23 +406,23 @@ def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[st
             season_key = "sommer"
         elif "herbst" in first_col:
             season_key = "herbst"
-        
+
         if not season_key:
             continue
-        
+
         # Extract values for each voltage level column
         for col_idx, vl in voltage_columns.items():
             if col_idx < len(row):
                 time_value = _clean_time_value(row[col_idx])
                 records_dict[vl][season_key] = time_value
-    
+
     return list(records_dict.values())
 
 
 def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[str, Any]]:
     """
     Parse HLZF table where seasons are columns and voltage levels are rows.
-    
+
     Example format (most DNOs):
     |                    | Winter        | Frühling | Sommer | Herbst      |
     |--------------------|---------------|----------|--------|-------------|
@@ -434,7 +430,7 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
     | Mittelspannung     | 08:00-16:00   | -        | -      | 12:00-14:30 |
     """
     records = []
-    
+
     # Look for header row with seasons
     header_row_idx = None
     header_row = None
@@ -541,7 +537,7 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
 def _clean_time_value(value: Any) -> str | None:
     """
     Clean and normalize a time window value.
-    
+
     Returns:
         - Cleaned time string like "08:15-18:00" or "12:15-13:15\\n16:45-19:45"
         - "-" if marked as not applicable (entfällt, k.A., etc.)
@@ -553,7 +549,7 @@ def _clean_time_value(value: Any) -> str | None:
     s = str(value).strip()
 
     # Handle empty values
-    if s == "" or s == "-":
+    if s in {"", "-"}:
         return None
 
     # Handle "no value" markers - return "-" for consistency
@@ -563,7 +559,7 @@ def _clean_time_value(value: Any) -> str | None:
 
     # Remove "Uhr" suffix (e.g., "16:30 Uhr bis 19:30 Uhr" -> "16:30 bis 19:30")
     s = re.sub(r'\s*[Uu]hr\s*', ' ', s).strip()
-    
+
     # Replace "bis" with dash (e.g., "16:30 bis 19:30" -> "16:30-19:30")
     s = re.sub(r'\s*bis\s*', '-', s, flags=re.IGNORECASE)
 

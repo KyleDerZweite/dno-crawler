@@ -5,10 +5,10 @@ Manual test script for HTML stripping service.
 Usage:
     # Strip a single file and print result
     python -m tests.manual.html_strip_test strip path/to/file.html
-    
+
     # Strip and split into year files
     python -m tests.manual.html_strip_test split path/to/file.html output_dir slug data_type
-    
+
     # Test with the RheinNetz example
     python -m tests.manual.html_strip_test test-rheinnetz
 

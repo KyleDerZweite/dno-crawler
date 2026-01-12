@@ -199,7 +199,7 @@ async def get_optional_user(
 ) -> User | None:
     """
     Dependency to get the current user if authenticated, or None if not.
-    
+
     usage:
         @router.get("/public-or-private")
         async def endpoint(user: Optional[User] = Depends(get_optional_user)):
@@ -282,7 +282,7 @@ async def require_member(user: User = Depends(get_current_user)) -> User:
 async def require_maintainer_or_admin(user: User = Depends(get_current_user)) -> User:
     """
     Dependency that requires MAINTAINER or ADMIN role.
-    
+
     Used for operations like removing data flags.
 
     Usage:

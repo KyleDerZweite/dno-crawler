@@ -35,11 +35,11 @@ def get_request_event() -> dict[str, Any]:
 def enrich_event(**kwargs: Any) -> None:
     """
     Add fields to the current request's wide event.
-    
+
     Use this throughout your request handlers to add business context:
-    
+
         from app.core.logging import enrich_event
-        
+
         enrich_event(
             user_subscription="premium",
             cart_total_cents=15999,
@@ -72,7 +72,7 @@ def init_request_event(
     event = {
         "request_id": request_id or str(uuid.uuid4())[:8],
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-        
+
         # Request context
         "http": {
             "method": method,
@@ -80,7 +80,7 @@ def init_request_event(
             "client_ip": client_ip,
             "user_agent": user_agent[:200] if user_agent else None,
         },
-        
+
         # Service context
         "service": {
             "name": "dno-crawler-api",
@@ -88,7 +88,7 @@ def init_request_event(
             "environment": os.environ.get("ENVIRONMENT", "development"),
         },
     }
-    
+
     _request_event.set(event)
     _request_start.set(time.time())
     return event
@@ -101,12 +101,12 @@ def finalize_request_event(
     """Finalize and return the wide event for emission."""
     event = _request_event.get()
     start_time = _request_start.get()
-    
+
     # Add response context
     event["http"]["status_code"] = status_code
     event["duration_ms"] = int((time.time() - start_time) * 1000)
     event["outcome"] = "success" if status_code < 400 else "error"
-    
+
     # Add error context if present
     if error:
         event["error"] = {
@@ -117,14 +117,14 @@ def finalize_request_event(
             event["error"]["code"] = error.code
         if hasattr(error, "details"):
             event["error"]["details"] = error.details
-    
+
     return event
 
 
 def should_sample(event: dict[str, Any]) -> bool:
     """
     Tail sampling decision for wide events.
-    
+
     Rules:
     1. Always keep errors (4xx and 5xx)
     2. Always keep slow requests (>2000ms)
@@ -135,21 +135,21 @@ def should_sample(event: dict[str, Any]) -> bool:
     status_code = event.get("http", {}).get("status_code", 200)
     if status_code >= 400:
         return True
-    
+
     # Always keep slow requests
     duration_ms = event.get("duration_ms", 0)
     if duration_ms > 2000:
         return True
-    
+
     # Always keep admin actions
     if event.get("user", {}).get("is_admin"):
         return True
-    
+
     # Always keep job operations (they're important)
     path = event.get("http", {}).get("path", "")
     if "/jobs" in path or "/crawl" in path:
         return True
-    
+
     # Sample 10% of the rest
     import random
     return random.random() < 0.10
@@ -166,7 +166,7 @@ def add_request_id(logger: Any, method_name: str, event_dict: dict) -> dict:
 def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
     """
     Configure structlog for wide events logging.
-    
+
     Args:
         json_logs: If True, output JSON format (for production).
                    If False, output colored console format (for development).
@@ -181,7 +181,7 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
         structlog.processors.StackInfoRenderer(),
         structlog.processors.UnicodeDecoder(),
     ]
-    
+
     if json_logs:
         # Production: JSON output
         shared_processors.append(structlog.processors.format_exc_info)
@@ -189,15 +189,15 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
     else:
         # Development: Colored console output
         renderer = structlog.dev.ConsoleRenderer(colors=True)
-    
+
     structlog.configure(
-        processors=shared_processors + [renderer],
+        processors=[*shared_processors, renderer],
         wrapper_class=structlog.stdlib.BoundLogger,
         context_class=dict,
         logger_factory=structlog.PrintLoggerFactory(file=sys.stdout),
         cache_logger_on_first_use=True,
     )
-    
+
     # Set log level for standard library logging
     import logging
     logging.basicConfig(
@@ -210,18 +210,18 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
 def emit_wide_event(event: dict[str, Any]) -> None:
     """
     Emit the canonical log line for a request.
-    
+
     This is the single, comprehensive record of what happened.
     """
     logger = structlog.get_logger("wide_event")
-    
+
     # Apply sampling
     if not should_sample(event):
         return
-    
+
     # Determine log level based on outcome
     status_code = event.get("http", {}).get("status_code", 200)
-    
+
     if status_code >= 500:
         logger.error("request_completed", **event)
     elif status_code >= 400:

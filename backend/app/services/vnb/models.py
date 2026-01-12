@@ -34,7 +34,7 @@ class LocationResult:
 @dataclass
 class DNODetails:
     """Extended DNO details from VNBdigital GraphQL API.
-    
+
     Contains homepage URL and contact information for BFS crawl seeding.
     """
     vnb_id: str

@@ -29,13 +29,13 @@ logger = structlog.get_logger()
 async def enrich_dno(ctx: dict, dno_id: int) -> dict:
     """
     Enrich a single DNO with external data.
-    
+
     This is the main ARQ job function.
-    
+
     Args:
         ctx: ARQ context (contains db session factory)
         dno_id: ID of the DNO to enrich
-    
+
     Returns:
         Result dict with status and details
     """
@@ -140,11 +140,11 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
 async def _lookup_vnb_digital(dno: DNOModel, log) -> tuple[str | None, dict | None]:
     """
     Look up DNO in VNB Digital API.
-    
+
     Tries multiple strategies:
     1. Search by address (if available)
     2. Search by name, then get details
-    
+
     Returns:
         (website_url, vnb_data_dict) or (None, None)
     """
@@ -223,7 +223,7 @@ def _find_best_match(target_name: str, results: list[VNBResult]) -> VNBResult | 
 async def _check_robots(website: str, log) -> dict:
     """
     Check robots.txt for a website.
-    
+
     Returns dict with:
     - raw_content: Full robots.txt
     - sitemap_urls: List of sitemap URLs
@@ -257,11 +257,11 @@ async def _check_robots(website: str, log) -> dict:
 async def queue_enrichment_jobs(db: AsyncSession, limit: int = 100) -> int:
     """
     Queue enrichment jobs for DNOs with pending enrichment status.
-    
+
     Args:
         db: Database session
         limit: Maximum number of jobs to queue
-    
+
     Returns:
         Number of jobs queued
     """

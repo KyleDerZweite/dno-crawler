@@ -32,6 +32,7 @@ import argparse
 import csv
 import json
 import re
+import sys
 from datetime import datetime
 from pathlib import Path
 
@@ -164,7 +165,7 @@ def transform_row(row: dict) -> dict:
 def transform_csv_to_json(input_path: Path, output_path: Path) -> int:
     """
     Transform the CSV file to JSON format.
-    
+
     Returns the number of records processed.
     """
     records = []
@@ -225,4 +226,4 @@ def main():
 
 
 if __name__ == '__main__':
-    exit(main())
+    sys.exit(main())

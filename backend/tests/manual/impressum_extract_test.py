@@ -16,6 +16,7 @@ Run:
 
 import asyncio
 import re
+import sys
 from dataclasses import dataclass
 
 import httpx
@@ -110,7 +111,7 @@ def normalize_street(street: str) -> str:
 def extract_address_from_html(html: str, vnb_street: str) -> ExtractedAddress | None:
     """
     Extract full address from Impressum HTML.
-    
+
     Strategy:
     1. Parse HTML and extract text content
     2. Look for lines containing the VNB street address
@@ -342,4 +343,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit(asyncio.run(main()))
+    sys.exit(asyncio.run(main()))

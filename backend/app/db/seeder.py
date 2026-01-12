@@ -191,7 +191,7 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int, str | None]:
 async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     """
     Upsert a single DNO and its source data from seed record.
-    
+
     Returns: 'inserted', 'updated', or 'skipped'
     """
     mastr_nr = record['mastr_nr']
@@ -356,12 +356,12 @@ async def get_dnos_needing_enrichment(
 ) -> list[DNOModel]:
     """
     Get DNOs that need enrichment from a specific source.
-    
+
     Args:
         db: Database session
         source: 'vnb', 'bdew', or None for any
         limit: Maximum number of DNOs to return
-    
+
     Returns:
         List of DNOModel instances needing enrichment.
     """

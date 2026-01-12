@@ -54,10 +54,10 @@ class TimestampMixin:
 class DNOMastrData(Base, TimestampMixin):
     """
     Source data from Marktstammdatenregister (MaStR).
-    
+
     MaStR is the German register of energy market participants.
     Contains official registration info, market roles, and activity status.
-    
+
     Relationship: One-to-One with DNO.
     """
 
@@ -120,10 +120,10 @@ class DNOMastrData(Base, TimestampMixin):
 class DNOVnbData(Base, TimestampMixin):
     """
     Source data from VNB Digital API.
-    
+
     VNB Digital is a public API providing grid operator information,
     including contact details, voltage types, and service areas.
-    
+
     Relationship: One-to-One with DNO.
     """
 
@@ -181,17 +181,17 @@ class DNOVnbData(Base, TimestampMixin):
 class DNOBdewData(Base, TimestampMixin):
     """
     Source data from BDEW Codes API.
-    
+
     BDEW (Bundesverband der Energie- und Wasserwirtschaft) codes are
     13-digit identifiers for energy market participants.
-    
+
     A company can have MULTIPLE BDEW codes for different market functions:
     - Netzbetreiber (Grid Operator)
     - Lieferant (Supplier)
     - Messstellenbetreiber (Metering Point Operator)
     - Bilanzkreisverantwortlicher (Balance Responsible Party)
     - etc.
-    
+
     Relationship: One-to-Many with DNO.
     """
 

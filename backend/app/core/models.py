@@ -194,7 +194,7 @@ class CrawlJob(CrawlJobBase, TimestampMixin):
 class JobContext(BaseSchema):
     """
     Context passed between crawl job steps.
-    
+
     Stored in CrawlJobModel.context as JSON.
     """
     # DNO info (loaded in step_00)

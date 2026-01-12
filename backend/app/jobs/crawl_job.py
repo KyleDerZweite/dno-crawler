@@ -49,13 +49,13 @@ async def process_crawl(
 ) -> dict:
     """
     Execute crawl job (steps 0-3: gather, discover, download).
-    
+
     After successful completion, enqueues an extract job to continue processing.
-    
+
     Args:
         ctx: ARQ context
         job_id: ID of the CrawlJobModel to process
-        
+
     Returns:
         Result dict with status and any spawned extract job ID
     """
@@ -123,7 +123,7 @@ async def process_crawl(
 async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None:
     """
     Create and enqueue an extract job to continue processing.
-    
+
     Returns the new extract job ID, or None if extraction isn't needed.
     """
     from arq import create_pool

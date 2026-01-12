@@ -23,7 +23,7 @@ class SampleCapture:
 
     def __init__(self, base_dir: Path | None = None):
         """Initialize with base directory for samples.
-        
+
         Args:
             base_dir: Base directory for samples. Defaults to data/samples/
         """
@@ -49,7 +49,7 @@ class SampleCapture:
         ai_fail_reason: str | None = None,
     ) -> str:
         """Capture a sample to JSON file.
-        
+
         Args:
             category: "training" (AI succeeded) or "debug" (AI also failed)
             dno_slug: DNO identifier
@@ -63,7 +63,7 @@ class SampleCapture:
             ai_model: AI model used
             prompt_used: Prompt sent to AI
             ai_fail_reason: Why AI sanity check failed (debug only)
-            
+
         Returns:
             Path to the saved sample file
         """

@@ -105,7 +105,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
-    
+
     # Wide Events middleware - canonical log line per request
     app.add_middleware(WideEventMiddleware)
 

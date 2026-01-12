@@ -79,7 +79,7 @@ class ValidateStep(BaseStep):
 
     def _validate_netzentgelte(self, data: list[dict]) -> tuple[list[str], list[str]]:
         """Validate Netzentgelte data.
-        
+
         Returns:
             Tuple of (errors, warnings):
             - errors: Critical issues that should block saving
@@ -128,7 +128,7 @@ class ValidateStep(BaseStep):
 
     def _validate_hlzf(self, data: list[dict]) -> tuple[list[str], list[str]]:
         """Validate HLZF data.
-        
+
         Returns:
             Tuple of (errors, warnings):
             - errors: Critical issues that should block saving (no data, missing voltage_level)

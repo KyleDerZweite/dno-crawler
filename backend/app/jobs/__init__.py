@@ -8,11 +8,11 @@ Architecture:
 - CrawlWorkerSettings: Dedicated single worker for crawling (steps 0-3)
   - Ensures polite crawling with no parallel requests to same domain
   - Listens on "crawl" queue
-  
-- ExtractWorkerSettings: Worker(s) for extraction (steps 4-6)  
+
+- ExtractWorkerSettings: Worker(s) for extraction (steps 4-6)
   - Can be scaled horizontally since no external requests
   - Listens on "extract" queue
-  
+
 - WorkerSettings: Legacy combined worker (for backwards compatibility)
   - Runs full pipeline (all steps)
   - Listens on default queue
@@ -92,12 +92,12 @@ from app.jobs.search_job import process_dno_crawl  # Legacy full pipeline
 class CrawlWorkerSettings:
     """
     ARQ worker settings for CRAWL jobs (steps 0-3).
-    
+
     This worker handles:
     - Step 00: Gather Context
     - Step 01: Discover (BFS crawl)
     - Step 03: Download
-    
+
     IMPORTANT: Only run ONE crawl worker to ensure polite crawling!
     """
 
@@ -119,12 +119,12 @@ class CrawlWorkerSettings:
 class ExtractWorkerSettings:
     """
     ARQ worker settings for EXTRACT jobs (steps 4-6).
-    
+
     This worker handles:
     - Step 04: Extract (regex + AI)
     - Step 05: Validate
     - Step 06: Finalize
-    
+
     Can run multiple extract workers safely since no external HTTP requests.
     """
 
@@ -146,7 +146,7 @@ class ExtractWorkerSettings:
 class WorkerSettings:
     """
     Legacy ARQ worker settings - runs FULL pipeline.
-    
+
     For backwards compatibility. Runs all steps (0-6) in sequence.
     Use this if you want a single combined worker.
     """

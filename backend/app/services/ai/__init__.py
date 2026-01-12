@@ -15,9 +15,9 @@ from app.services.ai.models_registry import ModelsRegistry, get_models_for_provi
 
 __all__ = [
     "AIGateway",
-    "get_ai_gateway",
     "AIProviderInterface",
     "ModelsRegistry",
+    "get_ai_gateway",
     "get_models_for_provider",
 ]
 

@@ -67,7 +67,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "umspannung zur mittelspannung": "HS/MS",
     "aushs": "HS/MS",
     "hs/ms": "HS/MS",
-    
+
     "höchstspannung mit umspannung auf hochspannung": "HöS/HS",
     "hochspannung mit umspannung auf mittelspannung": "HS/MS",
     "mittelspannung mit umspannung auf niederspannung": "MS/NS",
@@ -100,12 +100,12 @@ TSO_LEVELS = ["HöS", "HöS/HS", "HS", "HS/MS", "MS"]  # 5 levels (no low voltag
 def normalize_voltage_level(level: str) -> str | None:
     """
     Normalize voltage level name to standard abbreviation.
-    
+
     Handles various German naming conventions and returns the canonical form.
-    
+
     Args:
         level: Raw voltage level string from document
-        
+
     Returns:
         Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS, HöS, HöS/HS) or None
     """

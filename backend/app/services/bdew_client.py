@@ -33,7 +33,7 @@ class BDEWCompany:
 class BDEWRecord:
     """
     A detailed BDEW code record with all identifiers.
-    
+
     Contains three IDs from the BDEW system:
     - bdew_internal_id: The "Id" used for API lookups
     - bdew_company_uid: The "CompanyUId" - another internal identifier
@@ -56,7 +56,7 @@ class BDEWRecord:
 class BDEWClient:
     """
     Client for BDEW Codes API.
-    
+
     Fetches all BDEW codes and provides lookup by company name.
     """
 
@@ -84,7 +84,7 @@ class BDEWClient:
     async def fetch_company_list(self) -> list[BDEWCompany]:
         """
         Fetch all companies from the list endpoint.
-        
+
         Returns:
             List of BDEWCompany entries.
         """
@@ -146,10 +146,10 @@ class BDEWClient:
     async def fetch_company_details(self, company: BDEWCompany) -> BDEWRecord | None:
         """
         Fetch detailed BDEW info for a single company.
-        
+
         Args:
             company: BDEWCompany from the list endpoint.
-        
+
         Returns:
             BDEWRecord with full details, or None if not found.
         """
@@ -214,13 +214,13 @@ class BDEWClient:
     async def fetch_all_with_details(self, limit: int | None = None) -> list[BDEWRecord]:
         """
         Fetch all companies and their BDEW codes.
-        
+
         This makes N+1 requests (1 for list, N for details).
         Use with caution - can be slow for 4000+ companies.
-        
+
         Args:
             limit: Optional limit for testing.
-        
+
         Returns:
             List of BDEWRecord with full details.
         """
@@ -325,12 +325,12 @@ class BDEWClient:
     def find_by_name(self, company_name: str) -> BDEWRecord | None:
         """
         Find BDEW record by company name.
-        
+
         Uses exact normalized match first, then fuzzy containment.
-        
+
         Args:
             company_name: Company name to search for.
-        
+
         Returns:
             BDEWRecord if found, None otherwise.
         """
@@ -361,11 +361,11 @@ class BDEWClient:
     def find_by_zip_and_name(self, zip_code: str, company_name: str) -> BDEWRecord | None:
         """
         Find BDEW record by ZIP code and partial name match.
-        
+
         Args:
             zip_code: ZIP code to filter by.
             company_name: Partial company name.
-        
+
         Returns:
             BDEWRecord if found, None otherwise.
         """
@@ -387,7 +387,7 @@ class BDEWClient:
     async def find_in_list_by_name(self, company_name: str) -> BDEWCompany | None:
         """
         Find company in the list by name (without fetching details).
-        
+
         Useful for quick lookup before fetching details.
         """
         companies = await self.fetch_company_list()
@@ -412,10 +412,10 @@ class BDEWClient:
     async def get_bdew_code_for_name(self, company_name: str) -> str | None:
         """
         Get BDEW code for a company name (fetches details on demand).
-        
+
         Args:
             company_name: Company name to look up.
-        
+
         Returns:
             BDEW code string if found, None otherwise.
         """
@@ -434,13 +434,13 @@ class BDEWClient:
     async def get_bdew_record_for_name(self, company_name: str) -> BDEWRecord | None:
         """
         Get full BDEW record for a company name (fetches details on demand).
-        
+
         Returns the complete BDEWRecord with all identifiers and metadata,
         useful for enrichment where you want to store all BDEW data.
-        
+
         Args:
             company_name: Company name to look up.
-        
+
         Returns:
             BDEWRecord with all details if found, None otherwise.
         """

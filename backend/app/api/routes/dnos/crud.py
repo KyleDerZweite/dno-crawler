@@ -29,7 +29,7 @@ async def search_vnb(
 ) -> APIResponse:
     """
     Search VNB Digital for DNO names for autocomplete/validation.
-    
+
     Returns matching VNBs with indicator if they already exist in our database.
     """
     from app.services.vnb import VNBDigitalClient
@@ -71,7 +71,7 @@ async def get_vnb_details(
 ) -> APIResponse:
     """
     Get extended details for a specific VNB (website, phone, email, address).
-    
+
     Used when user selects a suggestion to auto-fill the form.
     """
     from app.services.vnb import VNBDigitalClient
@@ -117,7 +117,7 @@ async def create_dno(
 ) -> APIResponse:
     """
     Create a new DNO.
-    
+
     If slug is not provided, it will be auto-generated from the name.
     If vnb_id is provided, validates against VNB Digital and fetches missing details.
     """
@@ -168,10 +168,7 @@ async def create_dno(
                     vnb_details.homepage_url,
                     vnb_details.address,
                 )
-                if full_addr:
-                    contact_address = full_addr.formatted
-                else:
-                    contact_address = vnb_details.address
+                contact_address = full_addr.formatted if full_addr else vnb_details.address
             elif not contact_address:
                 contact_address = vnb_details.address
 
@@ -252,7 +249,7 @@ async def get_stats(
 ) -> APIResponse:
     """
     Get dashboard statistics for authenticated users.
-    
+
     Returns counts for DNOs, data points, and active jobs.
     """
     from app.db.models import HLZFModel, NetzentgelteModel
@@ -295,7 +292,7 @@ async def list_dnos_detailed(
 ) -> APIResponse:
     """
     List all DNOs with detailed information (paginated).
-    
+
     Status is computed dynamically from active jobs:
     - running: at least one running job
     - pending: at least one pending job (none running)
@@ -357,9 +354,9 @@ async def list_dnos_detailed(
     # Batch query for netzentgelte counts
     netz_counts_result = await db.execute(
         text("""
-            SELECT dno_id, COUNT(*) as count 
-            FROM netzentgelte 
-            WHERE dno_id = ANY(:dno_ids) 
+            SELECT dno_id, COUNT(*) as count
+            FROM netzentgelte
+            WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
         """),
         {"dno_ids": dno_ids}
@@ -369,9 +366,9 @@ async def list_dnos_detailed(
     # Batch query for HLZF counts
     hlzf_counts_result = await db.execute(
         text("""
-            SELECT dno_id, COUNT(*) as count 
-            FROM hlzf 
-            WHERE dno_id = ANY(:dno_ids) 
+            SELECT dno_id, COUNT(*) as count
+            FROM hlzf
+            WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
         """),
         {"dno_ids": dno_ids}

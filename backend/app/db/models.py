@@ -16,7 +16,7 @@ Source data from external APIs is stored in separate models:
 See: app/db/source_models.py
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from typing import TYPE_CHECKING, Optional
 from uuid import uuid4
@@ -62,17 +62,17 @@ class TimestampMixin:
 class DNOModel(Base, TimestampMixin):
     """
     Distribution Network Operator - The Core "Golden Record".
-    
+
     This is the hub in a hub-and-spoke pattern. It contains:
     - Internal identifiers (id, slug)
     - Operational status (crawl status, locks)
     - Resolved/display fields (best values from sources)
     - Crawlability info
     - Relationships to data tables and source data
-    
+
     Source data is stored in separate tables:
     - DNOMastrData: Marktstammdatenregister data
-    - DNOVnbData: VNB Digital API data  
+    - DNOVnbData: VNB Digital API data
     - DNOBdewData: BDEW Codes data (one-to-many)
     """
 
@@ -262,7 +262,7 @@ class DNOModel(Base, TimestampMixin):
 
 class LocationModel(Base, TimestampMixin):
     """Geographic location linked to a DNO.
-    
+
     Enables efficient lookups:
     - Address → (address_hash) → DNO
     - (lat, lon) → DNO (with spatial tolerance)
@@ -351,7 +351,7 @@ class NetzentgelteModel(Base, TimestampMixin):
 
 class HLZFModel(Base, TimestampMixin):
     """HLZF (Hochlastzeitfenster) data per voltage level.
-    
+
     Each row = one voltage level for one year.
     Columns = seasonal time windows.
     """
@@ -432,7 +432,7 @@ class DataSourceModel(Base, TimestampMixin):
 
 class CrawlPathPatternModel(Base, TimestampMixin):
     """Cross-DNO learned URL path patterns with year placeholders.
-    
+
     Stores patterns like '/veroeffentlichungen/{year}/' that are known to work
     across multiple DNOs. Higher success_rate patterns are tried first during crawls.
     """
@@ -464,7 +464,7 @@ class CrawlPathPatternModel(Base, TimestampMixin):
 
 class DNOSourceProfile(Base, TimestampMixin):
     """Remember where to find data for each DNO.
-    
+
     This is the "learning" system - stores what worked for future crawls.
     One profile per (dno_id, data_type) pair.
     """
@@ -514,7 +514,7 @@ class DNOSourceProfile(Base, TimestampMixin):
 
 class CrawlJobModel(Base, TimestampMixin):
     """Crawl job tracking.
-    
+
     Supports split job architecture:
     - job_type: 'crawl' (discover+download), 'extract' (extract+validate+finalize), or 'full' (legacy)
     - parent_job_id: Links extract job back to its parent crawl job
@@ -647,11 +647,11 @@ class SystemLogModel(Base):
 
 class AIProviderConfigModel(Base, TimestampMixin):
     """AI provider configuration for multi-provider support.
-    
+
     Supports multiple authentication methods:
     - OAuth (for subscription plans: ChatGPT Plus, Claude Pro, Google AI Pro)
     - API Key (for OpenRouter, direct API access)
-    
+
     Features:
     - Priority-based fallback ordering (drag-and-drop in admin UI)
     - Subscription preference (OAuth configs prioritized over API keys)
@@ -733,27 +733,23 @@ class AIProviderConfigModel(Base, TimestampMixin):
     @property
     def is_healthy(self) -> bool:
         """Check if provider is currently healthy."""
-        from datetime import datetime, timezone
-        
+        from datetime import datetime
+
         # Check rate limiting
-        if self.rate_limited_until:
-            if datetime.now(timezone.utc) < self.rate_limited_until:
-                return False
-        
-        # Check consecutive failures (unhealthy after 3 failures)
-        if self.consecutive_failures >= 3:
+        if self.rate_limited_until and datetime.now(UTC) < self.rate_limited_until:
             return False
-        
-        return True
+
+        # Check consecutive failures (unhealthy after 3 failures)
+        return not self.consecutive_failures >= 3
 
     @property
     def status_display(self) -> str:
         """Get human-readable status."""
-        from datetime import datetime, timezone
-        
+        from datetime import datetime
+
         if not self.is_enabled:
             return "disabled"
-        if self.rate_limited_until and datetime.now(timezone.utc) < self.rate_limited_until:
+        if self.rate_limited_until and datetime.now(UTC) < self.rate_limited_until:
             return "rate_limited"
         if self.consecutive_failures >= 3:
             return "unhealthy"

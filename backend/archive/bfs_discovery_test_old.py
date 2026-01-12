@@ -72,7 +72,7 @@ async def _scan_for_hlzf_html(
 ):
     """
     Quick scan for HTML pages containing HLZF data tables.
-    
+
     Tries common URL patterns where HLZF data is often found.
     """
     from urllib.parse import urlparse
@@ -139,7 +139,7 @@ async def discover_documents(
 ) -> dict:
     """
     Discovery starting from a URL.
-    
+
     Strategy:
     1. Try sitemap discovery first (fast, low impact)
     2. Fall back to BFS crawl if no sitemap
@@ -540,4 +540,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    exit(asyncio.run(main()))
+    sys.exit(asyncio.run(main()))
