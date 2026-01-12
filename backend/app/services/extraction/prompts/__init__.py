@@ -105,8 +105,7 @@ For EACH voltage level found, extract:
 - herbst: Time window(s) for Sep-Nov
 
 Values for each season:
-- Time window format: "HH:MM-HH:MM" with NO SPACES around the dash (e.g., "07:30-15:30" NOT "07:30 - 15:30")
-- Remove any "Uhr" suffix from times (e.g., "16:30 Uhr bis 19:30 Uhr" → "16:30-19:30")
+- Time window format: Extract as shown in document (e.g. "07:30-15:30" or "07:30 - 15:30")
 - Multiple windows: Separate with "\\n" (e.g., "07:30-13:00\\n17:00-19:30")
 - No peak load times: Use "-" for any of these markers:
   - "entfällt" (not applicable)

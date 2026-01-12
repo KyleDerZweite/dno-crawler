@@ -93,8 +93,17 @@ def parse_time_window(value: str | None) -> str | None:
     if s.lower() in ("-", "entfällt", "keine", "n/a", "", "k.a.", "keine angabe"):
         return "-"
 
+    # If the string contains newlines (multiple windows from AI), process each line
+    if "\n" in s:
+        parts = []
+        for line in s.split("\n"):
+            normalized_line = parse_time_window(line)
+            if normalized_line != "-":
+                parts.append(normalized_line)
+        return "\n".join(parts) if parts else "-"
+
     # Remove "Uhr" suffix (e.g., "16:30 Uhr bis 19:30 Uhr" -> "16:30 bis 19:30")
-    s = re.sub(r'\s*[Uu]hr\s*', ' ', s).strip()
+    s = re.sub(r'\s*[Uu]hr\s*', ' ', s, flags=re.IGNORECASE).strip()
 
     # Replace "bis" with dash (e.g., "16:30 bis 19:30" -> "16:30-19:30")
     s = re.sub(r'\s*bis\s*', '-', s, flags=re.IGNORECASE)
@@ -106,16 +115,20 @@ def parse_time_window(value: str | None) -> str | None:
 
     # Try to extract time patterns
     # Match patterns like "7:30", "07:30", "7.30", "07.30"
+    # We look for PAIRS of times
     time_pattern = r"(\d{1,2})[:.](\d{2})"
     times = re.findall(time_pattern, s)
 
-    if len(times) >= 2:
-        # Format as HH:MM-HH:MM
-        start = f"{int(times[0][0]):02d}:{times[0][1]}"
-        end = f"{int(times[1][0]):02d}:{times[1][1]}"
-        return f"{start}-{end}"
+    # If we have an even number of times, assume they are pairs
+    if len(times) >= 2 and len(times) % 2 == 0:
+        windows = []
+        for i in range(0, len(times), 2):
+            start = f"{int(times[i][0]):02d}:{times[i][1]}"
+            end = f"{int(times[i+1][0]):02d}:{times[i+1][1]}"
+            windows.append(f"{start}-{end}")
+        return "\n".join(windows)
 
-    # Return original if we can't parse
+    # Return original if we can't parse or if odd number of times found
     return s
 
 
