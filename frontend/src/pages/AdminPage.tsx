@@ -334,68 +334,31 @@ function BulkModeDropdown({
   value: ExtractMode;
   onChange: (value: ExtractMode) => void;
 }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Close dropdown when clicking outside
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
-        setIsOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
-  }, []);
-
   const selectedOption = BULK_MODE_OPTIONS.find(opt => opt.value === value) || BULK_MODE_OPTIONS[0];
   const SelectedIcon = selectedOption.icon;
 
-  const handleSelect = (mode: ExtractMode) => {
-    onChange(mode);
-    setIsOpen(false);
-  };
-
   return (
-    <div className="relative w-48" ref={dropdownRef}>
-      {/* Trigger Button */}
-      <button
-        type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-accent/50 transition-colors"
-      >
-        <span className="flex items-center gap-2">
+    <Select value={value} onValueChange={(v) => onChange(v as ExtractMode)}>
+      <SelectTrigger className="w-48 bg-background">
+        <div className="flex items-center gap-2">
           <SelectedIcon className={`h-4 w-4 ${selectedOption.color}`} />
           <span>{selectedOption.label}</span>
-        </span>
-        <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
-      </button>
-
-      {/* Dropdown Menu */}
-      {isOpen && (
-        <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-popover border rounded-md shadow-lg overflow-hidden">
-          {BULK_MODE_OPTIONS.map((option) => {
-            const isSelected = option.value === value;
-            const Icon = option.icon;
-            return (
-              <button
-                key={option.value}
-                type="button"
-                className={`w-full px-3 py-2.5 text-left hover:bg-accent flex items-center gap-3 transition-colors ${isSelected ? 'bg-accent/50' : ''
-                  }`}
-                onClick={() => handleSelect(option.value)}
-              >
-                <span className="w-5 flex items-center justify-center">
-                  {isSelected && <Check className="h-4 w-4 text-primary" />}
-                </span>
-                <Icon className={`h-4 w-4 ${option.color}`} />
-                <span className="flex-1">{option.label}</span>
-              </button>
-            );
-          })}
         </div>
-      )}
-    </div>
+      </SelectTrigger>
+      <SelectContent>
+        {BULK_MODE_OPTIONS.map((option) => {
+          const Icon = option.icon;
+          return (
+            <SelectItem key={option.value} value={option.value}>
+              <div className="flex items-center gap-2">
+                <Icon className={`h-4 w-4 ${option.color}`} />
+                <span>{option.label}</span>
+              </div>
+            </SelectItem>
+          );
+        })}
+      </SelectContent>
+    </Select>
   );
 }
 
