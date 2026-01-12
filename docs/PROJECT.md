@@ -7,7 +7,7 @@ Full-stack web application for automated extraction of regulatory data from Germ
 ## Architecture
 
 - **Backend**: FastAPI (Python 3.11+) with async SQLAlchemy 2.0, PostgreSQL, Redis
-- **Frontend**: React 18 + Vite + TypeScript + TailwindCSS + TanStack Query + Base UI
+- **Frontend**: React 19 + Vite + TypeScript + TailwindCSS + TanStack Query + Base UI
 - **AI/ML**: OpenAI-compatible API (Gemini, OpenRouter, Ollama) with regex-first extraction strategy
 - **Auth**: Modular OIDC (Zitadel) with automatic mock mode (`ZITADEL_DOMAIN=auth.example.com`)
 - **Jobs**: arq (Redis-based) for background crawl and extraction tasks

@@ -116,7 +116,7 @@ flowchart TD
 
 ### Key Components
 
-- **Frontend**: React SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling.
+- **Frontend**: React 19 SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling.
 - **Public API**: Rate-limited endpoints for address search and skeleton DNO creation. No authentication required.
 - **Protected API**: Secured by `Depends(get_current_user)`. Provides DNO management, job triggering, data verification, and admin functions.
 - **Service Layer**: Integrates with three external data sources:

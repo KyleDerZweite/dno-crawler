@@ -164,94 +164,12 @@ const { dnoId } = useParams<{ dnoId: string }>();
 | Category | Convention | Pattern | Examples |
 |----------|------------|---------|----------|
 | **Modules** | snake_case | `{name}.py` | `crawl_job.py`, `rate_limiter.py` |
-| **Route Files** | snake_case (noun, plural) | `{resource}.py` | `dnos.py`, `jobs.py`, `users.py` |
-| **Service Files** | snake_case with `_service` suffix | `{name}_service.py` | `extraction_service.py` |
+| **Route Files** | snake_case | `{resource}.py` or `{domain}.py` | `dnos.py`, `auth.py`, `health.py` |
+| **Service Files** | snake_case | `{name}.py` | `web_crawler.py`, `extraction.py` |
 | **Model Files** | snake_case | `models.py` or `{name}_models.py` | `models.py`, `source_models.py` |
 | **Test Files** | snake_case with `test_` prefix | `test_{module}.py` | `test_dnos.py`, `test_auth.py` |
 | **Config Files** | snake_case | `config.py` | `config.py`, `database.py` |
 | **Init Files** | fixed | `__init__.py` | `__init__.py` |
-
-### Shared/Root Files
-
-| Category | Convention | Pattern | Examples |
-|----------|------------|---------|----------|
-| **Documentation** | UPPER_CASE | `{NAME}.md` | `README.md`, `CHANGELOG.md`, `CONTRIBUTING.md` |
-| **Config (JSON/YAML)** | kebab-case or lowercase | `{name}.json` | `package.json`, `tsconfig.json` |
-| **Docker** | kebab-case | `docker-compose.yml` | `docker-compose.yml`, `Dockerfile` |
-| **Environment** | lowercase with dot prefix | `.{name}` or `.{name}.example` | `.env`, `.env.example` |
-| **Git Files** | lowercase with dot prefix | `.{name}` | `.gitignore`, `.gitattributes` |
-
-
----
-
-## Code Naming Inside Files
-
-### TypeScript/JavaScript
-
-```typescript
-// Components: PascalCase
-export function CrawlDialog() { ... }
-export const UserProfile: React.FC = () => { ... }
-
-// Hooks: camelCase with 'use' prefix  
-export function useAuth() { ... }
-export function useDataFilters() { ... }
-
-// Functions: camelCase
-function handleClick() { ... }
-function formatCurrency(value: number) { ... }
-
-// Variables: camelCase
-const userName = "John";
-const isLoading = true;
-
-// Constants: UPPER_SNAKE_CASE
-const MAX_RETRIES = 3;
-const API_BASE_URL = "/api/v1";
-
-// Types/Interfaces: PascalCase
-interface UserProfile { ... }
-type DNOStatus = "active" | "inactive";
-
-// Enums: PascalCase for name, UPPER_SNAKE_CASE for values
-enum JobStatus {
-  PENDING = "pending",
-  RUNNING = "running",
-  COMPLETED = "completed",
-}
-```
-
-### Python
-
-```python
-# Classes: PascalCase
-class DNOModel:
-    pass
-
-class CrawlService:
-    pass
-
-# Functions: snake_case
-def get_user_by_id(user_id: int):
-    pass
-
-def calculate_completeness():
-    pass
-
-# Variables: snake_case
-user_name = "John"
-is_loading = True
-
-# Constants: UPPER_SNAKE_CASE
-MAX_RETRIES = 3
-API_BASE_URL = "/api/v1"
-
-# Private members: single underscore prefix
-def _internal_helper():
-    pass
-
-_private_cache = {}
-```
 
 ---
 
@@ -274,16 +192,25 @@ features/{feature-name}/           # kebab-case for directory
 └── index.ts                       # main barrel export
 ```
 
-### Backend Domain Modules
+### Backend Structure (Layered)
 
 ```
-app/{domain}/                      # snake_case for directory
-├── __init__.py
-├── routes.py                      # or {domain}.py for routes
-├── models.py                      # domain models
-├── schemas.py                     # Pydantic schemas
-├── service.py                     # business logic
-└── utils.py                       # domain-specific utilities
+app/
+├── api/
+│   └── routes/                    
+│       ├── dnos.py                # Resource (plural)
+│       ├── auth.py                # Domain (singular)
+│       └── __init__.py
+├── services/                      # Business logic
+│   ├── web_crawler.py             # snake_case (no _service suffix needed)
+│   └── extraction/                # Sub-modules allowed
+│       └── pdf_extractor.py
+├── db/
+│   ├── models.py                  # Database models
+│   └── database.py
+└── core/                          # Cross-cutting concerns
+    ├── config.py
+    └── security.py
 ```
 
 ---
