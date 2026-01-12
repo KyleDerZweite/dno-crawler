@@ -55,9 +55,10 @@ import {
   FileWarning,
   HardDrive,
   Trash2,
+  Check,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { AIConfigSection } from "@/features/admin/AIConfigSection";
 
 export function AdminPage() {
@@ -318,6 +319,86 @@ function StatCard({ icon: Icon, title, value, color, bg, loading }: {
 
 type ExtractMode = "flagged_only" | "default" | "force_override" | "no_data_and_failed";
 
+// Bulk mode options layout
+const BULK_MODE_OPTIONS: { value: ExtractMode; label: string; icon: React.ComponentType<{ className?: string }>; color: string }[] = [
+  { value: "default", label: "Default", icon: Zap, color: "text-blue-500" },
+  { value: "flagged_only", label: "Flagged Only", icon: AlertTriangle, color: "text-amber-500" },
+  { value: "no_data_and_failed", label: "No Data & Failed", icon: FileWarning, color: "text-orange-500" },
+  { value: "force_override", label: "Force Override", icon: XCircle, color: "text-red-500" },
+];
+
+function BulkModeDropdown({
+  value,
+  onChange,
+}: {
+  value: ExtractMode;
+  onChange: (value: ExtractMode) => void;
+}) {
+  const [isOpen, setIsOpen] = useState(false);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  const selectedOption = BULK_MODE_OPTIONS.find(opt => opt.value === value) || BULK_MODE_OPTIONS[0];
+  const SelectedIcon = selectedOption.icon;
+
+  const handleSelect = (mode: ExtractMode) => {
+    onChange(mode);
+    setIsOpen(false);
+  };
+
+  return (
+    <div className="relative w-48" ref={dropdownRef}>
+      {/* Trigger Button */}
+      <button
+        type="button"
+        onClick={() => setIsOpen(!isOpen)}
+        className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-accent/50 transition-colors"
+      >
+        <span className="flex items-center gap-2">
+          <SelectedIcon className={`h-4 w-4 ${selectedOption.color}`} />
+          <span>{selectedOption.label}</span>
+        </span>
+        <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
+      </button>
+
+      {/* Dropdown Menu */}
+      {isOpen && (
+        <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-popover border rounded-md shadow-lg overflow-hidden">
+          {BULK_MODE_OPTIONS.map((option) => {
+            const isSelected = option.value === value;
+            const Icon = option.icon;
+            return (
+              <button
+                key={option.value}
+                type="button"
+                className={`w-full px-3 py-2.5 text-left hover:bg-accent flex items-center gap-3 transition-colors ${isSelected ? 'bg-accent/50' : ''
+                  }`}
+                onClick={() => handleSelect(option.value)}
+              >
+                <span className="w-5 flex items-center justify-center">
+                  {isSelected && <Check className="h-4 w-4 text-primary" />}
+                </span>
+                <Icon className={`h-4 w-4 ${option.color}`} />
+                <span className="flex-1">{option.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CachedFilesSection() {
   const queryClient = useQueryClient();
   const [showPreview, setShowPreview] = useState(false);
@@ -453,40 +534,10 @@ function CachedFilesSection() {
                 </p>
               </div>
               <div className="flex items-center gap-2">
-                <Select
+                <BulkModeDropdown
                   value={selectedMode}
-                  onValueChange={(v) => { setSelectedMode(v as ExtractMode); }}
-                >
-                  <SelectTrigger className="w-48">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="flagged_only">
-                      <div className="flex items-center gap-2">
-                        <AlertTriangle className="h-4 w-4 text-amber-500" />
-                        Flagged Only
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="no_data_and_failed">
-                      <div className="flex items-center gap-2">
-                        <FileWarning className="h-4 w-4 text-orange-500" />
-                        No Data & Failed
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="default">
-                      <div className="flex items-center gap-2">
-                        <Zap className="h-4 w-4 text-blue-500" />
-                        Default
-                      </div>
-                    </SelectItem>
-                    <SelectItem value="force_override">
-                      <div className="flex items-center gap-2">
-                        <XCircle className="h-4 w-4 text-red-500" />
-                        Force Override
-                      </div>
-                    </SelectItem>
-                  </SelectContent>
-                </Select>
+                  onChange={setSelectedMode}
+                />
                 <Button
                   onClick={handleOpenPreview}
                   disabled={previewMutation.isPending || filesLoading}
