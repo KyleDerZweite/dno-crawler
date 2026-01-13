@@ -63,6 +63,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
 
     # Umspannung levels
     "umspannung hoch-/mittelspannung": "HS/MS",
+    "umspannung hoch -/mittelspannung": "HS/MS",
     "umspannung hs/ms": "HS/MS",
     "umspannung zur mittelspannung": "HS/MS",
     "aushs": "HS/MS",
@@ -73,6 +74,7 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "mittelspannung mit umspannung auf niederspannung": "MS/NS",
 
     "umspannung mittel-/niederspannung": "MS/NS",
+    "umspannung mittel -/niederspannung": "MS/NS",
     "umspannung ms/ns": "MS/NS",
     "umspannung zur niederspannung": "MS/NS",
     "ausms": "MS/NS",
@@ -117,17 +119,31 @@ def normalize_voltage_level(level: str) -> str | None:
     # Clean and lowercase for matching
     cleaned = level.strip().lower()
     cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
+    
+    # Normalize separators: remove spaces around hyphens and slashes
+    # e.g. "Hoch - / Mittelspannung" -> "hoch-/mittelspannung"
+    cleaned = re.sub(r'\s*([-/])\s*', r'\1', cleaned)
+    
     cleaned = re.sub(r'[()]', '', cleaned)  # Remove parentheses
     cleaned = cleaned.strip()
 
     # Direct match
+    if cleaned in VOLTAGE_LEVELS:
+        return cleaned  # Already normalized
+
     if cleaned in VOLTAGE_LEVEL_ALIASES:
         return VOLTAGE_LEVEL_ALIASES[cleaned]
 
     # Partial match - check if any key is contained in the level
-    for alias, standard in VOLTAGE_LEVEL_ALIASES.items():
-        if alias in cleaned:
-            return standard
+    # Sort aliases by length (descending) to match specific phrases first
+    # e.g. Match "umspannung hoch-/mittelspannung" before "mittelspannung"
+    sorted_aliases = sorted(VOLTAGE_LEVEL_ALIASES.keys(), key=len, reverse=True)
+    
+    for alias in sorted_aliases:
+        # Also clean the alias for comparison (though aliases should be clean in constant)
+        clean_alias = re.sub(r'\s*([-/])\s*', r'\1', alias)
+        if clean_alias in cleaned:
+            return VOLTAGE_LEVEL_ALIASES[alias]
 
     # If no match found, try to extract useful info
     # Check for compound levels first (with /)

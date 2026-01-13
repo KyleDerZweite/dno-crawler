@@ -3,7 +3,7 @@
  */
 
 // API base URL
-export const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1";
+export const API_URL = import.meta.env.VITE_API_URL || "/api/v1";
 
 // Pagination defaults
 export const DEFAULT_PAGE_SIZE = 50;

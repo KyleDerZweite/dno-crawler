@@ -3,7 +3,6 @@ name = "dno-crawler"
 version = "0.1.0"
 description = "AI-powered German DNO (Distribution Network Operator) data crawler"
 authors = [{ name = "KyleDerZweite" }]
-readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 
@@ -16,6 +15,7 @@ dependencies = [
     # Database
     "sqlalchemy[asyncio]>=2.0.25",
     "asyncpg>=0.29.0",
+    "psycopg2-binary>=2.9.9",
     "alembic>=1.13.1",
 
     # Redis
@@ -29,15 +29,12 @@ dependencies = [
     # Web Scraping
     "beautifulsoup4>=4.12.3",
     "lxml>=5.1.0",
-    "playwright>=1.41.0",
+    "trafilatura>=2.0.0",
 
-    # PDF Processing
+    # PDF & Excel Processing
     "pymupdf>=1.23.0",
     "pdfplumber>=0.10.3",
-
-    # OCR (optional, for image-based data)
-    "pytesseract>=0.3.10",
-    "pillow>=10.2.0",
+    "openpyxl>=3.1.0",
 
     # LLM Integration (OpenAI-compatible API)
     "openai>=1.50.0",

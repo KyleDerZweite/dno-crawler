@@ -10,4 +10,15 @@ export default defineConfig({
       "@": resolve(__dirname, "./src"),
     },
   },
+  server: {
+    allowedHosts: [
+      "localhost"
+    ],
+    proxy: {
+      "/api": {
+        target: "http://backend:8000",
+        changeOrigin: true,
+      },
+    },
+  },
 });

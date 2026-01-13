@@ -156,7 +156,7 @@ services:
     container_name: dno-crawler-frontend
     restart: unless-stopped
     ports:
-      - "${FRONTEND_PORT:-5173}:5173"
+      - "127.0.0.1:${FRONTEND_PORT:-5173}:5173"
     volumes:
       - ./frontend:/app:Z
       - ./data/frontend/node_modules/:/app/node_modules:Z
@@ -165,6 +165,20 @@ services:
     command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
     depends_on:
       - backend
+    networks:
+      - dno-crawler
+  newt:
+    image: fosrl/newt
+    container_name: dno-crawler-newt
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PANGOLIN_ENDPOINT=${PANGOLIN_ENDPOINT}
+      - NEWT_ID=${NEWT_ID}
+      - NEWT_SECRET=${NEWT_SECRET}
+    depends_on:
+      - frontend
     networks:
       - dno-crawler
 
