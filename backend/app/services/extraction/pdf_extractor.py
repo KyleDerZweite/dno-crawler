@@ -304,7 +304,11 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
                     # Try to extract table from this page
                     tables = page.extract_tables()
-                    for table in tables:
+                    
+                    # Merge fragmented tables (Netze BW 2023 issue)
+                    merged_tables = _merge_tables(tables)
+                    
+                    for table in merged_tables:
                         hlzf_records = _parse_hlzf_table(table, page_num)
                         if hlzf_records:
                             records.extend(hlzf_records)
@@ -321,6 +325,60 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
     log.info(f"Extracted {len(records)} HLZF records")
     return records
+
+
+def _merge_tables(tables: list[list]) -> list[list]:
+    """
+    Merge fragmented tables on a page.
+
+    Some PDFs (like Netze BW 2023) return each row as a separate table.
+    This function groups tables by column count and merges them if they appear
+    to be part of the same structure (e.g. one has a header).
+    """
+    if not tables:
+        return []
+
+    # Group tables by column count
+    grouped_tables = {}  # col_count -> list of tables
+    
+    for table in tables:
+        if not table or not table[0]:
+            continue
+        
+        col_count = len(table[0])
+        if col_count not in grouped_tables:
+            grouped_tables[col_count] = []
+        grouped_tables[col_count].append(table)
+
+    merged_results = []
+
+    for col_count, table_group in grouped_tables.items():
+        # Check if this group looks like an HLZF table
+        # We need at least one row to look like a header (contains Season keywords)
+        has_header = False
+        header_keywords = ["winter", "frühling", "fruehling", "sommer", "herbst"]
+        
+        full_merged_table = []
+        
+        for table in table_group:
+            # Add all rows from this fragment
+            full_merged_table.extend(table)
+            
+            # Check for header in this fragment
+            for row in table:
+                row_str = " ".join(str(c or "").lower() for c in row)
+                if any(k in row_str for k in header_keywords):
+                    has_header = True
+
+        # If we found a header in this group, return it as one merged table
+        # Otherwise, return the fragments as is (or ignore? Better to keep them as is for safety)
+        if has_header and len(full_merged_table) > 1:
+            merged_results.append(full_merged_table)
+        else:
+            # If no clear header, keep original fragments
+            merged_results.extend(table_group)
+
+    return merged_results
 
 
 def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:

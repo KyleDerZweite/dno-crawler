@@ -67,16 +67,24 @@ class BaseStep(ABC):
         except Exception as e:
             self.log.error(f"Step {step_num} failed", error=str(e))
 
+            # Rollback the failed transaction to clear the error state
+            # (e.g. if the step failed due to a DB error like UndefinedColumn)
+            await db.rollback()
+
             # Update step record with error
+            # We need to set fields again because rollback reverted any pending changes
             step_record.status = "failed"
             step_record.completed_at = datetime.utcnow()
+            # Preserve existing details if possible, or reset
             step_record.details = {
-                **(step_record.details or {}),
+                "description": self.description,
                 "error": str(e)
             }
 
             # Update main job
             job.status = "failed"
             job.error_message = f"Step '{self.label}' failed: {e!s}"
+            
+            # Commit the failure state in a fresh transaction
             await db.commit()
             raise e

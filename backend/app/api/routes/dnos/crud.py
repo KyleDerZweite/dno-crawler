@@ -313,9 +313,8 @@ async def list_dnos_detailed(
         # Order by similarity descending (most similar first)
         similarity = func.similarity(DNOModel.name, q)
         
-        # We filter where similarity is > 0.3 to avoid irrelevant results (e.g. just sharing "Stadtwerke")
         # sorting is the primary mechanism.
-        similarity_score = 0.31
+        similarity_score = 0.2
         query = query.filter(similarity > similarity_score).order_by(similarity.desc())
 
         # Count with filter (approximation for pagination)

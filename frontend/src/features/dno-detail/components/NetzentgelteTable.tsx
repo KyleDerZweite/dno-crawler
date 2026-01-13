@@ -2,10 +2,10 @@
  * NetzentgelteTable - Data table for Netzentgelte records
  */
 
-import { useMemo, Fragment } from "react";
+import { useMemo, Fragment, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Zap, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
+import { Zap, Loader2, MoreVertical, Pencil, Trash2, Globe } from "lucide-react";
 import { VerificationBadge } from "@/components/VerificationBadge";
 import { ExtractionSourceBadge } from "@/components/ExtractionSourceBadge";
 import { SmartDropdown } from "@/components/SmartDropdown";
@@ -32,6 +32,8 @@ export function NetzentgelteTable({
     openMenuId,
     onMenuOpenChange,
 }: NetzentgelteTableProps) {
+    const [decimalFormat, setDecimalFormat] = useState<'DE' | 'US'>('DE');
+
     const groupedData = useMemo(() => {
         const groups: Record<number, Netzentgelte[]> = {};
         data.forEach((item) => {
@@ -51,12 +53,33 @@ export function NetzentgelteTable({
             .sort((a, b) => b - a);
     }, [groupedData]);
 
+    const formatNumber = (val: number | undefined | null, decimals: number) => {
+        if (val === undefined || val === null) return "-";
+        
+        return val.toLocaleString(decimalFormat === 'DE' ? 'de-DE' : 'en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    };
+
     return (
         <Card className="p-6 min-h-[320px]">
-            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Zap className="h-5 w-5 text-blue-500" />
-                Netzentgelte
-            </h2>
+            <div className="flex items-center justify-between mb-4">
+                <h2 className="text-lg font-semibold flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-blue-500" />
+                    Netzentgelte
+                </h2>
+                <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-8 gap-2 text-xs"
+                    onClick={() => setDecimalFormat(prev => prev === 'DE' ? 'US' : 'DE')}
+                    title={`Switch to ${decimalFormat === 'DE' ? 'US (Dot)' : 'German (Comma)'} format`}
+                >
+                    <Globe className="h-3.5 w-3.5" />
+                    {decimalFormat === 'DE' ? '1.234,56' : '1,234.56'}
+                </Button>
+            </div>
 
             {isLoading ? (
                 <div className="flex justify-center py-8">
@@ -119,19 +142,19 @@ export function NetzentgelteTable({
                                         <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
                                             <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
                                             <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                                <span className="select-all">{item.leistung?.toFixed(2) || "-"}</span>
+                                                <span className="select-all">{formatNumber(item.leistung, 2)}</span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono">
-                                                <span className="select-all">{item.arbeit?.toFixed(3) || "-"}</span>
+                                                <span className="select-all">{formatNumber(item.arbeit, 3)}</span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono border-l border-border/50">
                                                 <span className="select-all">
-                                                    {item.leistung_unter_2500h?.toFixed(2) || item.leistung?.toFixed(2) || "-"}
+                                                    {item.leistung_unter_2500h ? formatNumber(item.leistung_unter_2500h, 2) : formatNumber(item.leistung, 2)}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono">
                                                 <span className="select-all">
-                                                    {item.arbeit_unter_2500h?.toFixed(3) || item.arbeit?.toFixed(3) || "-"}
+                                                    {item.arbeit_unter_2500h ? formatNumber(item.arbeit_unter_2500h, 3) : formatNumber(item.arbeit, 3)}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-center">

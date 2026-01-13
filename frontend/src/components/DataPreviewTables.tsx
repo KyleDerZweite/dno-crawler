@@ -1,5 +1,6 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
-import { Zap, Clock, ArrowRight, AlertCircle } from "lucide-react";
+import { Zap, Clock, ArrowRight, AlertCircle, Globe } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Alert, AlertDescription } from "@/components/ui/alert";
@@ -138,12 +139,22 @@ export function DataPreviewTables({
     dnoSlug,
     showManageLink = true,
 }: DataPreviewTablesProps) {
+    const [decimalFormat, setDecimalFormat] = useState<'DE' | 'US'>('DE');
     const hasNetzentgelte = netzentgelte && netzentgelte.length > 0;
     const hasHlzf = hlzf && hlzf.length > 0;
     const hasData = hasNetzentgelte || hasHlzf;
 
     // Get link destination (prefer ID over slug for reliable routing)
     const dnoLink = dnoId ? `/dnos/${dnoId}` : dnoSlug ? `/dnos/${dnoSlug}` : null;
+
+    const formatNumber = (val: number | undefined | null, decimals: number) => {
+        if (val === undefined || val === null) return "-";
+        
+        return val.toLocaleString(decimalFormat === 'DE' ? 'de-DE' : 'en-US', {
+            minimumFractionDigits: decimals,
+            maximumFractionDigits: decimals,
+        });
+    };
 
     if (!hasData) {
         return (
@@ -159,10 +170,22 @@ export function DataPreviewTables({
             {/* Netzentgelte Table - matches DNODetailPage layout */}
             {hasNetzentgelte && (
                 <Card className="p-8">
-                    <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                        <Zap className="h-5 w-5 text-blue-500" />
-                        Netzentgelte
-                    </h2>
+                    <div className="flex items-center justify-between mb-4">
+                        <h2 className="text-lg font-semibold flex items-center gap-2">
+                            <Zap className="h-5 w-5 text-blue-500" />
+                            Netzentgelte
+                        </h2>
+                        <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-2 text-xs"
+                            onClick={() => setDecimalFormat(prev => prev === 'DE' ? 'US' : 'DE')}
+                            title={`Switch to ${decimalFormat === 'DE' ? 'US (Dot)' : 'German (Comma)'} format`}
+                        >
+                            <Globe className="h-3.5 w-3.5" />
+                            {decimalFormat === 'DE' ? '1.234,56' : '1,234.56'}
+                        </Button>
+                    </div>
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
@@ -192,19 +215,19 @@ export function DataPreviewTables({
                                             <td className="py-2 px-3">{item.year}</td>
                                             <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
                                             <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                                <span className="select-all">{item.leistung?.toFixed(2) || "-"}</span>
+                                                <span className="select-all">{formatNumber(item.leistung, 2)}</span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono">
-                                                <span className="select-all">{item.arbeit?.toFixed(3) || "-"}</span>
+                                                <span className="select-all">{formatNumber(item.arbeit, 3)}</span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono border-l border-border/50">
                                                 <span className="select-all">
-                                                    {itemWithExtras.leistung_unter_2500h?.toFixed(2) || item.leistung?.toFixed(2) || "-"}
+                                                    {itemWithExtras.leistung_unter_2500h ? formatNumber(itemWithExtras.leistung_unter_2500h, 2) : formatNumber(item.leistung, 2)}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-right font-mono">
                                                 <span className="select-all">
-                                                    {itemWithExtras.arbeit_unter_2500h?.toFixed(3) || item.arbeit?.toFixed(3) || "-"}
+                                                    {itemWithExtras.arbeit_unter_2500h ? formatNumber(itemWithExtras.arbeit_unter_2500h, 3) : formatNumber(item.arbeit, 3)}
                                                 </span>
                                             </td>
                                             <td className="py-2 px-3 text-center border-l border-border/50">
