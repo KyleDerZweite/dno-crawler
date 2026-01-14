@@ -575,6 +575,7 @@ async def trigger_bulk_extract(
 
     jobs_queued = 0
     files_scanned = 0
+    jobs_to_enqueue = []
 
     # Connect to Redis for job queueing
     redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
@@ -701,25 +702,36 @@ async def trigger_bulk_extract(
                 db.add(job)
                 await db.flush()  # Get the job ID
 
-                # Enqueue to worker
-                await redis_pool.enqueue_job(
-                    "process_extract",
-                    job.id,
-                    _job_id=f"bulk_extract_{job.id}",
-                    _queue_name="extract",
-                )
+                # Collect job for enqueueing after commit
+                jobs_to_enqueue.append({
+                    "id": job.id,
+                    "job_id": f"bulk_extract_{job.id}",
+                    "dno_slug": dno_slug,
+                    "year": file_info["year"],
+                    "data_type": file_info["data_type"]
+                })
 
-                jobs_queued += 1
-                logger.info(
-                    "bulk_extract_job_queued",
-                    job_id=job.id,
-                    dno_slug=dno_slug,
-                    year=file_info["year"],
-                    data_type=file_info["data_type"],
-                    mode=request.mode,
-                )
-
+        # Commit all jobs to DB first
         await db.commit()
+
+        # Now enqueue them to Redis
+        for job_info in jobs_to_enqueue:
+            await redis_pool.enqueue_job(
+                "process_extract",
+                job_info["id"],
+                _job_id=job_info["job_id"],
+                _queue_name="extract",
+            )
+            jobs_queued += 1
+            logger.info(
+                "bulk_extract_job_queued",
+                job_id=job_info["id"],
+                dno_slug=job_info["dno_slug"],
+                year=job_info["year"],
+                data_type=job_info["data_type"],
+                mode=request.mode,
+            )
+
     finally:
         await redis_pool.close()
 

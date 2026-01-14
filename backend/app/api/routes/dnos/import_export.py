@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user
+from app.core.constants import VERIFICATION_STATUSES
 from app.core.models import APIResponse
 from app.db import DNOModel, get_db
 
@@ -84,7 +85,7 @@ async def export_dno_data(
                 "arbeit": float(r.arbeit) if r.arbeit else None,
                 "leistung_unter_2500h": float(r.leistung_unter_2500h) if r.leistung_unter_2500h else None,
                 "arbeit_unter_2500h": float(r.arbeit_unter_2500h) if r.arbeit_unter_2500h else None,
-                "verification_status": r.verification_status,
+                "verification_status": r.verification_status if r.verification_status in VERIFICATION_STATUSES else "unverified",
                 "extraction_source": r.extraction_source,
             }
             for r in netz_records
@@ -106,7 +107,7 @@ async def export_dno_data(
                 "fruehling": r.fruehling,
                 "sommer": r.sommer,
                 "herbst": r.herbst,
-                "verification_status": r.verification_status,
+                "verification_status": r.verification_status if r.verification_status in VERIFICATION_STATUSES else "unverified",
                 "extraction_source": r.extraction_source,
             }
             for r in hlzf_records

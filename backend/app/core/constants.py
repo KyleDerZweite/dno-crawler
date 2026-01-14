@@ -71,7 +71,9 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
 
     "höchstspannung mit umspannung auf hochspannung": "HöS/HS",
     "hochspannung mit umspannung auf mittelspannung": "HS/MS",
+    "hochspannung mit umspannung auf ms": "HS/MS",
     "mittelspannung mit umspannung auf niederspannung": "MS/NS",
+    "mittelspannung mit umspannung auf ns": "MS/NS",
 
     "umspannung mittel-/niederspannung": "MS/NS",
     "umspannung mittel -/niederspannung": "MS/NS",

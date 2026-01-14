@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo, Fragment } from "react";
 import { Link } from "react-router-dom";
 import { Zap, Clock, ArrowRight, AlertCircle, Globe } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -156,6 +156,49 @@ export function DataPreviewTables({
         });
     };
 
+    // Group Netzentgelte by year
+    const groupedNetzentgelte = useMemo(() => {
+        if (!netzentgelte) return {};
+        const groups: Record<number, PublicSearchNetzentgelte[]> = {};
+        netzentgelte.forEach((item) => {
+            if (!groups[item.year]) groups[item.year] = [];
+            groups[item.year].push(item);
+        });
+        // Sort items within each group by voltage level
+        Object.values(groups).forEach(group => {
+            group.sort((a, b) => a.voltage_level.localeCompare(b.voltage_level));
+        });
+        return groups;
+    }, [netzentgelte]);
+
+    const sortedNetzentgelteYears = useMemo(() => {
+        return Object.keys(groupedNetzentgelte)
+            .map(Number)
+            .sort((a, b) => b - a);
+    }, [groupedNetzentgelte]);
+
+    // Group HLZF by year
+    const groupedHlzf = useMemo(() => {
+        if (!hlzf) return {};
+        const groups: Record<number, PublicSearchHLZF[]> = {};
+        hlzf.forEach((item) => {
+            if (!groups[item.year]) groups[item.year] = [];
+            groups[item.year].push(item);
+        });
+        // Sort items within each group by voltage level
+        Object.values(groups).forEach(group => {
+            group.sort((a, b) => a.voltage_level.localeCompare(b.voltage_level));
+        });
+        return groups;
+    }, [hlzf]);
+
+    const sortedHlzfYears = useMemo(() => {
+        return Object.keys(groupedHlzf)
+            .map(Number)
+            .sort((a, b) => b - a);
+    }, [groupedHlzf]);
+
+
     if (!hasData) {
         return (
             <Alert>
@@ -190,7 +233,6 @@ export function DataPreviewTables({
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Year</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground" rowSpan={2}>Voltage Level</th>
                                     <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"≥ 2.500 h/a"}</th>
                                     <th className="text-center py-2 px-3 font-medium text-muted-foreground border-l border-border/50" colSpan={2}>{"< 2.500 h/a"}</th>
@@ -204,38 +246,46 @@ export function DataPreviewTables({
                                 </tr>
                             </thead>
                             <tbody>
-                                {netzentgelte.map((item, index) => {
-                                    const itemWithExtras = item as PublicSearchNetzentgelte & {
-                                        leistung_unter_2500h?: number;
-                                        arbeit_unter_2500h?: number;
-                                        verification_status?: string;
-                                    };
-                                    return (
-                                        <tr key={index} className="border-b border-border/50 hover:bg-muted/50">
-                                            <td className="py-2 px-3">{item.year}</td>
-                                            <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
-                                            <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                                <span className="select-all">{formatNumber(item.leistung, 2)}</span>
-                                            </td>
-                                            <td className="py-2 px-3 text-right font-mono">
-                                                <span className="select-all">{formatNumber(item.arbeit, 3)}</span>
-                                            </td>
-                                            <td className="py-2 px-3 text-right font-mono border-l border-border/50">
-                                                <span className="select-all">
-                                                    {itemWithExtras.leistung_unter_2500h ? formatNumber(itemWithExtras.leistung_unter_2500h, 2) : formatNumber(item.leistung, 2)}
-                                                </span>
-                                            </td>
-                                            <td className="py-2 px-3 text-right font-mono">
-                                                <span className="select-all">
-                                                    {itemWithExtras.arbeit_unter_2500h ? formatNumber(itemWithExtras.arbeit_unter_2500h, 3) : formatNumber(item.arbeit, 3)}
-                                                </span>
-                                            </td>
-                                            <td className="py-2 px-3 text-center border-l border-border/50">
-                                                <ReadOnlyVerificationBadge status={itemWithExtras.verification_status} />
+                                {sortedNetzentgelteYears.map((year) => (
+                                    <Fragment key={year}>
+                                        <tr className="bg-muted/30">
+                                            <td colSpan={6} className="py-2 px-3 font-semibold text-muted-foreground border-y border-border/50">
+                                                {year}
                                             </td>
                                         </tr>
-                                    );
-                                })}
+                                        {groupedNetzentgelte[year].map((item, index) => {
+                                            const itemWithExtras = item as PublicSearchNetzentgelte & {
+                                                leistung_unter_2500h?: number;
+                                                arbeit_unter_2500h?: number;
+                                                verification_status?: string;
+                                            };
+                                            return (
+                                                <tr key={index} className="border-b border-border/50 hover:bg-muted/50">
+                                                    <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
+                                                    <td className="py-2 px-3 text-right font-mono border-l border-border/50">
+                                                        <span className="select-all">{formatNumber(item.leistung, 2)}</span>
+                                                    </td>
+                                                    <td className="py-2 px-3 text-right font-mono">
+                                                        <span className="select-all">{formatNumber(item.arbeit, 3)}</span>
+                                                    </td>
+                                                    <td className="py-2 px-3 text-right font-mono border-l border-border/50">
+                                                        <span className="select-all">
+                                                            {itemWithExtras.leistung_unter_2500h ? formatNumber(itemWithExtras.leistung_unter_2500h, 2) : formatNumber(item.leistung, 2)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2 px-3 text-right font-mono">
+                                                        <span className="select-all">
+                                                            {itemWithExtras.arbeit_unter_2500h ? formatNumber(itemWithExtras.arbeit_unter_2500h, 3) : formatNumber(item.arbeit, 3)}
+                                                        </span>
+                                                    </td>
+                                                    <td className="py-2 px-3 text-center border-l border-border/50">
+                                                        <ReadOnlyVerificationBadge status={itemWithExtras.verification_status} />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </Fragment>
+                                ))}
                             </tbody>
                         </table>
                     </div>
@@ -253,7 +303,6 @@ export function DataPreviewTables({
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="border-b">
-                                    <th className="text-left py-2 px-3 font-medium text-muted-foreground w-16">Year</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground w-20">Voltage Level</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Winter</th>
                                     <th className="text-left py-2 px-3 font-medium text-muted-foreground" style={{ width: '16%' }}>Frühling</th>
@@ -263,22 +312,30 @@ export function DataPreviewTables({
                                 </tr>
                             </thead>
                             <tbody>
-                                {hlzf.map((item, index) => {
-                                    const itemWithStatus = item as PublicSearchHLZF & { verification_status?: string };
-                                    return (
-                                        <tr key={index} className="border-b border-border/50 hover:bg-muted/50">
-                                            <td className="py-2 px-3">{item.year}</td>
-                                            <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.winter_ranges, item.winter)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.fruehling_ranges, item.fruehling)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.sommer_ranges, item.sommer)}</td>
-                                            <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.herbst_ranges, item.herbst)}</td>
-                                            <td className="py-2 px-3 text-center">
-                                                <ReadOnlyVerificationBadge status={itemWithStatus.verification_status} />
+                                {sortedHlzfYears.map((year) => (
+                                    <Fragment key={year}>
+                                        <tr className="bg-muted/30">
+                                            <td colSpan={6} className="py-2 px-3 font-semibold text-muted-foreground border-y border-border/50">
+                                                {year}
                                             </td>
                                         </tr>
-                                    );
-                                })}
+                                        {groupedHlzf[year].map((item, index) => {
+                                            const itemWithStatus = item as PublicSearchHLZF & { verification_status?: string };
+                                            return (
+                                                <tr key={index} className="border-b border-border/50 hover:bg-muted/50">
+                                                    <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
+                                                    <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.winter_ranges, item.winter)}</td>
+                                                    <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.fruehling_ranges, item.fruehling)}</td>
+                                                    <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.sommer_ranges, item.sommer)}</td>
+                                                    <td className="py-2 px-3 font-mono align-top">{renderTimeRanges(item.herbst_ranges, item.herbst)}</td>
+                                                    <td className="py-2 px-3 text-center">
+                                                        <ReadOnlyVerificationBadge status={itemWithStatus.verification_status} />
+                                                    </td>
+                                                </tr>
+                                            );
+                                        })}
+                                    </Fragment>
+                                ))}
                             </tbody>
                         </table>
                     </div>
