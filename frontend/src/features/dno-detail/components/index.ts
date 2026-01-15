@@ -12,4 +12,4 @@ export { EditRecordDialog } from "./EditRecordDialog";
 export { FilesJobsPanel } from "./FilesJobsPanel";
 export { DNOHeader } from "./DNOHeader";
 export { SourceDataAccordion } from "./SourceDataAccordion";
-
+export { DetailContextSidebar } from "./DetailContextSidebar";

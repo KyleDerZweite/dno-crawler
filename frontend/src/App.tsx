@@ -11,6 +11,14 @@ import { JobDetailsPage } from "./pages/JobDetailsPage";
 import SearchPage from "./pages/SearchPage";
 import LandingPage from "./pages/LandingPage";
 import LogoutPage from "./pages/LogoutPage";
+import {
+  Overview,
+  DataExplorer,
+  Analysis,
+  SourceFiles,
+  JobHistory,
+  Tools,
+} from "./features/dno-detail/views";
 
 function LoginRedirect() {
   const { isAuthenticated, isLoading, login } = useAuth();
@@ -62,7 +70,16 @@ function App() {
         <Route path="dashboard" element={<DashboardPage />} />
         <Route path="search" element={<SearchPage />} />
         <Route path="dnos" element={<DNOsPage />} />
-        <Route path="dnos/:id" element={<DNODetailPage />} />
+        {/* DNO Detail with nested routes */}
+        <Route path="dnos/:id" element={<DNODetailPage />}>
+          <Route index element={<Navigate to="overview" replace />} />
+          <Route path="overview" element={<Overview />} />
+          <Route path="data" element={<DataExplorer />} />
+          <Route path="analysis" element={<Analysis />} />
+          <Route path="files" element={<SourceFiles />} />
+          <Route path="jobs" element={<JobHistory />} />
+          <Route path="tools" element={<Tools />} />
+        </Route>
         <Route path="jobs" element={<JobsPage />} />
         <Route path="jobs/:id" element={<JobDetailsPage />} />
         <Route path="admin" element={<AdminPage />} />

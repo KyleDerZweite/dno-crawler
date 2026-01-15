@@ -45,9 +45,19 @@ export function Layout() {
     : navigation
 
   // Responsive sidebar: auto-collapse on medium screens, expand on large
+  // Also force collapse on DNO detail pages to make room for context sidebar
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth
+      // Check if we're on a DNO detail page (has /dnos/:id/ pattern)
+      const isDNODetailPage = /^\/dnos\/[^/]+\//.test(location.pathname) || /^\/dnos\/[^/]+$/.test(location.pathname);
+
+      // Force collapse on DNO detail pages regardless of screen size
+      if (isDNODetailPage) {
+        setSidebarExpanded(false);
+        return;
+      }
+
       // Only auto-adjust if user hasn't manually toggled
       if (!isManualToggle) {
         if (width >= 1280) {
@@ -65,7 +75,7 @@ export function Layout() {
 
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize); }
-  }, [isManualToggle])
+  }, [isManualToggle, location.pathname])
 
   // Reset manual toggle when crossing breakpoints significantly
   useEffect(() => {
@@ -147,7 +157,7 @@ export function Layout() {
               </span>
             )}
           </Link>
-          
+
           {/* Collapse button - desktop only */}
           <button
             onClick={() => {
@@ -164,7 +174,7 @@ export function Layout() {
               sidebarExpanded && "rotate-180"
             )} />
           </button>
-          
+
           {/* Mobile close button */}
           <Button
             variant="ghost"
@@ -184,7 +194,7 @@ export function Layout() {
                 const isActive =
                   location.pathname === item.href ||
                   location.pathname.startsWith(item.href + "/")
-                
+
                 const linkContent = (
                   <Link
                     key={item.name}
@@ -207,7 +217,7 @@ export function Layout() {
                     {sidebarExpanded && <span className="text-sm">{item.name}</span>}
                   </Link>
                 )
-                
+
                 if (!sidebarExpanded) {
                   return (
                     <Tooltip key={item.name}>
@@ -220,12 +230,12 @@ export function Layout() {
                     </Tooltip>
                   )
                 }
-                
+
                 return linkContent
               })}
             </TooltipProvider>
           </div>
-          
+
           {/* Settings link - separate section */}
           <div className="mt-6 pt-4 border-t border-border">
             <TooltipProvider delayDuration={0}>
@@ -252,7 +262,7 @@ export function Layout() {
                     {sidebarExpanded && <span className="text-sm">Settings</span>}
                   </Link>
                 )
-                
+
                 if (!sidebarExpanded) {
                   return (
                     <Tooltip>
@@ -265,7 +275,7 @@ export function Layout() {
                     </Tooltip>
                   )
                 }
-                
+
                 return settingsLink
               })()}
             </TooltipProvider>
