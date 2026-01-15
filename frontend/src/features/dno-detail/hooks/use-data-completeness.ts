@@ -60,13 +60,11 @@ export function useDataCompleteness({
             }
         });
 
+        // Determine voltage levels this DNO has HLZF records for
+        // Count presence of records, not just non-empty values
         const hlzfVoltageLevels = new Set<string>();
         hlzf.forEach((item) => {
-            const hasWinter = isValidValue(item.winter);
-            const hasHerbst = isValidValue(item.herbst);
-            const hasFruehling = isValidValue(item.fruehling);
-            const hasSommer = isValidValue(item.sommer);
-            if (hasWinter || hasHerbst || hasFruehling || hasSommer) {
+            if (item.voltage_level) {
                 hlzfVoltageLevels.add(item.voltage_level);
             }
         });
@@ -97,21 +95,16 @@ export function useDataCompleteness({
             }
         });
 
-        // Count HLZF records with actual time data
-        // Only count records for voltage levels that exist in this DNO
+        // Count HLZF records - any record that exists counts
+        // (the presence of the record means data was extracted, even if all values are '-')
         let hlzfValid = 0;
         hlzf.forEach((item) => {
             // Only count if this voltage level is valid for this DNO
             if (!hlzfVoltageLevels.has(item.voltage_level) && allVoltageLevels.size > 0) {
                 return; // Skip voltage levels that don't exist for this DNO
             }
-            const hasWinter = isValidValue(item.winter);
-            const hasHerbst = isValidValue(item.herbst);
-            const hasFruehling = isValidValue(item.fruehling);
-            const hasSommer = isValidValue(item.sommer);
-            if (hasWinter || hasHerbst || hasFruehling || hasSommer) {
-                hlzfValid++;
-            }
+            // Count any record that exists
+            hlzfValid++;
         });
 
         // Calculate percentages for each type (capped at 100%)

@@ -78,6 +78,7 @@ DNO: {dno_name}
 Year: {year}
 
 IMPORTANT: Extract ALL voltage levels present in the document - the number varies by DNO:
+- Note: "Umspannung MSP/NSP" maps to "MS/NS".
 - Large DNOs typically have 5 levels: HS, HS/MS, MS, MS/NS, NS
 - Small municipal utilities often only have 3 levels: MS, MS/NS, NS (no high voltage infrastructure)
 - TSOs may have HöS (Höchstspannung) instead of NS

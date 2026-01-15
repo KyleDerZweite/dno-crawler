@@ -143,25 +143,35 @@ export function DetailContextSidebar({
                 ))}
             </nav>
 
-            {/* Meta Footer */}
-            <div className="p-4 border-t bg-muted/5">
-                <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Completeness</span>
-                    <span className="text-xs font-bold">{completeness.percentage.toFixed(0)}%</span>
+            {/* Meta Footer - matches Layout.tsx user section height:
+                p-3 padding, 3 rows of h-5 (20px) with space-y-3 gaps
+                = 3×20 + 2×12 = 84px = same as 2×h-9 + space-y-3 */}
+            <div className="border-t border-border p-3 bg-muted/5">
+                <div className="space-y-3">
+                    {/* Row 1: Label + percentage */}
+                    <div className="flex items-center justify-between h-5">
+                        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Completeness</span>
+                        <span className="text-sm font-bold">{completeness.percentage.toFixed(0)}%</span>
+                    </div>
+                    {/* Row 2: Progress bar */}
+                    <div className="h-5 flex items-center">
+                        <div className="h-3 w-full bg-muted rounded-full overflow-hidden">
+                            <div
+                                className={cn("h-full rounded-full transition-all",
+                                    completeness.percentage >= 80 ? "bg-green-500" :
+                                        completeness.percentage >= 50 ? "bg-amber-500" : "bg-red-500"
+                                )}
+                                style={{ width: `${completeness.percentage}%` }}
+                            />
+                        </div>
+                    </div>
+                    {/* Row 3: Description */}
+                    <p className="h-5 flex items-center text-[10px] text-muted-foreground">
+                        {completeness.voltageLevels} levels · {completeness.years} years
+                    </p>
                 </div>
-                <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
-                    <div
-                        className={cn("h-full rounded-full transition-all",
-                            completeness.percentage >= 80 ? "bg-green-500" :
-                                completeness.percentage >= 50 ? "bg-amber-500" : "bg-red-500"
-                        )}
-                        style={{ width: `${completeness.percentage}%` }}
-                    />
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-2">
-                    {completeness.voltageLevels} levels available for {completeness.years} years
-                </p>
             </div>
         </aside>
     );
 }
+

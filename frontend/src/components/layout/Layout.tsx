@@ -44,13 +44,14 @@ export function Layout() {
     ? [...navigation, ...adminNavigation]
     : navigation
 
+  // Check if we're on a DNO detail page (has /dnos/:id pattern)
+  const isDNODetailPage = /^\/dnos\/[^/]+/.test(location.pathname) && location.pathname !== '/dnos';
+
   // Responsive sidebar: auto-collapse on medium screens, expand on large
   // Also force collapse on DNO detail pages to make room for context sidebar
   useEffect(() => {
     const handleResize = () => {
       const width = window.innerWidth
-      // Check if we're on a DNO detail page (has /dnos/:id/ pattern)
-      const isDNODetailPage = /^\/dnos\/[^/]+\//.test(location.pathname) || /^\/dnos\/[^/]+$/.test(location.pathname);
 
       // Force collapse on DNO detail pages regardless of screen size
       if (isDNODetailPage) {
@@ -75,7 +76,7 @@ export function Layout() {
 
     window.addEventListener('resize', handleResize)
     return () => { window.removeEventListener('resize', handleResize); }
-  }, [isManualToggle, location.pathname])
+  }, [isManualToggle, isDNODetailPage])
 
   // Reset manual toggle when crossing breakpoints significantly
   useEffect(() => {
@@ -371,9 +372,14 @@ export function Layout() {
 
         {/* Main Content */}
         <main className="flex-1 min-h-screen">
-          <div className="container mx-auto p-6 md:p-8 max-w-7xl animate-in fade-in duration-300">
+          {/* DNO detail pages handle their own layout (dual sidebar) - skip container wrapper */}
+          {isDNODetailPage ? (
             <Outlet />
-          </div>
+          ) : (
+            <div className="container mx-auto p-6 md:p-8 max-w-7xl animate-in fade-in duration-300">
+              <Outlet />
+            </div>
+          )}
         </main>
       </div>
     </div>

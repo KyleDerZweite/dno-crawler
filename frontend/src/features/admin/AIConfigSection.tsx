@@ -840,6 +840,20 @@ function ProviderDialog({
         setTestResult(null);
 
         try {
+            // Build model_parameters for the test
+            const testModelParameters: Record<string, any> = {};
+            if (thinkingEnabled) {
+                const effectiveMethod = manualThinkingMethod !== "none"
+                    ? manualThinkingMethod
+                    : (thinkingCapability ? (thinkingCapability.method === "budget" ? "budget" : "level") : "none");
+
+                if (effectiveMethod === "budget") {
+                    testModelParameters.thinking_budget = thinkingBudget;
+                } else if (effectiveMethod === "level") {
+                    testModelParameters.thinking_level = thinkingLevel;
+                }
+            }
+
             // Call the real test endpoint
             const response = await api.admin.testAIConfigPreview({
                 provider_type: providerType,
@@ -847,6 +861,7 @@ function ProviderDialog({
                 model: model,
                 api_key: authType === "api_key" ? apiKey : undefined,
                 api_url: apiUrl || defaultUrl || undefined,
+                model_parameters: Object.keys(testModelParameters).length > 0 ? testModelParameters : undefined,
             });
 
             if (response.success) {
@@ -1154,22 +1169,44 @@ function ProviderDialog({
                                     <div className="space-y-2">
                                         <div className="flex justify-between items-center">
                                             <Label>Token Budget</Label>
-                                            <Badge variant="outline" className="font-mono text-xs">
-                                                {thinkingBudget.toLocaleString()} tokens
-                                            </Badge>
+                                            <div className="flex items-center gap-2">
+                                                <Label htmlFor="auto-budget" className="text-xs text-muted-foreground cursor-pointer">
+                                                    Auto
+                                                </Label>
+                                                <Switch
+                                                    id="auto-budget"
+                                                    checked={thinkingBudget === -1}
+                                                    onCheckedChange={(checked) => {
+                                                        if (checked) {
+                                                            setThinkingBudget(-1);
+                                                        } else {
+                                                            setThinkingBudget(thinkingCapability?.min || 1024);
+                                                        }
+                                                    }}
+                                                />
+                                            </div>
                                         </div>
-                                        <NumberInput
-                                            value={thinkingBudget}
-                                            onChange={setThinkingBudget}
-                                            min={thinkingCapability?.min || 1024}
-                                            max={thinkingCapability?.max || 64000}
-                                            step={1024}
-                                            className="w-full"
-                                        />
-                                        <div className="flex justify-between text-[11px] text-muted-foreground">
-                                            <span>Min: {thinkingCapability?.min || 1024}</span>
-                                            <span>Max: {thinkingCapability?.max || 64000}</span>
-                                        </div>
+                                        {thinkingBudget === -1 ? (
+                                            <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 border border-primary/20">
+                                                <Zap className="h-4 w-4 text-primary" />
+                                                <span className="text-sm">Automatic — Model determines optimal budget</span>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <NumberInput
+                                                    value={thinkingBudget}
+                                                    onChange={setThinkingBudget}
+                                                    min={thinkingCapability?.min || 1024}
+                                                    max={thinkingCapability?.max || 64000}
+                                                    step={1024}
+                                                    className="w-full"
+                                                />
+                                                <div className="flex justify-between text-[11px] text-muted-foreground">
+                                                    <span>Min: {thinkingCapability?.min || 1024}</span>
+                                                    <span>Max: {thinkingCapability?.max || 64000}</span>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 )}
 

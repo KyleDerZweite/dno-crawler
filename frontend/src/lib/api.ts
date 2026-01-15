@@ -1037,6 +1037,7 @@ export const api = {
       model: string;
       api_key?: string;
       api_url?: string;
+      model_parameters?: Record<string, any>;
     }): Promise<
       ApiResponse<{
         model: string;

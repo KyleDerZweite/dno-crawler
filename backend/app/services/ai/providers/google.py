@@ -220,6 +220,16 @@ class GoogleProvider(AIProviderInterface):
                 status=response.status_code,
                 error=error_text,
             )
+            
+            if response.status_code == 429:
+                from openai import RateLimitError
+                # Create a mock response for the error if needed, or just pass message
+                raise RateLimitError(
+                    message=f"Google Code Assist API rate limit exceeded: {error_text}",
+                    response=response,
+                    body=response.json() if response.status_code == 429 else None
+                )
+                
             raise Exception(f"Cloud Code Assist API error: {response.status_code} - {error_text}")
 
         result = response.json()
@@ -271,6 +281,15 @@ class GoogleProvider(AIProviderInterface):
                 status=response.status_code,
                 error=error_text,
             )
+            
+            if response.status_code == 429:
+                from openai import RateLimitError
+                raise RateLimitError(
+                    message=f"Google Generative API rate limit exceeded: {error_text}",
+                    response=response,
+                    body=response.json() if response.status_code == 429 else None
+                )
+
             raise Exception(f"Generative Language API error: {response.status_code} - {error_text}")
 
         return response.json()
@@ -292,25 +311,29 @@ class GoogleProvider(AIProviderInterface):
         model_params = self.config.model_parameters or {}
         thinking_config = {}
 
-        # Handle Thinking Level (Gemini 3)
+        # Handle Thinking Budget (Gemini 2.5+)
+        # -1 = automatic allocation, 0 = disable, > 0 = specific limit
+        if "thinking_budget" in model_params:
+            budget = model_params["thinking_budget"]
+            if budget is not None:
+                budget_int = int(budget)
+                if budget_int == -1:
+                    # Automatic allocation - API docs say omission works, 
+                    # but for Code Assist API we must send includeThoughts to get them back
+                    thinking_config["includeThoughts"] = True
+                elif budget_int > 0:
+                    thinking_config["includeThoughts"] = True
+                    thinking_config["thinkingBudget"] = budget_int
+                elif budget_int == 0:
+                    # Explicitly disable
+                    thinking_config["includeThoughts"] = False
+
+        # Handle Thinking Level (Gemini 3+)
         if "thinking_level" in model_params:
             level = model_params["thinking_level"]  # low, high
             if level:
                 thinking_config["includeThoughts"] = True
-                # Map our UI values to API logic if needed, but "low"/"high" usually match
-                # If using minimal, we might need special handling, but assume pass-through for now
-                pass
-
-        # Handle Thinking Budget (Gemini 2.5)
-        if "thinking_budget" in model_params:
-            budget = model_params["thinking_budget"]
-            if budget and int(budget) > 0:
-                thinking_config["includeThoughts"] = True
-                thinking_config["thinkingBudgetTokenLimit"] = int(budget)
-            elif budget == 0:
-                # Explicitly disable
-                thinking_config["includeThoughts"] = False
-                thinking_config["thinkingBudgetTokenLimit"] = 0
+                thinking_config["thinkingLevel"] = level.upper()
 
         # Apply thinking config if set
         if thinking_config:
@@ -369,16 +392,41 @@ Content to extract from:
             system_instruction=system_instruction,
         )
 
-        # Extract text from response
+        # Extract text from response (extract result text, skipping thoughts)
         response_text = ""
-        if "candidates" in response:
+        thoughts = ""
+        if "candidates" in response and response["candidates"]:
             candidate = response["candidates"][0]
             if "content" in candidate:
                 parts = candidate["content"].get("parts", [])
-                if parts:
-                    response_text = parts[0].get("text", "")
+                for part in parts:
+                    if part.get("thought"):
+                        thoughts += part.get("text", "") + "\n"
+                    elif "text" in part:
+                        # This is the actual response text
+                        response_text = part["text"]
+                        # Usually the result is in the last text part after thoughts
 
-        result = json.loads(response_text)
+        if not response_text:
+            logger.error(
+                "google_extraction_empty_response",
+                model=self.model_name,
+                response_keys=list(response.keys()),
+                has_candidates=bool(response.get("candidates")),
+            )
+            # If we have candidates but no text, might be a safety block
+            if "candidates" in response and response["candidates"]:
+                candidate = response["candidates"][0]
+                if "finishReason" in candidate:
+                    logger.warning("google_extraction_finish_reason", reason=candidate["finishReason"])
+            
+            raise ValueError(f"Google AI returned an empty response (Model: {self.model_name})")
+
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error("google_extraction_json_parse_error", error=str(e), text=response_text[:500])
+            raise ValueError(f"Failed to parse JSON response from Google AI: {str(e)}")
 
         # Extract usage if available
         usage = None
@@ -398,6 +446,7 @@ Content to extract from:
 
         result["_extraction_meta"] = {
             "raw_response": response_text,
+            "thoughts": thoughts.strip() if thoughts else None,
             "mode": "text",
             "provider": "google",
             "model": self.model_name,
@@ -446,16 +495,32 @@ Content to extract from:
             system_instruction=system_instruction,
         )
 
-        # Extract text from response
+        # Extract text from response (skipping thoughts)
         response_text = ""
-        if "candidates" in response:
+        thoughts = ""
+        if "candidates" in response and response["candidates"]:
             candidate = response["candidates"][0]
             if "content" in candidate:
                 parts = candidate["content"].get("parts", [])
-                if parts:
-                    response_text = parts[0].get("text", "")
+                for part in parts:
+                    if part.get("thought"):
+                        thoughts += part.get("text", "") + "\n"
+                    elif "text" in part:
+                        response_text = part["text"]
 
-        result = json.loads(response_text)
+        if not response_text:
+            logger.error(
+                "google_extraction_empty_vision_response",
+                model=self.model_name,
+                response_keys=list(response.keys()),
+            )
+            raise ValueError(f"Google AI returned an empty response for vision/pdf (Model: {self.model_name})")
+
+        try:
+            result = json.loads(response_text)
+        except json.JSONDecodeError as e:
+            logger.error("google_extraction_vision_json_parse_error", error=str(e), text=response_text[:500])
+            raise ValueError(f"Failed to parse JSON response from Google AI: {str(e)}")
 
         # Extract usage if available
         usage = None
@@ -475,6 +540,7 @@ Content to extract from:
 
         result["_extraction_meta"] = {
             "raw_response": response_text,
+            "thoughts": thoughts.strip() if thoughts else None,
             "mode": "vision",
             "mime_type": mime_type,
             "provider": "google",

@@ -55,7 +55,7 @@ export function NetzentgelteTable({
 
     const formatNumber = (val: number | undefined | null, decimals: number) => {
         if (val === undefined || val === null) return "-";
-        
+
         return val.toLocaleString(decimalFormat === 'DE' ? 'de-DE' : 'en-US', {
             minimumFractionDigits: decimals,
             maximumFractionDigits: decimals,
@@ -66,7 +66,7 @@ export function NetzentgelteTable({
         <Card className="p-6 min-h-[320px]">
             <div className="flex items-center justify-between mb-4">
                 <h2 className="text-lg font-semibold flex items-center gap-2">
-                    <Zap className="h-5 w-5 text-blue-500" />
+                    <Zap className="h-5 w-5 text-purple-500" />
                     Netzentgelte
                 </h2>
                 <Button
@@ -190,8 +190,7 @@ export function NetzentgelteTable({
                                                             </Button>
                                                         }
                                                         isOpen={openMenuId === `netz-${item.id}`}
-                                                        onOpenChange={(isOpen) =>
-                                                            { onMenuOpenChange(isOpen ? `netz-${item.id}` : null); }
+                                                        onOpenChange={(isOpen) => { onMenuOpenChange(isOpen ? `netz-${item.id}` : null); }
                                                         }
                                                         className="bg-popover border rounded-md shadow-md py-1"
                                                     >

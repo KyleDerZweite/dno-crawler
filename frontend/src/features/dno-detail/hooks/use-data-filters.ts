@@ -44,12 +44,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
         });
         hlzf.forEach((item) => {
             years.add(item.year);
-            // Only add voltage level if it has at least one real value
-            const hasData = isValidValue(item.winter) ||
-                isValidValue(item.herbst) ||
-                isValidValue(item.fruehling) ||
-                isValidValue(item.sommer);
-            if (item.voltage_level && hasData) {
+            if (item.voltage_level) {
                 voltageLevels.add(item.voltage_level);
             }
         });
@@ -150,12 +145,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
             if (yearFilter.length > 0 && !yearFilter.includes(item.year)) return false;
             if (voltageLevelFilter.length > 0 && !voltageLevelFilter.includes(item.voltage_level))
                 return false;
-            // Exclude records with no actual data
-            const hasData = isValidValue(item.winter) ||
-                isValidValue(item.herbst) ||
-                isValidValue(item.fruehling) ||
-                isValidValue(item.sommer);
-            return hasData;
+            return true;
         });
         return sortByVoltageLevel(filtered);
     }, [hlzf, yearFilter, voltageLevelFilter]);

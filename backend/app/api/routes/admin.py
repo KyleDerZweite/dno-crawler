@@ -900,6 +900,7 @@ class AIConfigCreate(BaseModel):
     supports_text: bool = True
     supports_vision: bool = False
     supports_files: bool = False
+    model_parameters: dict | None = None
 
 
 class AIConfigUpdate(BaseModel):
@@ -912,6 +913,7 @@ class AIConfigUpdate(BaseModel):
     supports_vision: bool | None = None
     supports_files: bool | None = None
     is_enabled: bool | None = None
+    model_parameters: dict | None = None
 
 
 class AIConfigReorder(BaseModel):
@@ -949,6 +951,7 @@ async def list_ai_configs(
             "priority": config.priority,
             "status": config.status_display,
             "is_subscription": config.is_subscription,
+            "model_parameters": config.model_parameters,
             "last_success_at": config.last_success_at.isoformat() if config.last_success_at else None,
             "last_error_at": config.last_error_at.isoformat() if config.last_error_at else None,
             "last_error_message": config.last_error_message,
@@ -985,6 +988,7 @@ async def create_ai_config(
         supports_text=request.supports_text,
         supports_vision=request.supports_vision,
         supports_files=request.supports_files,
+        model_parameters=request.model_parameters,
         created_by=admin.id,
     )
 
@@ -1019,6 +1023,7 @@ async def update_ai_config(
         supports_vision=request.supports_vision,
         supports_files=request.supports_files,
         is_enabled=request.is_enabled,
+        model_parameters=request.model_parameters,
         modified_by=admin.id,
     )
 
@@ -1107,6 +1112,7 @@ class AIConfigTestRequest(BaseModel):
     model: str
     api_key: str | None = None
     api_url: str | None = None
+    model_parameters: dict | None = None
 
 
 @router.post("/ai-config/test")
@@ -1149,6 +1155,7 @@ async def test_ai_config_preview(
             supports_text=True,
             is_enabled=True,
             oauth_refresh_token_encrypted=None,
+            model_parameters=request.model_parameters,
         )
 
         # Create provider instance

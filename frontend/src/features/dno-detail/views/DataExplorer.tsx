@@ -6,7 +6,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Download, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { cn } from "@/lib/utils";
 import {
     NetzentgelteTable,
     HLZFTable,
@@ -20,7 +19,6 @@ export function DataExplorer() {
     const { toast } = useToast();
 
     // Local state
-    const [dataSubTab, setDataSubTab] = useState<"netzentgelte" | "hlzf">("netzentgelte");
     const [openMenuId, setOpenMenuId] = useState<string | null>(null);
     const [editModalOpen, setEditModalOpen] = useState(false);
     const [editModalType, setEditModalType] = useState<'netzentgelte' | 'hlzf'>('netzentgelte');
@@ -127,26 +125,10 @@ export function DataExplorer() {
     };
 
     return (
-        <div className="space-y-4 animate-in fade-in duration-300">
+        <div className="space-y-6 animate-in fade-in duration-300">
+            {/* Header with Import/Export */}
             <div className="flex items-center justify-between">
-                {/* Data Type Pills */}
-                <div className="flex p-1 bg-muted rounded-lg w-fit">
-                    <button
-                        onClick={() => setDataSubTab("netzentgelte")}
-                        className={cn("px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                            dataSubTab === "netzentgelte" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
-                    >
-                        Netzentgelte
-                    </button>
-                    <button
-                        onClick={() => setDataSubTab("hlzf")}
-                        className={cn("px-4 py-1.5 text-sm font-medium rounded-md transition-all",
-                            dataSubTab === "hlzf" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground")}
-                    >
-                        HLZF
-                    </button>
-                </div>
-
+                <h2 className="text-lg font-semibold">Data Explorer</h2>
                 <div className="flex gap-2">
                     <Button variant="outline" size="sm" onClick={() => importFileRef.current?.click()}>
                         <Upload className="mr-2 h-4 w-4" /> Import
@@ -189,39 +171,40 @@ export function DataExplorer() {
                 ))}
             </div>
 
-            {/* Table Area */}
-            <div className="border rounded-lg bg-card overflow-hidden min-h-[500px]">
-                {dataSubTab === "netzentgelte" ? (
-                    <NetzentgelteTable
-                        data={filteredNetzentgelte}
-                        isLoading={dataLoading}
-                        dnoId={String(numericId)}
-                        isAdmin={isAdmin}
-                        onEdit={(item: Netzentgelte) => {
-                            setEditModalType('netzentgelte');
-                            setEditRecord({ id: item.id, leistung: item.leistung ?? undefined, arbeit: item.arbeit ?? undefined });
-                            setEditModalOpen(true);
-                        }}
-                        onDelete={(id: number) => deleteNetzentgelteMutation.mutate(id)}
-                        openMenuId={openMenuId}
-                        onMenuOpenChange={setOpenMenuId}
-                    />
-                ) : (
-                    <HLZFTable
-                        data={filteredHLZF}
-                        isLoading={dataLoading}
-                        dnoId={numericId!}
-                        isAdmin={isAdmin}
-                        onEdit={(item: HLZF) => {
-                            setEditModalType('hlzf');
-                            setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
-                            setEditModalOpen(true);
-                        }}
-                        onDelete={(id: number) => deleteHLZFMutation.mutate(id)}
-                        openMenuId={openMenuId}
-                        onMenuOpenChange={setOpenMenuId}
-                    />
-                )}
+            {/* Netzentgelte Table */}
+            <div className="border rounded-lg bg-card overflow-hidden">
+                <NetzentgelteTable
+                    data={filteredNetzentgelte}
+                    isLoading={dataLoading}
+                    dnoId={String(numericId)}
+                    isAdmin={isAdmin}
+                    onEdit={(item: Netzentgelte) => {
+                        setEditModalType('netzentgelte');
+                        setEditRecord({ id: item.id, leistung: item.leistung ?? undefined, arbeit: item.arbeit ?? undefined });
+                        setEditModalOpen(true);
+                    }}
+                    onDelete={(id: number) => deleteNetzentgelteMutation.mutate(id)}
+                    openMenuId={openMenuId}
+                    onMenuOpenChange={setOpenMenuId}
+                />
+            </div>
+
+            {/* HLZF Table */}
+            <div className="border rounded-lg bg-card overflow-hidden">
+                <HLZFTable
+                    data={filteredHLZF}
+                    isLoading={dataLoading}
+                    dnoId={numericId!}
+                    isAdmin={isAdmin}
+                    onEdit={(item: HLZF) => {
+                        setEditModalType('hlzf');
+                        setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
+                        setEditModalOpen(true);
+                    }}
+                    onDelete={(id: number) => deleteHLZFMutation.mutate(id)}
+                    openMenuId={openMenuId}
+                    onMenuOpenChange={setOpenMenuId}
+                />
             </div>
 
             <EditRecordDialog

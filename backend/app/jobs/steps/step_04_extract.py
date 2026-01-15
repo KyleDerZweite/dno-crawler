@@ -415,28 +415,12 @@ class ExtractStep(BaseStep):
         """
         Check HLZF extraction quality.
 
-        Rules:
-        - At least 2 voltage levels (small DNOs may only have MS, MS/NS, NS)
-        - At least one record has winter or herbst time window (peak load is in cold months)
+        # Rules:
+        # - At least 2 voltage levels (allowing for TSOs or very small DNOs)
+        # - Empty windows are allowed if explicitly extracted as "-"
         """
         if len(records) < 2:
             return False, f"Missing voltage levels: only {len(records)} extracted (minimum 2 required)"
-
-        # Check if value is valid time data (not null, "-", or "entfällt")
-        def is_valid_time(v):
-            if v is None:
-                return False
-            v_str = str(v).strip().lower()
-            return v_str not in ["-", "entfällt", "null", "none", ""]
-
-        # Check at least one record has winter or herbst data (peak load times)
-        has_peak_time = any(
-            is_valid_time(record.get("winter")) or is_valid_time(record.get("herbst"))
-            for record in records
-        )
-
-        if not has_peak_time:
-            return False, "No records with winter or herbst time window (peak load times missing)"
 
         return True, "OK"
 

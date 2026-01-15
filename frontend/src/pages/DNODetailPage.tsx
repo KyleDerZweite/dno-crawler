@@ -154,7 +154,7 @@ export function DNODetailPage() {
     };
 
     return (
-        <div className="flex h-[calc(100vh-4rem)] overflow-hidden bg-background">
+        <div className="flex h-screen overflow-hidden bg-background">
             {/* Context Sidebar */}
             <DetailContextSidebar
                 dno={dno}
@@ -170,10 +170,10 @@ export function DNODetailPage() {
 
             {/* Workspace */}
             <main className="flex-1 flex flex-col min-w-0">
-                {/* Breadcrumbs Header */}
-                <header className="h-14 border-b px-6 flex items-center gap-2 bg-background/50 backdrop-blur shrink-0 sticky top-0 z-10">
+                {/* Breadcrumbs Header - h-16 to align with global sidebar header */}
+                <header className="h-16 border-b px-6 flex items-center gap-2 bg-background/50 backdrop-blur shrink-0 sticky top-0 z-10">
                     <Button variant="ghost" size="icon" asChild className="h-8 w-8 -ml-2 text-muted-foreground">
-                        <Link to="/"><Home className="h-4 w-4" /></Link>
+                        <Link to="/dashboard"><Home className="h-4 w-4" /></Link>
                     </Button>
                     <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
                     <Link to="/dnos" className="text-sm text-muted-foreground hover:text-foreground">DNOs</Link>

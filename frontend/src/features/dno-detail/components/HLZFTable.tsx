@@ -112,7 +112,7 @@ export function HLZFTable({
     return (
         <Card className="p-6 min-h-[320px]">
             <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-                <Clock className="h-5 w-5 text-purple-500" />
+                <Clock className="h-5 w-5 text-blue-500" />
                 HLZF (Hochlastzeitfenster)
             </h2>
 
@@ -216,8 +216,7 @@ export function HLZFTable({
                                                             </Button>
                                                         }
                                                         isOpen={openMenuId === `hlzf-${item.id}`}
-                                                        onOpenChange={(isOpen) =>
-                                                            { onMenuOpenChange(isOpen ? `hlzf-${item.id}` : null); }
+                                                        onOpenChange={(isOpen) => { onMenuOpenChange(isOpen ? `hlzf-${item.id}` : null); }
                                                         }
                                                         className="bg-popover border rounded-md shadow-md py-1"
                                                     >

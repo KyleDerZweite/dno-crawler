@@ -72,17 +72,19 @@ FALLBACK_MODELS = {
          "thinking_capability": {"method": "level", "options": ["low", "high"], "default": "high", "can_disable": False}},
 
         # Gemini 2.5 Series (Budget-based)
+        {"id": "gemini-2.5-pro", "name": "Gemini 2.5 Pro", "supports_vision": True, "supports_files": True, "tier": "high",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": -1, "can_disable": True, "dynamic_param": -1}},
+
         {"id": "gemini-2.5-flash", "name": "Gemini 2.5 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient",
-         "thinking_capability": {"method": "budget", "min": 0, "max": 24576, "default": -1, "can_disable": True, "dynamic_param": -1}},
-         # Note: -1 enables Dynamic Thinking
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": -1, "can_disable": True, "dynamic_param": -1}},
 
-        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "supports_vision": True, "supports_files": True, "tier": "budget",
-         "thinking_capability": {"method": "budget", "min": 512, "max": 24576, "default": 0, "can_disable": True, "dynamic_param": -1}},
-         # Lite defaults to NO thinking (0), but can be forced via budget or dynamic (-1)
+        {"id": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash Lite", "supports_vision": True, "supports_files": False, "tier": "budget",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True, "dynamic_param": -1}},
 
-        # Legacy / Experimental
-        {"id": "gemini-2.0-flash-thinking-exp", "name": "Gemini 2.0 Flash Thinking", "supports_vision": True, "supports_files": True, "tier": "efficient",
-         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True}}
+        # Gemini 2.0 Series (No Thinking)
+        {"id": "gemini-2.0-flash", "name": "Gemini 2.0 Flash", "supports_vision": True, "supports_files": True, "tier": "efficient"},
+        {"id": "gemini-2.0-flash-lite", "name": "Gemini 2.0 Flash Lite", "supports_vision": True, "supports_files": False, "tier": "budget"}
+
     ],
     "anthropic": [
         # Hypothetical Future Models (Assumed to inherit Sonnet 3.7 traits)
@@ -98,8 +100,11 @@ FALLBACK_MODELS = {
     "openrouter": [
         {"id": "openai/gpt-5", "name": "GPT-5", "supports_vision": True, "supports_files": False, "tier": "efficient"},
         
-        {"id": "google/gemini-2.0-flash-thinking-exp", "name": "Gemini 2.0 Flash Thinking", "supports_vision": True, "supports_files": True, "tier": "efficient",
-         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True}},
+        {"id": "google/gemini-2.5-flash-lite-preview-09-2025", "name": "Gemini 2.5 Flash Lite", "supports_vision": True, "supports_files": True, "tier": "efficient",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 32768, "default": 0, "can_disable": True, "dynamic_param": -1}},
+        
+        {"id": "google/gemini-2.5-pro-preview-09-2025", "name": "Gemini 2.5 Pro", "supports_vision": True, "supports_files": True, "tier": "high",
+         "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": -1, "can_disable": True, "dynamic_param": -1}},
          
         {"id": "anthropic/claude-3.7-sonnet", "name": "Claude 3.7 Sonnet", "supports_vision": True, "supports_files": True, "tier": "efficient",
          "thinking_capability": {"method": "budget", "min": 1024, "max": 64000, "default": 16000, "can_disable": True}},
