@@ -63,8 +63,18 @@ apiClient.interceptors.response.use(
 // Types
 
 // AI Provider Configuration Types
-export type AIProviderType = "openrouter" | "litellm" | "custom";
+// Provider types are now dynamically fetched, but we keep string type for compatibility
+export type AIProviderType = string;
 export type AIAuthType = "api_key";
+
+// Provider info returned from backend (for dynamic UI)
+export interface ProviderInfo {
+  name: string;
+  description: string;
+  color: string;
+  icon_svg: string;
+  icon_emoji?: string;
+}
 
 // Reasoning options returned from backend (provider-specific)
 export interface ReasoningOptions {
@@ -983,21 +993,21 @@ export const api = {
       return data;
     },
 
-    // AI Configuration
+    // AI Configuration - using new /ai/* endpoints
     async getAIConfigs(): Promise<
       ApiResponse<{
         configs: AIProviderConfig[];
         total: number;
       }>
     > {
-      const { data } = await apiClient.get("/admin/ai-config");
+      const { data } = await apiClient.get("/ai/configs");
       return data;
     },
 
     async createAIConfig(config: AIConfigCreate): Promise<
       ApiResponse<{ id: number }>
     > {
-      const { data } = await apiClient.post("/admin/ai-config", config);
+      const { data } = await apiClient.post("/ai/configs", config);
       return data;
     },
 
@@ -1006,21 +1016,21 @@ export const api = {
       config: AIConfigUpdate
     ): Promise<ApiResponse<null>> {
       const { data } = await apiClient.patch(
-        `/admin/ai-config/${configId}`,
+        `/ai/configs/${configId}`,
         config
       );
       return data;
     },
 
     async deleteAIConfig(configId: number): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.delete(`/admin/ai-config/${configId}`);
+      const { data } = await apiClient.delete(`/ai/configs/${configId}`);
       return data;
     },
 
     async reorderAIConfigs(
       configIds: number[]
     ): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.post("/admin/ai-config/reorder", {
+      const { data } = await apiClient.post("/ai/configs/reorder", {
         config_ids: configIds,
       });
       return data;
@@ -1038,7 +1048,7 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.post(
-        `/admin/ai-config/${configId}/test`
+        `/ai/configs/${configId}/test`
       );
       return data;
     },
@@ -1058,7 +1068,16 @@ export const api = {
         error?: string;
       }>
     > {
-      const { data } = await apiClient.post("/admin/ai-config/test", config);
+      const { data } = await apiClient.post("/ai/configs/test", config);
+      return data;
+    },
+
+    async getAIProviders(): Promise<
+      ApiResponse<{
+        providers: Record<string, ProviderInfo>;
+      }>
+    > {
+      const { data } = await apiClient.get("/ai/providers");
       return data;
     },
 
@@ -1072,7 +1091,8 @@ export const api = {
       }
     ): Promise<
       ApiResponse<{
-        provider: string;
+        provider_type: string;
+        provider_info?: ProviderInfo;
         models: {
           id: string;
           name: string;
@@ -1085,14 +1105,11 @@ export const api = {
           supports_video?: boolean;
           reasoning?: boolean;
           tool_call?: boolean;
-          // Pricing (per million tokens)
           cost_input?: number | null;
           cost_output?: number | null;
           cost_cache_read?: number | null;
-          // Limits
           context_limit?: number | null;
           output_limit?: number | null;
-          // Metadata
           tier?: "high" | "efficient" | "budget" | "free";
           release_date?: string | null;
           knowledge_cutoff?: string | null;
@@ -1100,19 +1117,12 @@ export const api = {
           thinking_capability?: ThinkingCapability;
         }[];
         default_url: string | null;
-        custom_model_supported: boolean;
-        source?: "suggested" | "search";
-        query?: string;
-        registry_status?: {
-          loaded: boolean;
-          loaded_at: string | null;
-          providers: number;
-          cache_file_exists: boolean;
-        };
+        default_model?: string;
+        reasoning_options?: ReasoningOptions | null;
       }>
     > {
       const { data } = await apiClient.get(
-        `/admin/ai-config/models/${providerType}`,
+        `/ai/providers/${providerType}`,
         {
           params: {
             query: options?.query,
@@ -1122,11 +1132,6 @@ export const api = {
           },
         }
       );
-      return data;
-    },
-
-    async refreshModelsRegistry(): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.post("/admin/ai-config/models/refresh");
       return data;
     },
 
@@ -1143,7 +1148,7 @@ export const api = {
         } | null;
       }>
     > {
-      const { data } = await apiClient.get("/admin/ai-config/status");
+      const { data } = await apiClient.get("/ai/status");
       return data;
     },
 

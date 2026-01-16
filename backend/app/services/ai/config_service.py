@@ -18,18 +18,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AIProviderConfigModel
 from app.services.ai.encryption import encrypt_secret
-from app.services.ai.providers.custom import CustomProvider
-from app.services.ai.providers.litellm import LiteLLMProvider
-from app.services.ai.providers.openrouter import OpenRouterProvider
+from app.services.ai.providers import PROVIDER_REGISTRY
 
 logger = structlog.get_logger()
-
-# Provider type to class mapping
-PROVIDER_CLASSES = {
-    "openrouter": OpenRouterProvider,
-    "litellm": LiteLLMProvider,
-    "custom": CustomProvider,
-}
 
 
 class AIConfigService:
@@ -95,7 +86,7 @@ class AIConfigService:
 
         # Use default URL from provider if not provided
         if not api_url:
-            provider_cls = PROVIDER_CLASSES.get(provider_type)
+            provider_cls = PROVIDER_REGISTRY.get(provider_type)
             if provider_cls:
                 api_url = provider_cls.get_default_url()
 
@@ -261,7 +252,7 @@ class AIConfigService:
         Returns:
             Dict with models, default model, and reasoning_options
         """
-        provider_cls = PROVIDER_CLASSES.get(provider_type)
+        provider_cls = PROVIDER_REGISTRY.get(provider_type)
         if not provider_cls:
             return {"models": [], "default": "", "reasoning_options": None}
         
@@ -269,12 +260,13 @@ class AIConfigService:
             "models": await provider_cls.get_available_models(),
             "default": provider_cls.get_default_model(),
             "reasoning_options": provider_cls.get_reasoning_options(),
+            "provider_info": provider_cls.get_provider_info(),
         }
 
     @staticmethod
     def get_default_url(provider_type: str) -> str | None:
         """Get default API URL for a provider."""
-        provider_cls = PROVIDER_CLASSES.get(provider_type)
+        provider_cls = PROVIDER_REGISTRY.get(provider_type)
         if provider_cls:
             return provider_cls.get_default_url()
         return None

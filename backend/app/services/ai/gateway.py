@@ -17,20 +17,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AIProviderConfigModel
 from app.services.ai.config_service import AIConfigService
+from app.services.ai.providers import PROVIDER_REGISTRY
 from app.services.ai.providers.base import BaseProvider
-from app.services.ai.providers.custom import CustomProvider
-from app.services.ai.providers.litellm import LiteLLMProvider
-from app.services.ai.providers.openrouter import OpenRouterProvider
 
 logger = structlog.get_logger()
-
-
-# Provider type to class mapping
-PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
-    "openrouter": OpenRouterProvider,
-    "litellm": LiteLLMProvider,
-    "custom": CustomProvider,
-}
 
 # File extension to MIME type mapping
 MIME_TYPES = {
@@ -84,7 +74,7 @@ class AIGateway:
         Raises:
             ValueError: If provider type is unknown
         """
-        provider_class = PROVIDER_CLASSES.get(config.provider_type)
+        provider_class = PROVIDER_REGISTRY.get(config.provider_type)
         if not provider_class:
             raise ValueError(f"Unknown provider type: {config.provider_type}")
 

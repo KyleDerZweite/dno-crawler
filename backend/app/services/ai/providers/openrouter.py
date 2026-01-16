@@ -89,18 +89,32 @@ class OpenRouterProvider(BaseProvider):
     def get_reasoning_options(cls) -> dict[str, Any] | None:
         """Return OpenRouter-specific reasoning options.
         
-        OpenRouter uses a unified 'reasoning' parameter that supports both
-        effort levels and max_tokens budgets.
+        OpenRouter uses a unified 'reasoning' parameter that supports:
+        - effort: "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
+        - max_tokens: direct token budget (alternative to effort)
+        
+        See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
         """
         return {
-            "method": "both",  # Supports both effort levels and token budget
-            "levels": ["minimal", "low", "medium", "high", "xhigh"],
+            "method": "level",  # Use effort levels (simpler for users)
+            "levels": ["none", "minimal", "low", "medium", "high", "xhigh"],
             "default_level": "medium",
-            "budget_min": 1024,
-            "budget_max": 128000,
-            "default_budget": 16000,
-            "param_name_effort": "reasoning_effort",
-            "param_name_tokens": "reasoning_max_tokens",
+            # These are used when building the API request
+            "param_name": "reasoning",  # The parameter name in API request
+            "param_format": {
+                "effort": "{level}",  # "reasoning": {"effort": "high"}
+            },
+        }
+    
+    @classmethod
+    def get_provider_info(cls) -> dict[str, Any]:
+        """Return OpenRouter provider display info."""
+        return {
+            "name": "OpenRouter",
+            "description": "Recommended - Access 100+ models with unified API",
+            "color": "bg-purple-500/20 text-purple-500",
+            # Official OpenRouter logo
+            "icon_svg": """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" fill="currentColor"/><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" stroke="currentColor" stroke-width="3.27593"/><path d="M21.6 7.43108L16.0037 10.6622V4.20001L21.6 7.43108Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" fill="currentColor"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" stroke="currentColor" stroke-width="3.27593"/><path d="M21.4909 16.7109L15.8945 13.4798V19.942L21.4909 16.7109Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/></svg>""",
         }
     
     # -------------------------------------------------------------------------
@@ -110,16 +124,28 @@ class OpenRouterProvider(BaseProvider):
     def _build_reasoning_config(self) -> dict[str, Any] | None:
         """Build OpenRouter unified reasoning config from model_parameters.
         
-        Supports:
-        - reasoning_effort: "minimal" | "low" | "medium" | "high" | "xhigh"
-        - reasoning_max_tokens: int (direct token budget)
+        OpenRouter uses:
+        - reasoning.effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
+        - reasoning.max_tokens: int (alternative to effort)
+        - reasoning.exclude: bool (hide reasoning from response)
+        
+        See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
         """
         params = self.config.model_parameters or {}
         
-        if params.get("reasoning_effort"):
-            return {"effort": params["reasoning_effort"]}
-        elif params.get("reasoning_max_tokens"):
-            return {"max_tokens": int(params["reasoning_max_tokens"])}
+        # Check for reasoning_level (effort-based)
+        if params.get("reasoning_level"):
+            level = params["reasoning_level"]
+            if level == "none":
+                return None  # Disabled
+            return {"effort": level}
+        
+        # Check for reasoning_budget (token-based)
+        if params.get("reasoning_budget"):
+            budget = int(params["reasoning_budget"])
+            if budget <= 0:
+                return None  # Disabled
+            return {"max_tokens": budget}
         
         return None
     

@@ -88,6 +88,19 @@ class BaseProvider(ABC):
         """
         ...
     
+    @classmethod
+    @abstractmethod
+    def get_provider_info(cls) -> dict[str, Any]:
+        """Return provider display info for the frontend UI.
+        
+        Returns a dict with:
+        - name: Display name (e.g., "OpenRouter")
+        - description: Short description shown in dropdown
+        - color: CSS color classes (e.g., "bg-purple-500/20 text-purple-500")
+        - icon_svg: Inline SVG string for the logo (or empty string for fallback)
+        """
+        ...
+    
     # -------------------------------------------------------------------------
     # Instance Methods (require config)
     # -------------------------------------------------------------------------

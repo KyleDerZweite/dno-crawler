@@ -31,7 +31,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import {
     Brain,
@@ -54,49 +53,60 @@ import {
     Zap,
 } from "lucide-react";
 
-// Provider display info
-const PROVIDER_INFO: Record<AIProviderType, { name: string; color: string; logoUrl: string; description: string }> = {
+// Static list of available provider types (must match backend PROVIDER_REGISTRY)
+const PROVIDER_TYPES = ["openrouter", "litellm", "custom"] as const;
+
+// Static provider info map (must match backend provider get_provider_info())
+const PROVIDER_INFO_MAP: Record<string, { name: string; color: string; icon_svg: string; icon_emoji?: string }> = {
     openrouter: {
         name: "OpenRouter",
         color: "bg-purple-500/20 text-purple-500",
-        logoUrl: "https://models.dev/logos/openrouter.svg",
-        description: "Recommended - Access 100+ models with unified API"
+        icon_svg: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" fill="currentColor"/><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" stroke="currentColor" stroke-width="3.27593"/><path d="M21.6 7.43108L16.0037 10.6622V4.20001L21.6 7.43108Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" fill="currentColor"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" stroke="currentColor" stroke-width="3.27593"/><path d="M21.4909 16.7109L15.8945 13.4798V19.942L21.4909 16.7109Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/></svg>`,
     },
     litellm: {
         name: "LiteLLM Proxy",
         color: "bg-cyan-500/20 text-cyan-500",
-        logoUrl: "https://models.dev/logos/litellm.svg",
-        description: "Coming Soon - Connect to your LiteLLM proxy"
+        icon_svg: "",
+        icon_emoji: "🚅",
     },
     custom: {
         name: "Custom API",
         color: "bg-gray-500/20 text-gray-400",
-        logoUrl: "",
-        description: "Any OpenAI-compatible endpoint (Ollama, vLLM, etc.)"
+        icon_svg: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M22.7 19l-9.1-9.1c.9-2.3.4-5-1.5-6.9-2-2-5-2.4-7.4-1.3L9 6 6 9 1.6 4.7C.4 7.1.9 10.1 2.9 12.1c1.9 1.9 4.6 2.4 6.9 1.5l9.1 9.1c.4.4 1 .4 1.4 0l2.3-2.3c.5-.4.5-1.1.1-1.4z"/></svg>`,
     },
 };
 
-// Provider logo component
-function ProviderLogo({ provider, className = "h-4 w-4" }: { provider: AIProviderType; className?: string }) {
-    const info = PROVIDER_INFO[provider];
-    if (!info.logoUrl) {
-        return <span className={className}>🔧</span>;
+// Fallback provider info when backend hasn't loaded yet
+const FALLBACK_PROVIDER_INFO = {
+    name: "Unknown",
+    description: "",
+    color: "bg-gray-500/20 text-gray-400",
+    icon_svg: "",
+    icon_emoji: "🔧",
+};
+
+// Provider icon component using inline SVG or emoji from backend
+function ProviderIcon({ iconSvg, iconEmoji, className = "h-4 w-4" }: {
+    iconSvg?: string;
+    iconEmoji?: string;
+    className?: string;
+}) {
+    if (iconSvg) {
+        // Inject width/height 100% into SVG for proper scaling
+        const scaledSvg = iconSvg.replace(
+            /^<svg/,
+            '<svg style="width:100%;height:100%"'
+        );
+        return (
+            <span
+                className={className}
+                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
+                dangerouslySetInnerHTML={{ __html: scaledSvg }}
+            />
+        );
     }
-    return (
-        <img
-            src={info.logoUrl}
-            alt={info.name}
-            className={className}
-            style={{
-                // Invert dark logos to be light/white for dark theme visibility
-                filter: 'brightness(0) invert(1) opacity(0.9)'
-            }}
-            onError={(e) => {
-                // Fallback to a simple icon on error
-                e.currentTarget.style.display = 'none';
-            }}
-        />
-    );
+    // Use emoji if provided, otherwise default wrench emoji
+    return <span className={`${className} flex items-center justify-center text-lg`}>{iconEmoji || "🔧"}</span>;
 }
 
 // Status icons
@@ -108,20 +118,15 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
     untested: <RefreshCw className="h-4 w-4 text-muted-foreground" />,
 };
 
-// Provider options for the dropdown
-const PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
-    { value: "openrouter", label: "OpenRouter" },
-    { value: "litellm", label: "LiteLLM Proxy" },
-    { value: "custom", label: "Custom API" },
-];
-
-// Custom dropdown component styled like the VNB autocomplete
+// Simple provider dropdown using static provider list
 function ProviderDropdown({
     value,
     onChange,
+    currentInfo,
 }: {
     value: AIProviderType;
     onChange: (value: string) => void;
+    currentInfo: { name: string; icon_svg: string; icon_emoji?: string };
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -136,8 +141,6 @@ function ProviderDropdown({
         document.addEventListener("mousedown", handleClickOutside);
         return () => document.removeEventListener("mousedown", handleClickOutside);
     }, []);
-
-    const selectedLabel = PROVIDER_OPTIONS.find(opt => opt.value === value)?.label || value;
 
     const handleSelect = (providerValue: string) => {
         onChange(providerValue);
@@ -155,8 +158,8 @@ function ProviderDropdown({
                     className="flex h-10 w-full items-center justify-between rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 hover:bg-accent/50 transition-colors"
                 >
                     <span className="flex items-center gap-2">
-                        <ProviderLogo provider={value} className="h-4 w-4" />
-                        <span>{selectedLabel}</span>
+                        <ProviderIcon iconSvg={currentInfo.icon_svg} iconEmoji={currentInfo.icon_emoji} className="h-4 w-4" />
+                        <span>{currentInfo.name}</span>
                     </span>
                     <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -164,100 +167,25 @@ function ProviderDropdown({
                 {/* Dropdown Menu */}
                 {isOpen && (
                     <div className="absolute top-full left-0 right-0 z-[9999] mt-1 bg-popover border rounded-md shadow-lg max-h-60 overflow-y-auto">
-                        {PROVIDER_OPTIONS.map((option) => {
-                            const isSelected = option.value === value;
+                        {PROVIDER_TYPES.map((providerType) => {
+                            const isSelected = providerType === value;
                             return (
                                 <button
-                                    key={option.value}
+                                    key={providerType}
                                     type="button"
                                     className={`w-full px-3 py-2.5 text-left hover:bg-accent flex items-center gap-3 transition-colors ${isSelected ? 'bg-accent/50' : ''
                                         }`}
-                                    onClick={() => handleSelect(option.value)}
+                                    onClick={() => handleSelect(providerType)}
                                 >
                                     <span className="w-5 flex items-center justify-center">
                                         {isSelected && <Check className="h-4 w-4 text-primary" />}
                                     </span>
-                                    <ProviderLogo provider={option.value} className="h-4 w-4" />
-                                    <span className="flex-1">{option.label}</span>
-                                    {option.value === "litellm" && (
-                                        <span className="text-xs text-muted-foreground">Coming Soon</span>
-                                    )}
+                                    <span className="flex-1 capitalize">{providerType}</span>
                                 </button>
                             );
                         })}
                     </div>
                 )}
-            </div>
-        </div>
-    );
-}
-
-// Custom Number Input with Up/Down arrows
-function NumberInput({
-    value,
-    onChange,
-    min = 0,
-    max,
-    step = 1,
-    disabled = false,
-    className = "",
-}: {
-    value: number;
-    onChange: (val: number) => void;
-    min?: number;
-    max?: number;
-    step?: number;
-    disabled?: boolean;
-    className?: string;
-}) {
-    const handleIncrement = () => {
-        if (disabled) return;
-        const newValue = value + step;
-        if (max !== undefined && newValue > max) return;
-        onChange(newValue);
-    };
-
-    const handleDecrement = () => {
-        if (disabled) return;
-        const newValue = value - step;
-        if (min !== undefined && newValue < min) return;
-        onChange(newValue);
-    };
-
-    const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const val = parseInt(e.target.value);
-        if (isNaN(val)) return;
-        onChange(val);
-    };
-
-    return (
-        <div className={`relative flex items-center ${className}`}>
-            <Input
-                type="number"
-                value={value}
-                onChange={handleChange}
-                min={min}
-                max={max}
-                disabled={disabled}
-                className="pr-8 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-            />
-            <div className="absolute right-1 flex flex-col gap-0.5">
-                <button
-                    type="button"
-                    onClick={handleIncrement}
-                    disabled={disabled || (max !== undefined && value >= max)}
-                    className="p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground disabled:opacity-30 h-4 flex items-center justify-center"
-                >
-                    <ChevronDown className="h-3 w-3 rotate-180" />
-                </button>
-                <button
-                    type="button"
-                    onClick={handleDecrement}
-                    disabled={disabled || (min !== undefined && value <= min)}
-                    className="p-0.5 hover:bg-accent rounded text-muted-foreground hover:text-foreground disabled:opacity-30 h-4 flex items-center justify-center"
-                >
-                    <ChevronDown className="h-3 w-3" />
-                </button>
             </div>
         </div>
     );
@@ -542,7 +470,6 @@ function ProviderDialog({
     const [manualThinkingMethod, setManualThinkingMethod] = useState<"none" | "level" | "budget">("none");
 
     const [authType] = useState<AIAuthType>("api_key");
-    const queryClient = useQueryClient();
     const { toast } = useToast();
     const { showError } = useErrorToast();
 
@@ -559,17 +486,17 @@ function ProviderDialog({
             // NOTE: We cannot pre-fill API Key for security reasons
             setApiKey("");
 
-            // Initialize Thinking Configuration
+            // Initialize Thinking Configuration (uses reasoning_level/reasoning_budget in API)
             const params = initialConfig.model_parameters || {};
-            if (params.thinking_level) {
+            if (params.reasoning_level) {
                 setThinkingEnabled(true);
-                setThinkingLevel(params.thinking_level);
+                setThinkingLevel(params.reasoning_level);
                 // If we don't have capability info yet, assume manual level or native level
                 // We'll let the UI resolve based on capability later, but for state:
                 if (!thinkingCapability) setManualThinkingMethod("level");
-            } else if (params.thinking_budget) {
+            } else if (params.reasoning_budget) {
                 setThinkingEnabled(true);
-                setThinkingBudget(params.thinking_budget);
+                setThinkingBudget(params.reasoning_budget);
                 if (!thinkingCapability) setManualThinkingMethod("budget");
             } else {
                 setThinkingEnabled(false);
@@ -581,12 +508,11 @@ function ProviderDialog({
             setProviderType("openrouter");
             setName("");
             setNameManuallyEdited(false);
-            setAuthType("api_key");
             setModel("");
             setApiUrl("");
             setApiKey("");
             setSupportsVision(true);
-            setSupportsFiles(false);
+            setSupportsFiles(true);  // Default to true, will be updated by model selection
             setThinkingEnabled(false);
             setThinkingLevel("medium");
             setThinkingBudget(0);
@@ -601,7 +527,8 @@ function ProviderDialog({
         }
     }, [thinkingCapability, thinkingEnabled]);
 
-    // Fetch models for selected provider
+    // Fetch available providers (for dynamic UI)
+    // Fetch models for selected provider (also returns provider_info)
     const { data: modelsData } = useQuery({
         queryKey: ["admin", "ai-models", providerType],
         queryFn: () => api.admin.getAIModels(providerType),
@@ -612,6 +539,7 @@ function ProviderDialog({
     const defaultUrl = modelsData?.data?.default_url || "";
     const defaultModel = modelsData?.data?.default_model || "";
     const reasoningOptions = modelsData?.data?.reasoning_options || null;
+    const providerInfo = modelsData?.data?.provider_info || FALLBACK_PROVIDER_INFO;
 
     // Auto-fill default model when provider changes (create mode only)
     useEffect(() => {
@@ -620,9 +548,24 @@ function ProviderDialog({
         }
     }, [defaultModel, open, isEditMode, model]);
 
+    // Auto-sync capabilities from model metadata when models are loaded
+    // This ensures stored configs get updated to match current model capabilities
+    useEffect(() => {
+        if (open && model && models.length > 0) {
+            const selectedModel = models.find(m => m.id === model);
+            if (selectedModel) {
+                setSupportsVision(selectedModel.supports_vision ?? false);
+                setSupportsFiles(selectedModel.supports_files ?? false);
+                if (selectedModel.thinking_capability) {
+                    setThinkingCapability(selectedModel.thinking_capability);
+                }
+            }
+        }
+    }, [open, model, models]);
+
     // Generate auto name based on provider and model
     const generateAutoName = () => {
-        const providerName = PROVIDER_INFO[providerType]?.name || providerType;
+        const providerName = providerInfo?.name || providerType;
         const modelName = models.find(m => m.id === model)?.name || model;
 
         if (modelName) {
@@ -770,10 +713,10 @@ function ProviderDialog({
                     ? manualThinkingMethod
                     : (reasoningOptions.method === "budget" ? "budget" : "level");
 
-                if (effectiveMethod === "budget" && reasoningOptions.param_name_tokens) {
-                    testModelParameters[reasoningOptions.param_name_tokens] = thinkingBudget;
-                } else if (effectiveMethod === "level" && reasoningOptions.param_name_effort) {
-                    testModelParameters[reasoningOptions.param_name_effort] = thinkingLevel;
+                if (effectiveMethod === "budget") {
+                    testModelParameters.reasoning_budget = thinkingBudget;
+                } else if (effectiveMethod === "level") {
+                    testModelParameters.reasoning_level = thinkingLevel;
                 }
             }
 
@@ -823,16 +766,19 @@ function ProviderDialog({
 
         const modelParameters: Record<string, any> = {};
 
+        // Only add reasoning params for providers that support it (reasoningOptions not null)
         if (thinkingEnabled && reasoningOptions) {
-            // Use parameter names from backend
+            // Determine which method to use
             const effectiveMethod = manualThinkingMethod !== "none"
                 ? manualThinkingMethod
                 : (reasoningOptions.method === "budget" ? "budget" : "level");
 
-            if (effectiveMethod === "budget" && reasoningOptions.param_name_tokens) {
-                modelParameters[reasoningOptions.param_name_tokens] = thinkingBudget;
-            } else if (effectiveMethod === "level" && reasoningOptions.param_name_effort) {
-                modelParameters[reasoningOptions.param_name_effort] = thinkingLevel;
+            if (effectiveMethod === "budget") {
+                // Token budget approach
+                modelParameters.reasoning_budget = thinkingBudget;
+            } else if (effectiveMethod === "level") {
+                // Effort level approach (e.g., "none", "low", "medium", "high", "xhigh")
+                modelParameters.reasoning_level = thinkingLevel;
             }
         }
 
@@ -884,11 +830,12 @@ function ProviderDialog({
                     <ProviderDropdown
                         value={providerType}
                         onChange={handleProviderChange}
+                        currentInfo={{ name: providerInfo.name, icon_svg: providerInfo.icon_svg, icon_emoji: providerInfo.icon_emoji }}
                     />
 
                     {/* Provider Description */}
                     <p className="text-sm text-muted-foreground">
-                        {PROVIDER_INFO[providerType]?.description}
+                        {providerInfo.description || ""}
                     </p>
 
                     {/* Name */}
@@ -955,163 +902,64 @@ function ProviderDialog({
                         }}
                     />
 
-                    {/* Thinking Configuration */}
-                    <div className="space-y-3 pt-2 border-t">
-                        <div className="flex items-center justify-between">
-                            <div className="flex items-center gap-2">
-                                <Brain className="h-4 w-4 text-primary" />
-                                <Label htmlFor="enable-thinking" className="cursor-pointer">Thinking (CoT)</Label>
-                                {thinkingCapability && (
-                                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
-                                        Native
-                                    </Badge>
-                                )}
-                            </div>
-                            <Switch
-                                id="enable-thinking"
-                                checked={thinkingEnabled}
-                                disabled={thinkingCapability?.can_disable === false}
-                                onCheckedChange={(checked) => {
-                                    if (thinkingCapability?.can_disable === false && !checked) return;
-                                    setThinkingEnabled(checked);
-                                    // If enabling and no native capability, default to manual budget
-                                    if (checked && !thinkingCapability && manualThinkingMethod === "none") {
-                                        setManualThinkingMethod("budget");
-                                    }
-                                    // If disabling, we don't necessarily need to reset manual method, keeps state for re-enable
-                                }}
-                            />
-                        </div>
-
-                        {thinkingEnabled && (
-                            <div className="p-4 bg-muted/40 border rounded-md space-y-4 animate-in fade-in slide-in-from-top-1">
-
-                                {/* Manual Config Toggle (Only if no native capability) */}
-                                {!thinkingCapability && (
-                                    <div className="flex flex-col gap-2 p-3 bg-amber-500/10 border border-amber-500/20 rounded-md">
-                                        <div className="flex items-center gap-2 text-xs text-amber-600 font-medium">
-                                            <AlertTriangle className="h-3.5 w-3.5" />
-                                            Manual Configuration Required
-                                        </div>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            This model does not advertise native thinking support. You can manually force thinking parameters.
-                                        </p>
-
-                                        <div className="flex items-center gap-2 mt-1">
-                                            <Label className="text-xs">Method:</Label>
-                                            <div className="flex bg-background rounded-md border p-0.5">
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setManualThinkingMethod("budget")}
-                                                    className={`px-3 py-1 text-xs rounded-sm transition-colors ${manualThinkingMethod === "budget" ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-accent text-muted-foreground"}`}
-                                                >
-                                                    Token Budget
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    onClick={() => setManualThinkingMethod("level")}
-                                                    className={`px-3 py-1 text-xs rounded-sm transition-colors ${manualThinkingMethod === "level" ? "bg-primary text-primary-foreground shadow-sm" : "hover:bg-accent text-muted-foreground"}`}
-                                                >
-                                                    Reasoning Level
-                                                </button>
-                                            </div>
-                                        </div>
-                                    </div>
-                                )}
-
-                                {/* Token Budget Input */}
-                                {(thinkingCapability?.method === "budget" || manualThinkingMethod === "budget") && (
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center">
-                                            <Label>Token Budget</Label>
-                                            <div className="flex items-center gap-2">
-                                                <Label htmlFor="auto-budget" className="text-xs text-muted-foreground cursor-pointer">
-                                                    Auto
-                                                </Label>
-                                                <Switch
-                                                    id="auto-budget"
-                                                    checked={thinkingBudget === -1}
-                                                    onCheckedChange={(checked) => {
-                                                        if (checked) {
-                                                            setThinkingBudget(-1);
-                                                        } else {
-                                                            setThinkingBudget(thinkingCapability?.min || 1024);
-                                                        }
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                        {thinkingBudget === -1 ? (
-                                            <div className="flex items-center gap-2 p-3 rounded-md bg-primary/10 border border-primary/20">
-                                                <Zap className="h-4 w-4 text-primary" />
-                                                <span className="text-sm">Automatic — Model determines optimal budget</span>
-                                            </div>
-                                        ) : (
-                                            <>
-                                                <NumberInput
-                                                    value={thinkingBudget}
-                                                    onChange={setThinkingBudget}
-                                                    min={thinkingCapability?.min || 1024}
-                                                    max={thinkingCapability?.max || 64000}
-                                                    step={1024}
-                                                    className="w-full"
-                                                />
-                                                <div className="flex justify-between text-[11px] text-muted-foreground">
-                                                    <span>Min: {thinkingCapability?.min || 1024}</span>
-                                                    <span>Max: {thinkingCapability?.max || 64000}</span>
-                                                </div>
-                                            </>
-                                        )}
-                                    </div>
-                                )}
-
-                                {/* Level Dropdown */}
-                                {(thinkingCapability?.method === "level" || manualThinkingMethod === "level") && (
-                                    <div className="space-y-2">
-                                        <Label>Reasoning Effort</Label>
-                                        <div className="relative">
-                                            <select
-                                                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
-                                                value={thinkingLevel}
-                                                onChange={(e) => setThinkingLevel(e.target.value)}
-                                            >
-                                                <option value="low">Low</option>
-                                                <option value="medium">Medium</option>
-                                                <option value="high">High</option>
-                                            </select>
-                                            <ChevronDown className="absolute right-3 top-3 h-4 w-4 opacity-50 pointer-events-none" />
-                                        </div>
-                                        <p className="text-[11px] text-muted-foreground">
-                                            Controls the depth of reasoning.
-                                        </p>
-                                    </div>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Capabilities */}
-                    <div className="space-y-3">
-                        <Label>Capabilities</Label>
-                        <div className="flex items-center gap-4">
-                            <label className="flex items-center gap-2 text-sm">
-                                <Checkbox
-                                    checked={supportsVision}
-                                    onCheckedChange={(checked) => setSupportsVision(!!checked)}
+                    {/* Thinking Configuration - Only shown for providers with reasoning support */}
+                    {reasoningOptions && (
+                        <div className="space-y-3 pt-2 border-t">
+                            <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2">
+                                    <Brain className="h-4 w-4 text-primary" />
+                                    <Label htmlFor="enable-thinking" className="cursor-pointer">Thinking (CoT)</Label>
+                                    {thinkingCapability && (
+                                        <Badge variant="secondary" className="text-[10px] h-5 px-1.5">
+                                            Native
+                                        </Badge>
+                                    )}
+                                </div>
+                                <Switch
+                                    id="enable-thinking"
+                                    checked={thinkingEnabled}
+                                    disabled={thinkingCapability?.can_disable === false}
+                                    onCheckedChange={(checked) => {
+                                        if (thinkingCapability?.can_disable === false && !checked) return;
+                                        setThinkingEnabled(checked);
+                                        // If enabling and no native capability, default to manual budget
+                                        if (checked && !thinkingCapability && manualThinkingMethod === "none") {
+                                            setManualThinkingMethod("budget");
+                                        }
+                                        // If disabling, we don't necessarily need to reset manual method, keeps state for re-enable
+                                    }}
                                 />
-                                <Image className="h-4 w-4" />
-                                Vision
-                            </label>
-                            <label className="flex items-center gap-2 text-sm">
-                                <Checkbox
-                                    checked={supportsFiles}
-                                    onCheckedChange={(checked) => setSupportsFiles(!!checked)}
-                                />
-                                <File className="h-4 w-4" />
-                                PDF/Files
-                            </label>
+                            </div>
+
+                            {thinkingEnabled && (
+                                <div className="p-4 bg-muted/40 border rounded-md space-y-4 animate-in fade-in slide-in-from-top-1">
+                                    {/* Only show level selector when provider supports it */}
+                                    {reasoningOptions?.method === "level" && reasoningOptions.levels && (
+                                        <div className="space-y-2">
+                                            <Label>Reasoning Effort</Label>
+                                            <div className="relative">
+                                                <select
+                                                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 appearance-none"
+                                                    value={thinkingLevel}
+                                                    onChange={(e) => setThinkingLevel(e.target.value)}
+                                                >
+                                                    {reasoningOptions.levels.map((level: string) => (
+                                                        <option key={level} value={level}>
+                                                            {level.charAt(0).toUpperCase() + level.slice(1)}
+                                                        </option>
+                                                    ))}
+                                                </select>
+                                                <ChevronDown className="absolute right-3 top-3 h-4 w-4 opacity-50 pointer-events-none" />
+                                            </div>
+                                            <p className="text-[11px] text-muted-foreground">
+                                                Controls how much reasoning the model uses. Higher = more thorough but uses more tokens.
+                                            </p>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
                         </div>
-                    </div>
+                    )}
                 </div>
 
                 {/* Test Result */}
@@ -1316,14 +1164,6 @@ function ProviderCard({
     onToggle: (enabled: boolean) => void;
     onEdit: () => void;
 }) {
-    const info = PROVIDER_INFO[config.provider_type] || PROVIDER_INFO.custom;
-    // ... import { Pencil } from "lucide-react" ... 
-    // We need to add the import if it's missing, but I'll assume lucide-react has it. 
-    // I can't add imports easily here, so I'll check if Pencil is imported.
-    // If not, I'll add it to the import list in a separate step or just use a generic icon/text.
-    // Actually, I can replace the whole import block if needed, but the current tool call targets the end of file.
-    // I will assume I can add an Edit button.
-
     return (
         <div
             className={`flex items-center gap-3 p-3 rounded-lg border ${config.is_enabled
@@ -1341,10 +1181,15 @@ function ProviderCard({
                 {index + 1}
             </div>
 
-            {/* Provider icon & info */}
-            <div className={`p-2 rounded-lg ${info.color}`}>
-                <ProviderLogo provider={config.provider_type} className="h-5 w-5" />
-            </div>
+            {/* Provider type icon */}
+            {(() => {
+                const pInfo = PROVIDER_INFO_MAP[config.provider_type] || FALLBACK_PROVIDER_INFO;
+                return (
+                    <div className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${pInfo.color}`} title={pInfo.name}>
+                        <ProviderIcon iconSvg={pInfo.icon_svg} iconEmoji={pInfo.icon_emoji} className="h-6 w-6" />
+                    </div>
+                );
+            })()}
 
             <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">

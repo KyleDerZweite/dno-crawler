@@ -15,9 +15,9 @@ RUN apt-get update \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Install Python dependencies from pyproject.toml
+COPY pyproject.toml .
+RUN pip install --no-cache-dir .
 
 # Copy project
 COPY . .

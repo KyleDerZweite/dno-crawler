@@ -55,6 +55,18 @@ class LiteLLMProvider(BaseProvider):
         """LiteLLM doesn't have standard reasoning options."""
         return None
     
+    @classmethod
+    def get_provider_info(cls) -> dict[str, Any]:
+        """Return LiteLLM provider display info."""
+        return {
+            "name": "LiteLLM Proxy",
+            "description": "Coming Soon - Connect to your LiteLLM proxy",
+            "color": "bg-cyan-500/20 text-cyan-500",
+            # Use emoji as icon (empty svg triggers fallback in frontend)
+            "icon_svg": "",
+            "icon_emoji": "🚅",
+        }
+    
     # -------------------------------------------------------------------------
     # Instance Methods
     # -------------------------------------------------------------------------

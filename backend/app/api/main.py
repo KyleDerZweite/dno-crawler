@@ -12,7 +12,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from app.api.middleware import WideEventMiddleware
-from app.api.routes import admin, auth, dnos, files, health, jobs, oauth, search, verification
+from app.api.routes import admin, ai, auth, dnos, files, health, jobs, oauth, search, verification
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -113,12 +113,13 @@ def create_app() -> FastAPI:
     app.include_router(health.router, tags=["Health"])
     app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
     app.include_router(files.router, prefix="/api/v1/files", tags=["Files"])
-    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])  # Public search (skeleton creation)
-    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])  # Authenticated DNO management
-    app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])  # Job management
-    app.include_router(verification.router, prefix="/api/v1/verification", tags=["Verification"])  # Data verification
+    app.include_router(search.router, prefix="/api/v1/search", tags=["Search"])
+    app.include_router(dnos.router, prefix="/api/v1/dnos", tags=["DNOs"])
+    app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])
+    app.include_router(verification.router, prefix="/api/v1/verification", tags=["Verification"])
+    app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])  # New AI routes
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
-    app.include_router(oauth.router, prefix="/api/v1/admin", tags=["OAuth"])  # OAuth under admin
+    app.include_router(oauth.router, prefix="/api/v1/admin", tags=["OAuth"])
 
     # Exception Handlers
     @app.exception_handler(RequestValidationError)
