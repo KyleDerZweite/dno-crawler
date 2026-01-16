@@ -1,254 +1,162 @@
 """
-Base Provider Implementation
+Base Provider - Abstract class for all AI extraction providers.
 
-Common functionality shared across all provider adapters.
+All provider-specific logic (model fetching, extraction, reasoning params)
+must be implemented in the respective provider subclass.
 """
 
 import json
+from abc import ABC, abstractmethod
 from typing import Any
 
 import structlog
-from openai import AsyncOpenAI
 
 from app.db import AIProviderConfigModel
 from app.services.ai.encryption import decrypt_secret
-from app.services.ai.interface import AIProviderInterface
 
 logger = structlog.get_logger()
 
 
-class BaseProvider(AIProviderInterface):
-    """Base class for OpenAI-compatible providers.
-
-    Most providers (OpenAI, Google AI Studio, Anthropic, OpenRouter)
-    support the OpenAI API format, so this base class provides
-    common implementation.
+class BaseProvider(ABC):
+    """Abstract base class for AI providers.
+    
+    Class methods (get_available_models, get_default_model) can be called
+    without a config instance - used in the "Add Provider" UI flow.
+    
+    Instance methods (extract_text, extract_vision, health_check) require
+    a config instance from the database.
     """
-
-    # Maximum tokens to output (prevents runaway generation)
+    
     MAX_OUTPUT_TOKENS = 4096
-
+    
     def __init__(self, config: AIProviderConfigModel):
-        """Initialize provider from config.
-
-        Args:
-            config: AI provider configuration from database
-        """
+        """Initialize provider with database config."""
         self.config = config
-        self._client: AsyncOpenAI | None = None
-
-    @property
-    def provider_name(self) -> str:
-        return self.config.provider_type
-
-    @property
-    def model_name(self) -> str:
-        return self.config.model
-
+        
     def _get_api_key(self) -> str:
-        """Get decrypted API key."""
+        """Get decrypted API key from config."""
         if self.config.api_key_encrypted:
             return decrypt_secret(self.config.api_key_encrypted)
-        # Some providers (like local Ollama) don't need API key
         return "not-required"
-
-    def _get_client(self) -> AsyncOpenAI:
-        """Get or create OpenAI client."""
-        if self._client is None:
-            self._client = AsyncOpenAI(
-                base_url=self.config.api_url,
-                api_key=self._get_api_key(),
-                default_headers=self._get_default_headers(),
-            )
-        return self._client
-
-    def _get_default_headers(self) -> dict[str, str]:
-        """Get default headers for requests.
-
-        Override in subclasses for provider-specific headers.
+    
+    # -------------------------------------------------------------------------
+    # Class Methods (no config needed)
+    # -------------------------------------------------------------------------
+    
+    @classmethod
+    @abstractmethod
+    async def get_available_models(cls) -> list[dict[str, Any]]:
+        """Fetch available models from provider.
+        
+        Must be a @classmethod so it can be called before configuration exists.
+        
+        Returns:
+            List of model dicts with at minimum:
+            - id: Model identifier (e.g., "anthropic/claude-3.5-sonnet")
+            - name: Display name
         """
-        return {}
-
+        ...
+    
+    @classmethod
+    @abstractmethod
+    def get_default_model(cls) -> str:
+        """Return the recommended default model ID."""
+        ...
+    
+    @classmethod
+    @abstractmethod
+    def get_default_url(cls) -> str | None:
+        """Return the default API URL for this provider, or None if not applicable."""
+        ...
+    
+    @classmethod
+    @abstractmethod
+    def get_reasoning_options(cls) -> dict[str, Any] | None:
+        """Return reasoning configuration options for this provider.
+        
+        Returns None if provider doesn't support reasoning tokens.
+        
+        If supported, returns a dict with:
+        - method: "level" | "budget" | "both"
+        - levels: List of level options (if method is "level" or "both")
+        - budget_min: Minimum token budget (if method is "budget" or "both")
+        - budget_max: Maximum token budget (if method is "budget" or "both")
+        - default_level: Default level value
+        - default_budget: Default budget value
+        - param_name_effort: Backend parameter name for effort level
+        - param_name_tokens: Backend parameter name for token budget
+        """
+        ...
+    
+    # -------------------------------------------------------------------------
+    # Instance Methods (require config)
+    # -------------------------------------------------------------------------
+    
+    @property
+    @abstractmethod
+    def provider_name(self) -> str:
+        """Get provider name for logging."""
+        ...
+    
+    @property
+    def model_name(self) -> str:
+        """Get model name from config."""
+        return self.config.model
+    
+    @abstractmethod
     async def extract_text(
         self,
         content: str,
         prompt: str,
     ) -> dict[str, Any]:
-        """Extract structured data from text content."""
-        logger.info(
-            "ai_extract_text_start",
-            provider=self.provider_name,
-            model=self.model_name,
-            content_len=len(content),
-        )
-
-        full_prompt = f"{prompt}\n\n---\n\nContent to extract from:\n\n{content}"
-
-        client = self._get_client()
-
-        # Prepare request arguments
-        request_kwargs = {
-            "model": self.config.model,
-            "messages": [{"role": "user", "content": full_prompt}],
-            "response_format": {"type": "json_object"},
-            "max_tokens": self.MAX_OUTPUT_TOKENS,
-        }
-
-        # Inject Thinking Parameters
-        model_params = self.config.model_parameters or {}
-        extra_body = {}
-
-        # 1. OpenAI Reasoning Effort (mapped from thinking_level)
-        if "thinking_level" in model_params:
-            # o1/o3 support "reasoning_effort": "low", "medium", "high"
-            level = model_params["thinking_level"]
-            if level and level in ("low", "medium", "high"):
-                request_kwargs["reasoning_effort"] = level
-
-        # 2. Anthropic Thinking (mapped from thinking_budget)
-        if "thinking_budget" in model_params:
-            budget = model_params["thinking_budget"]
-            if budget and int(budget) > 0:
-                # Anthropic API expects "thinking": { "type": "enabled", "budget_tokens": ... }
-                # Note: When using thinking, standard max_tokens might need to be higher
-                extra_body["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": int(budget)
-                }
-
-        if extra_body:
-            request_kwargs["extra_body"] = extra_body
-
-        response = await client.chat.completions.create(**request_kwargs)
-
-        response_content = response.choices[0].message.content
-        result = json.loads(response_content)
-
-        # Extract token usage
-        usage = None
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
-
-        logger.info(
-            "ai_extract_text_success",
-            provider=self.provider_name,
-            model=self.model_name,
-            records=len(result.get("data", [])),
-        )
-
-        # Add metadata
-        result["_extraction_meta"] = {
-            "raw_response": response_content,
-            "mode": "text",
-            "provider": self.provider_name,
-            "model": self.model_name,
-            "usage": usage,
-        }
-
-        return result
-
+        """Extract structured data from text content.
+        
+        Args:
+            content: Text content (HTML, plain text, etc.)
+            prompt: Extraction prompt with expected JSON schema
+            
+        Returns:
+            Parsed JSON response with _extraction_meta included
+        """
+        ...
+    
+    @abstractmethod
     async def extract_vision(
         self,
         image_data: str,
         mime_type: str,
         prompt: str,
     ) -> dict[str, Any]:
-        """Extract structured data from image/document."""
-        logger.info(
-            "ai_extract_vision_start",
-            provider=self.provider_name,
-            model=self.model_name,
-            mime_type=mime_type,
-        )
-
-        client = self._get_client()
-
-        # Prepare request arguments
-        request_kwargs = {
-            "model": self.config.model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{image_data}"}
-                    }
-                ]
-            }],
-            "response_format": {"type": "json_object"},
-            "max_tokens": self.MAX_OUTPUT_TOKENS,
-        }
-
-        # Inject Thinking Parameters
-        model_params = self.config.model_parameters or {}
-        extra_body = {}
-
-        # 1. OpenAI Reasoning Effort
-        if "thinking_level" in model_params:
-            level = model_params["thinking_level"]
-            if level and level in ("low", "medium", "high"):
-                request_kwargs["reasoning_effort"] = level
-
-        # 2. Anthropic Thinking
-        if "thinking_budget" in model_params:
-            budget = model_params["thinking_budget"]
-            if budget and int(budget) > 0:
-                extra_body["thinking"] = {
-                    "type": "enabled",
-                    "budget_tokens": int(budget)
-                }
-
-        if extra_body:
-            request_kwargs["extra_body"] = extra_body
-
-        response = await client.chat.completions.create(**request_kwargs)
-
-        response_content = response.choices[0].message.content
-        result = json.loads(response_content)
-
-        # Extract token usage
-        usage = None
-        if response.usage:
-            usage = {
-                "prompt_tokens": response.usage.prompt_tokens,
-                "completion_tokens": response.usage.completion_tokens,
-                "total_tokens": response.usage.total_tokens,
-            }
-
-        logger.info(
-            "ai_extract_vision_success",
-            provider=self.provider_name,
-            model=self.model_name,
-            records=len(result.get("data", [])),
-        )
-
-        # Add metadata
-        result["_extraction_meta"] = {
-            "raw_response": response_content,
-            "mode": "vision",
-            "provider": self.provider_name,
-            "model": self.model_name,
-            "usage": usage,
-        }
-
-        return result
-
+        """Extract structured data from image/document.
+        
+        Args:
+            image_data: Base64-encoded image or document
+            mime_type: MIME type (e.g., "image/png", "application/pdf")
+            prompt: Extraction prompt with expected JSON schema
+            
+        Returns:
+            Parsed JSON response with _extraction_meta included
+        """
+        ...
+    
+    @abstractmethod
     async def health_check(self) -> bool:
-        """Check if provider is reachable."""
+        """Check if provider is reachable and working."""
+        ...
+    
+    # -------------------------------------------------------------------------
+    # Helper Methods
+    # -------------------------------------------------------------------------
+    
+    def _parse_json_response(self, content: str) -> dict[str, Any]:
+        """Parse JSON from model response, handling common edge cases."""
         try:
-            client = self._get_client()
-            # Simple models list call to verify connectivity
-            await client.models.list()
-            return True
-        except Exception as e:
-            logger.warning(
-                "ai_health_check_failed",
-                provider=self.provider_name,
-                error=str(e),
-            )
-            return False
+            return json.loads(content)
+        except json.JSONDecodeError:
+            # Try to extract JSON from markdown code blocks
+            if "```json" in content:
+                start = content.find("```json") + 7
+                end = content.find("```", start)
+                if end > start:
+                    return json.loads(content[start:end].strip())
+            raise

@@ -1,19 +1,20 @@
 """
 Provider Adapters Package
 
-Contains implementations for each supported AI provider.
+Contains implementations for each supported AI provider:
+- OpenRouter (primary, with native SDK)
+- LiteLLM (stub for future proxy support)
+- Custom (generic OpenAI-compatible)
 """
 
-from app.services.ai.providers.anthropic import AnthropicProvider
 from app.services.ai.providers.base import BaseProvider
-from app.services.ai.providers.google import GoogleProvider
-from app.services.ai.providers.openai import OpenAIProvider
+from app.services.ai.providers.custom import CustomProvider
+from app.services.ai.providers.litellm import LiteLLMProvider
 from app.services.ai.providers.openrouter import OpenRouterProvider
 
 __all__ = [
-    "AnthropicProvider",
     "BaseProvider",
-    "GoogleProvider",
-    "OpenAIProvider",
+    "CustomProvider",
+    "LiteLLMProvider",
     "OpenRouterProvider",
 ]

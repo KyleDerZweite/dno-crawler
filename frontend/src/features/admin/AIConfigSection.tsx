@@ -54,14 +54,26 @@ import {
     Zap,
 } from "lucide-react";
 
-// Provider display info with logos from models.dev
-const PROVIDER_INFO: Record<AIProviderType, { name: string; color: string; logoUrl: string }> = {
-    openai: { name: "OpenAI", color: "bg-green-500/20 text-green-500", logoUrl: "https://models.dev/logos/openai.svg" },
-    google: { name: "Google AI", color: "bg-blue-500/20 text-blue-500", logoUrl: "https://models.dev/logos/google.svg" },
-    anthropic: { name: "Anthropic", color: "bg-orange-500/20 text-orange-500", logoUrl: "https://models.dev/logos/anthropic.svg" },
-    openrouter: { name: "OpenRouter", color: "bg-purple-500/20 text-purple-500", logoUrl: "https://models.dev/logos/openrouter.svg" },
-    litellm: { name: "LiteLLM", color: "bg-cyan-500/20 text-cyan-500", logoUrl: "https://models.dev/logos/litellm.svg" },
-    custom: { name: "Custom", color: "bg-gray-500/20 text-gray-400", logoUrl: "" },
+// Provider display info
+const PROVIDER_INFO: Record<AIProviderType, { name: string; color: string; logoUrl: string; description: string }> = {
+    openrouter: {
+        name: "OpenRouter",
+        color: "bg-purple-500/20 text-purple-500",
+        logoUrl: "https://models.dev/logos/openrouter.svg",
+        description: "Recommended - Access 100+ models with unified API"
+    },
+    litellm: {
+        name: "LiteLLM Proxy",
+        color: "bg-cyan-500/20 text-cyan-500",
+        logoUrl: "https://models.dev/logos/litellm.svg",
+        description: "Coming Soon - Connect to your LiteLLM proxy"
+    },
+    custom: {
+        name: "Custom API",
+        color: "bg-gray-500/20 text-gray-400",
+        logoUrl: "",
+        description: "Any OpenAI-compatible endpoint (Ollama, vLLM, etc.)"
+    },
 };
 
 // Provider logo component
@@ -99,22 +111,17 @@ const STATUS_ICONS: Record<string, React.ReactNode> = {
 // Provider options for the dropdown
 const PROVIDER_OPTIONS: { value: AIProviderType; label: string }[] = [
     { value: "openrouter", label: "OpenRouter" },
-    { value: "google", label: "Google AI" },
-    { value: "openai", label: "OpenAI" },
-    { value: "anthropic", label: "Anthropic" },
-    { value: "litellm", label: "LiteLLM" },
-    { value: "custom", label: "Custom" },
+    { value: "litellm", label: "LiteLLM Proxy" },
+    { value: "custom", label: "Custom API" },
 ];
 
 // Custom dropdown component styled like the VNB autocomplete
 function ProviderDropdown({
     value,
     onChange,
-    googleCredAvailable,
 }: {
     value: AIProviderType;
     onChange: (value: string) => void;
-    googleCredAvailable: boolean;
 }) {
     const [isOpen, setIsOpen] = useState(false);
     const dropdownRef = useRef<HTMLDivElement>(null);
@@ -150,9 +157,6 @@ function ProviderDropdown({
                     <span className="flex items-center gap-2">
                         <ProviderLogo provider={value} className="h-4 w-4" />
                         <span>{selectedLabel}</span>
-                        {value === "google" && googleCredAvailable && (
-                            <Check className="h-3.5 w-3.5 text-green-500" />
-                        )}
                     </span>
                     <ChevronDown className={`h-4 w-4 opacity-50 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
                 </button>
@@ -175,8 +179,8 @@ function ProviderDropdown({
                                     </span>
                                     <ProviderLogo provider={option.value} className="h-4 w-4" />
                                     <span className="flex-1">{option.label}</span>
-                                    {option.value === "google" && googleCredAvailable && (
-                                        <span className="text-xs text-green-500 font-medium">CLI ✓</span>
+                                    {option.value === "litellm" && (
+                                        <span className="text-xs text-muted-foreground">Coming Soon</span>
                                     )}
                                 </button>
                             );
@@ -537,9 +541,7 @@ function ProviderDialog({
     // Manual Thinking Config for Custom Models
     const [manualThinkingMethod, setManualThinkingMethod] = useState<"none" | "level" | "budget">("none");
 
-    const [authType, setAuthType] = useState<AIAuthType>("api_key");
-    const [isOAuthPending, setIsOAuthPending] = useState(false);
-    const [oauthError, setOauthError] = useState<string | null>(null);
+    const [authType] = useState<AIAuthType>("api_key");
     const queryClient = useQueryClient();
     const { toast } = useToast();
     const { showError } = useErrorToast();
@@ -550,7 +552,6 @@ function ProviderDialog({
             setProviderType(initialConfig.provider_type);
             setName(initialConfig.name);
             setNameManuallyEdited(true);
-            setAuthType(initialConfig.auth_type);
             setModel(initialConfig.model);
             setApiUrl(initialConfig.api_url || "");
             setSupportsVision(initialConfig.supports_vision);
@@ -600,17 +601,6 @@ function ProviderDialog({
         }
     }, [thinkingCapability, thinkingEnabled]);
 
-    // Detect CLI credentials when dialog opens
-    const { data: credsData } = useQuery({
-        queryKey: ["admin", "detect-credentials"],
-        queryFn: api.admin.detectCredentials,
-        enabled: open,
-    });
-
-    const detectedCreds = credsData?.data?.credentials || {};
-    const googleCredAvailable = detectedCreds.google?.available || false;
-    const googleCredEmail = detectedCreds.google?.email;
-
     // Fetch models for selected provider
     const { data: modelsData } = useQuery({
         queryKey: ["admin", "ai-models", providerType],
@@ -620,17 +610,20 @@ function ProviderDialog({
 
     const models = modelsData?.data?.models || [];
     const defaultUrl = modelsData?.data?.default_url || "";
+    const defaultModel = modelsData?.data?.default_model || "";
+    const reasoningOptions = modelsData?.data?.reasoning_options || null;
 
-    // Generate auto name based on provider, model, and auth type
+    // Auto-fill default model when provider changes (create mode only)
+    useEffect(() => {
+        if (!isEditMode && open && defaultModel && !model) {
+            setModel(defaultModel);
+        }
+    }, [defaultModel, open, isEditMode, model]);
+
+    // Generate auto name based on provider and model
     const generateAutoName = () => {
         const providerName = PROVIDER_INFO[providerType]?.name || providerType;
         const modelName = models.find(m => m.id === model)?.name || model;
-
-        if (providerType === "google" && authType === "oauth") {
-            return googleCredEmail
-                ? `${providerName} (${googleCredEmail})`
-                : `${providerName} (OAuth)`;
-        }
 
         if (modelName) {
             return `${providerName} - ${modelName}`;
@@ -645,7 +638,7 @@ function ProviderDialog({
             const autoName = generateAutoName();
             setName(autoName);
         }
-    }, [providerType, model, authType, googleCredEmail, nameManuallyEdited, open, models, isEditMode]);
+    }, [providerType, model, nameManuallyEdited, open, models, isEditMode]);
 
     // When provider changes
     const handleProviderChange = (v: string) => {
@@ -653,13 +646,6 @@ function ProviderDialog({
         setProviderType(provider);
         setModel("");
         if (!isEditMode) setNameManuallyEdited(false); // Reset to allow auto-naming in create mode
-
-        // Default to OAuth for Google if credentials are available
-        if (provider === "google" && googleCredAvailable) {
-            setAuthType("oauth");
-        } else {
-            setAuthType("api_key");
-        }
     };
 
     // Handle name field changes
@@ -674,66 +660,6 @@ function ProviderDialog({
         if (name.trim() === "" && !isEditMode) {
             setNameManuallyEdited(false);
             setName(generateAutoName());
-        }
-    };
-
-    // Handle auth type change
-    const handleAuthTypeChange = (newAuthType: "api_key" | "oauth") => {
-        setAuthType(newAuthType);
-        if (!isEditMode) setNameManuallyEdited(false); // Allow name to update with new auth type
-        setOauthError(null);
-    };
-
-    // Handle OAuth flow start
-    const handleStartOAuthFlow = async () => {
-        setIsOAuthPending(true);
-        setOauthError(null);
-
-        try {
-            // Start the OAuth flow - get auth URL
-            const response = await api.admin.startGoogleOAuth();
-
-            if (!response.success || !response.data?.auth_url) {
-                throw new Error(response.message || "Failed to start OAuth flow");
-            }
-
-            const authUrl = response.data.auth_url;
-
-            // Open popup for OAuth
-            const popup = window.open(
-                authUrl,
-                "google_oauth",
-                "width=500,height=600,scrollbars=yes,resizable=yes"
-            );
-
-            if (!popup) {
-                throw new Error("Popup was blocked. Please allow popups for this site.");
-            }
-
-            // Poll for popup closure and refresh credentials
-            const pollInterval = setInterval(async () => {
-                if (popup.closed) {
-                    clearInterval(pollInterval);
-                    setIsOAuthPending(false);
-
-                    // Refresh credentials to check if OAuth succeeded
-                    await queryClient.invalidateQueries({ queryKey: ["admin", "detect-credentials"] });
-                }
-            }, 500);
-
-            // Set a timeout to stop polling after 5 minutes
-            setTimeout(() => {
-                clearInterval(pollInterval);
-                if (!popup.closed) {
-                    popup.close();
-                }
-                setIsOAuthPending(false);
-            }, 5 * 60 * 1000);
-
-        } catch (error) {
-            console.error("OAuth flow failed:", error);
-            setOauthError(error instanceof Error ? error.message : "OAuth flow failed");
-            setIsOAuthPending(false);
         }
     };
 
@@ -831,10 +757,7 @@ function ProviderDialog({
             return;
         }
 
-        if (authType === "oauth" && !googleCredAvailable) {
-            setTestResult({ success: false, message: "OAuth credentials not available. Please authenticate first." });
-            return;
-        }
+
 
         setIsTesting(true);
         setTestResult(null);
@@ -842,24 +765,24 @@ function ProviderDialog({
         try {
             // Build model_parameters for the test
             const testModelParameters: Record<string, any> = {};
-            if (thinkingEnabled) {
+            if (thinkingEnabled && reasoningOptions) {
                 const effectiveMethod = manualThinkingMethod !== "none"
                     ? manualThinkingMethod
-                    : (thinkingCapability ? (thinkingCapability.method === "budget" ? "budget" : "level") : "none");
+                    : (reasoningOptions.method === "budget" ? "budget" : "level");
 
-                if (effectiveMethod === "budget") {
-                    testModelParameters.thinking_budget = thinkingBudget;
-                } else if (effectiveMethod === "level") {
-                    testModelParameters.thinking_level = thinkingLevel;
+                if (effectiveMethod === "budget" && reasoningOptions.param_name_tokens) {
+                    testModelParameters[reasoningOptions.param_name_tokens] = thinkingBudget;
+                } else if (effectiveMethod === "level" && reasoningOptions.param_name_effort) {
+                    testModelParameters[reasoningOptions.param_name_effort] = thinkingLevel;
                 }
             }
 
             // Call the real test endpoint
             const response = await api.admin.testAIConfigPreview({
                 provider_type: providerType,
-                auth_type: authType === "oauth" ? "cli" : "api_key",
+                auth_type: "api_key",
                 model: model,
-                api_key: authType === "api_key" ? apiKey : undefined,
+                api_key: apiKey,
                 api_url: apiUrl || defaultUrl || undefined,
                 model_parameters: Object.keys(testModelParameters).length > 0 ? testModelParameters : undefined,
             });
@@ -900,16 +823,16 @@ function ProviderDialog({
 
         const modelParameters: Record<string, any> = {};
 
-        if (thinkingEnabled) {
-            // Determine effective method
+        if (thinkingEnabled && reasoningOptions) {
+            // Use parameter names from backend
             const effectiveMethod = manualThinkingMethod !== "none"
                 ? manualThinkingMethod
-                : (thinkingCapability ? (thinkingCapability.method === "budget" ? "budget" : "level") : "none");
+                : (reasoningOptions.method === "budget" ? "budget" : "level");
 
-            if (effectiveMethod === "budget") {
-                modelParameters.thinking_budget = thinkingBudget;
-            } else if (effectiveMethod === "level") {
-                modelParameters.thinking_level = thinkingLevel;
+            if (effectiveMethod === "budget" && reasoningOptions.param_name_tokens) {
+                modelParameters[reasoningOptions.param_name_tokens] = thinkingBudget;
+            } else if (effectiveMethod === "level" && reasoningOptions.param_name_effort) {
+                modelParameters[reasoningOptions.param_name_effort] = thinkingLevel;
             }
         }
 
@@ -929,7 +852,7 @@ function ProviderDialog({
             const createData: AIConfigCreate = {
                 name: finalName,
                 provider_type: providerType,
-                auth_type: authType === "oauth" ? "cli" : "api_key",
+                auth_type: "api_key",
                 model: model,
                 api_key: (authType === "api_key" && apiKey) ? apiKey : undefined,
                 api_url: apiUrl || defaultUrl || undefined,
@@ -943,8 +866,7 @@ function ProviderDialog({
     };
 
     const needsApiUrl = providerType === "litellm" || providerType === "custom";
-    const needsApiKey = authType === "api_key";
-    const showAuthTypeToggle = providerType === "google"; // Only Google supports OAuth currently
+    const needsApiKey = true; // Always need API key now
 
     const isLoading = createMutation.isPending || updateMutation.isPending;
 
@@ -959,82 +881,15 @@ function ProviderDialog({
                 </DialogHeader>
 
                 <div className="space-y-4 py-4">
-                    {/* Provider Type */}
                     <ProviderDropdown
                         value={providerType}
                         onChange={handleProviderChange}
-                        googleCredAvailable={googleCredAvailable}
                     />
 
-                    {/* Authentication Type Toggle */}
-                    {showAuthTypeToggle && (
-                        <div className="space-y-3">
-                            <Label>Authentication Method</Label>
-                            <div className="grid grid-cols-2 gap-2">
-                                {/* OAuth Option */}
-                                <button
-                                    type="button"
-                                    onClick={() => handleAuthTypeChange("oauth")}
-                                    className={`p-3 rounded-lg border text-left transition-all ${authType === "oauth"
-                                        ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                                        : "border-border hover:border-primary/50 hover:bg-accent/50"
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2 font-medium mb-1">
-                                        {googleCredAvailable ? (
-                                            <CheckCircle2 className="h-4 w-4 text-green-500" />
-                                        ) : (
-                                            <RefreshCw className="h-4 w-4" />
-                                        )}
-                                        OAuth / CLI
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        {googleCredAvailable
-                                            ? `Uses existing Gemini CLI credentials (${googleCredEmail})`
-                                            : "Authenticate via Google OAuth (like Gemini CLI)"
-                                        }
-                                    </p>
-                                </button>
-
-                                {/* API Key Option */}
-                                <button
-                                    type="button"
-                                    onClick={() => handleAuthTypeChange("api_key")}
-                                    className={`p-3 rounded-lg border text-left transition-all ${authType === "api_key"
-                                        ? "border-primary bg-primary/10 ring-2 ring-primary/20"
-                                        : "border-border hover:border-primary/50 hover:bg-accent/50"
-                                        }`}
-                                >
-                                    <div className="flex items-center gap-2 font-medium mb-1">
-                                        <Key className="h-4 w-4" />
-                                        API Key
-                                    </div>
-                                    <p className="text-xs text-muted-foreground">
-                                        Use a Google AI Studio API key
-                                    </p>
-                                </button>
-                            </div>
-                        </div>
-                    )}
-
-                    {/* OAuth Flow UI (Simplified/Inline) */}
-                    {showAuthTypeToggle && authType === "oauth" && !googleCredAvailable && (
-                        <div className="rounded-lg border border-amber-500/30 bg-amber-500/10 p-3">
-                            <div className="flex items-center gap-2 text-amber-500 font-medium mb-1">
-                                <AlertTriangle className="h-4 w-4" />
-                                OAuth not yet configured
-                            </div>
-                            <Button
-                                variant="outline"
-                                size="sm"
-                                className="mt-2"
-                                onClick={handleStartOAuthFlow}
-                                disabled={isOAuthPending}
-                            >
-                                {isOAuthPending ? "Authenticating..." : "Start OAuth Flow"}
-                            </Button>
-                        </div>
-                    )}
+                    {/* Provider Description */}
+                    <p className="text-sm text-muted-foreground">
+                        {PROVIDER_INFO[providerType]?.description}
+                    </p>
 
                     {/* Name */}
                     <div className="space-y-2">
@@ -1260,22 +1115,11 @@ function ProviderDialog({
                 </div>
 
                 {/* Test Result */}
-                {(testResult || oauthError) && (
-                    <div className={`p-3 rounded-lg border ${testResult
-                        ? (testResult.success ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10")
-                        : "border-red-500/30 bg-red-500/10" // OAuth error is always red
-                        }`}>
-                        {testResult && (
-                            <p className={`text-sm ${testResult.success ? "text-green-500" : "text-red-500"}`}>
-                                {testResult.success ? "✓" : "✗"} {testResult.message}
-                            </p>
-                        )}
-                        {oauthError && (
-                            <p className="text-sm text-red-500 flex items-center gap-2">
-                                <AlertTriangle className="h-3 w-3" />
-                                OAuth Error: {oauthError}
-                            </p>
-                        )}
+                {testResult && (
+                    <div className={`p-3 rounded-lg border ${testResult.success ? "border-green-500/30 bg-green-500/10" : "border-red-500/30 bg-red-500/10"}`}>
+                        <p className={`text-sm ${testResult.success ? "text-green-500" : "text-red-500"}`}>
+                            {testResult.success ? "✓" : "✗"} {testResult.message}
+                        </p>
                     </div>
                 )}
 

@@ -63,8 +63,20 @@ apiClient.interceptors.response.use(
 // Types
 
 // AI Provider Configuration Types
-export type AIProviderType = "openai" | "google" | "anthropic" | "openrouter" | "litellm" | "custom";
-export type AIAuthType = "api_key" | "oauth" | "cli";
+export type AIProviderType = "openrouter" | "litellm" | "custom";
+export type AIAuthType = "api_key";
+
+// Reasoning options returned from backend (provider-specific)
+export interface ReasoningOptions {
+  method: "level" | "budget" | "both";
+  levels?: string[];
+  default_level?: string;
+  budget_min?: number;
+  budget_max?: number;
+  default_budget?: number;
+  param_name_effort?: string;
+  param_name_tokens?: string;
+}
 
 export interface ThinkingCapability {
   method: "level" | "budget";

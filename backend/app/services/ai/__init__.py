@@ -2,22 +2,20 @@
 AI Service Package
 
 Provides a modular, multi-provider AI extraction gateway with:
-- Provider abstraction layer (OpenAI, Google, Anthropic, OpenRouter, etc.)
+- Provider abstraction layer (OpenRouter, LiteLLM, Custom)
 - Admin-configurable provider management
 - Smart fallback on rate limits
-- OAuth and API key authentication support
-- Dynamic model registry from models.dev
+- API key authentication
 """
 
+from app.services.ai.config_service import AIConfigService
 from app.services.ai.gateway import AIGateway, get_ai_gateway
-from app.services.ai.interface import AIProviderInterface
-from app.services.ai.models_registry import ModelsRegistry, get_models_for_provider
+from app.services.ai.providers.base import BaseProvider
 
 __all__ = [
+    "AIConfigService",
     "AIGateway",
-    "AIProviderInterface",
-    "ModelsRegistry",
+    "BaseProvider",
     "get_ai_gateway",
-    "get_models_for_provider",
 ]
 

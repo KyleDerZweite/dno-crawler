@@ -38,6 +38,7 @@ dependencies = [
 
     # LLM Integration (OpenAI-compatible API)
     "openai>=1.50.0",
+    "openrouter>=0.1.1",
 
     # Data Validation
     "pydantic>=2.5.0",

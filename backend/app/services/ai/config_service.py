@@ -3,13 +3,14 @@ AI Provider Configuration Service
 
 Manages AI provider configurations in the database with:
 - CRUD operations
-- Caching for active configs
 - Priority ordering
 - Health status updates
+- Delegates model fetching to provider classes
 """
 
 from collections.abc import Sequence
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import structlog
 from sqlalchemy import select, update
@@ -17,21 +18,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AIProviderConfigModel
 from app.services.ai.encryption import encrypt_secret
-
-# Import shared model definitions (Source of Truth)
-from app.services.ai.models_registry import FALLBACK_MODELS
+from app.services.ai.providers.custom import CustomProvider
+from app.services.ai.providers.litellm import LiteLLMProvider
+from app.services.ai.providers.openrouter import OpenRouterProvider
 
 logger = structlog.get_logger()
 
-# Cache TTL for active configs
-CONFIG_CACHE_TTL_SECONDS = 60
-
-# Provider default URLs
-PROVIDER_DEFAULT_URLS = {
-    "openai": "https://api.openai.com/v1",
-    "google": "https://generativelanguage.googleapis.com/v1beta/openai",
-    "anthropic": "https://api.anthropic.com/v1",
-    "openrouter": "https://openrouter.ai/api/v1",
+# Provider type to class mapping
+PROVIDER_CLASSES = {
+    "openrouter": OpenRouterProvider,
+    "litellm": LiteLLMProvider,
+    "custom": CustomProvider,
 }
 
 
@@ -96,9 +93,11 @@ class AIConfigService:
         existing = await self.list_all()
         next_priority = len(existing)
 
-        # Use default URL if not provided
-        if not api_url and provider_type in PROVIDER_DEFAULT_URLS:
-            api_url = PROVIDER_DEFAULT_URLS[provider_type]
+        # Use default URL from provider if not provided
+        if not api_url:
+            provider_cls = PROVIDER_CLASSES.get(provider_type)
+            if provider_cls:
+                api_url = provider_cls.get_default_url()
 
         config = AIProviderConfigModel(
             name=name,
@@ -249,103 +248,33 @@ class AIConfigService:
             )
         )
 
-    @staticmethod
-    def get_models_for_provider_sync(provider_type: str) -> list[dict]:
-        """Get available models for a provider (sync fallback).
-
-        Use get_models_for_provider() for full model list from models.dev.
-        """
-        return FALLBACK_MODELS.get(provider_type, [])
+    # -------------------------------------------------------------------------
+    # Model Fetching (delegated to providers)
+    # -------------------------------------------------------------------------
 
     @staticmethod
-    def get_suggested_models(provider_type: str) -> list[dict]:
-        """Get the curated list of suggested/recommended models for a provider.
-
-        This returns only the FALLBACK_MODELS - a hand-picked list of the best
-        and most current models. Used as the default display before user searches.
-        """
-        return FALLBACK_MODELS.get(provider_type, [])
-
-    @staticmethod
-    async def search_models_for_provider(
-        provider_type: str,
-        query: str = "",
-        supports_vision: bool | None = None,
-        supports_files: bool | None = None,
-        limit: int = 25,
-    ) -> list[dict]:
-        """Search models for a provider from the full models.dev registry.
-
-        Used when the user actively searches/types to find models beyond
-        the suggested list. Returns fuzzy-matched results from the full registry.
-
-        Args:
-            provider_type: Provider to search (openai, google, anthropic, etc.)
-            query: Search query for model name/ID
-            supports_vision: Optional filter for vision capability
-            supports_files: Optional filter for file/PDF capability
-            limit: Max results to return
-
+    async def get_models_for_provider(provider_type: str) -> dict[str, Any]:
+        """Get available models for a provider.
+        
+        Delegates to the provider's class methods.
+        
         Returns:
-            List of matching models from the registry
+            Dict with models, default model, and reasoning_options
         """
-        try:
-            from app.services.ai.models_registry import search_models as registry_search
-
-            models = await registry_search(
-                query=query,
-                provider=provider_type if provider_type not in ("litellm", "custom") else None,
-                supports_vision=supports_vision,
-                supports_files=supports_files,
-                limit=limit,
-            )
-            return models
-        except Exception as e:
-            logger.warning("models_registry_search_failed", error=str(e), query=query)
-
-            # Fallback: filter FALLBACK_MODELS locally
-            fallback = FALLBACK_MODELS.get(provider_type, [])
-            if not query:
-                return fallback[:limit]
-
-            query_lower = query.lower()
-            return [
-                m for m in fallback
-                if query_lower in m["id"].lower() or query_lower in m["name"].lower()
-            ][:limit]
-
-    @staticmethod
-    async def get_models_for_provider(provider_type: str) -> list[dict]:
-        """Get available models for a provider from models.dev registry.
-
-        Falls back to hardcoded list if registry unavailable.
-        """
-        try:
-            from app.services.ai.models_registry import (
-                get_models_for_provider as registry_get_models,
-            )
-            models = await registry_get_models(provider_type)
-            if models:
-                return models
-        except Exception as e:
-            logger.warning("models_registry_unavailable", error=str(e))
-
-        # Fallback to hardcoded list
-        return FALLBACK_MODELS.get(provider_type, [])
+        provider_cls = PROVIDER_CLASSES.get(provider_type)
+        if not provider_cls:
+            return {"models": [], "default": "", "reasoning_options": None}
+        
+        return {
+            "models": await provider_cls.get_available_models(),
+            "default": provider_cls.get_default_model(),
+            "reasoning_options": provider_cls.get_reasoning_options(),
+        }
 
     @staticmethod
     def get_default_url(provider_type: str) -> str | None:
         """Get default API URL for a provider."""
-        return PROVIDER_DEFAULT_URLS.get(provider_type)
-
-
-async def refresh_models_registry() -> bool:
-    """Refresh the models registry cache from models.dev API."""
-    from app.services.ai.models_registry import refresh_models_cache
-    return await refresh_models_cache()
-
-
-def get_models_registry_status() -> dict:
-    """Get status of the models registry cache."""
-    from app.services.ai.models_registry import ModelsRegistry
-    return ModelsRegistry.get_instance().get_cache_status()
+        provider_cls = PROVIDER_CLASSES.get(provider_type)
+        if provider_cls:
+            return provider_cls.get_default_url()
+        return None

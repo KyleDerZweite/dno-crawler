@@ -1208,82 +1208,29 @@ async def test_ai_config_preview(
 async def list_provider_models(
     provider_type: str,
     admin: Annotated[AuthUser, Depends(require_admin)],
-    query: str | None = None,
-    supports_vision: bool | None = None,
-    supports_files: bool | None = None,
-    limit: int = 25,
 ) -> APIResponse:
     """List available models for a provider.
-
-    Two-stage approach:
-    - Without query: Returns curated/suggested models (FALLBACK_MODELS)
-    - With query: Searches the full models.dev registry
-
-    This optimizes the UI by showing recommended models first, then
-    enabling fuzzy search against the full registry when user types.
+    
+    Delegates to the provider's get_available_models() class method.
+    OpenRouter: Fetches from API with modality filtering
+    LiteLLM/Custom: Returns empty list (user types manually)
     """
-    from app.services.ai.config_service import AIConfigService, get_models_registry_status
+    from app.services.ai.config_service import AIConfigService
 
+    result = await AIConfigService.get_models_for_provider(provider_type)
     default_url = AIConfigService.get_default_url(provider_type)
-    registry_status = get_models_registry_status()
-
-    # If no query provided, return suggested models only
-    if not query:
-        models = AIConfigService.get_suggested_models(provider_type)
-        return APIResponse(
-            success=True,
-            data={
-                "provider": provider_type,
-                "models": models,
-                "default_url": default_url,
-                "custom_model_supported": True,
-                "registry_status": registry_status,
-                "source": "suggested",
-            },
-        )
-
-    # With query, search the full registry
-    models = await AIConfigService.search_models_for_provider(
-        provider_type=provider_type,
-        query=query,
-        supports_vision=supports_vision,
-        supports_files=supports_files,
-        limit=limit,
-    )
 
     return APIResponse(
         success=True,
         data={
             "provider": provider_type,
-            "models": models,
+            "models": result["models"],
+            "default_model": result["default"],
             "default_url": default_url,
+            "reasoning_options": result.get("reasoning_options"),
             "custom_model_supported": True,
-            "registry_status": registry_status,
-            "source": "search",
-            "query": query,
         },
     )
-
-
-@router.post("/ai-config/models/refresh")
-async def refresh_models_registry(
-    admin: Annotated[AuthUser, Depends(require_admin)],
-) -> APIResponse:
-    """Refresh the models registry from models.dev API."""
-    from app.services.ai.config_service import refresh_models_registry as do_refresh
-
-    success = await do_refresh()
-
-    if success:
-        return APIResponse(
-            success=True,
-            message="Models registry refreshed successfully",
-        )
-    else:
-        return APIResponse(
-            success=False,
-            message="Failed to refresh models registry",
-        )
 
 
 @router.get("/ai-config/status")

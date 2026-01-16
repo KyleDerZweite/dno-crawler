@@ -2,9 +2,9 @@
 AI Gateway
 
 Main entry point for AI extraction with:
-- Multi-provider support
+- Multi-provider support (OpenRouter, LiteLLM, Custom)
 - Smart fallback on rate limits
-- Preference for subscription-based providers
+- Health tracking
 """
 
 import base64
@@ -17,11 +17,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AIProviderConfigModel
 from app.services.ai.config_service import AIConfigService
-from app.services.ai.interface import AIProviderInterface
-from app.services.ai.providers.anthropic import AnthropicProvider
 from app.services.ai.providers.base import BaseProvider
-from app.services.ai.providers.google import GoogleProvider
-from app.services.ai.providers.openai import OpenAIProvider
+from app.services.ai.providers.custom import CustomProvider
+from app.services.ai.providers.litellm import LiteLLMProvider
 from app.services.ai.providers.openrouter import OpenRouterProvider
 
 logger = structlog.get_logger()
@@ -29,13 +27,9 @@ logger = structlog.get_logger()
 
 # Provider type to class mapping
 PROVIDER_CLASSES: dict[str, type[BaseProvider]] = {
-    "openai": OpenAIProvider,
-    "google": GoogleProvider,
-    "anthropic": AnthropicProvider,
     "openrouter": OpenRouterProvider,
-    # LiteLLM and custom use the base provider with custom URL
-    "litellm": BaseProvider,
-    "custom": BaseProvider,
+    "litellm": LiteLLMProvider,
+    "custom": CustomProvider,
 }
 
 # File extension to MIME type mapping
@@ -66,7 +60,6 @@ class AIGateway:
     Provides unified interface for AI extraction with:
     - Multiple provider support
     - Smart fallback on errors
-    - Subscription preference
     - Health tracking
     """
 
@@ -79,7 +72,7 @@ class AIGateway:
         self.db = db
         self.config_service = AIConfigService(db)
 
-    def _create_provider(self, config: AIProviderConfigModel) -> AIProviderInterface:
+    def _create_provider(self, config: AIProviderConfigModel) -> BaseProvider:
         """Create provider instance from config.
 
         Args:
@@ -105,9 +98,8 @@ class AIGateway:
         """Get sorted list of configs for fallback.
 
         Sorting order:
-        1. Subscriptions first (OAuth-based)
-        2. Then by user priority
-        3. Healthy providers first
+        1. By user priority
+        2. Healthy providers first
 
         Args:
             needs_vision: Filter to providers supporting vision
@@ -127,13 +119,12 @@ class AIGateway:
                 continue
             filtered.append(config)
 
-        # Sort: subscriptions first, then by priority, then by health
+        # Sort: by priority, then by health
         return sorted(
             filtered,
             key=lambda c: (
-                0 if c.is_subscription else 1,  # Subscriptions first
-                c.priority,                      # Then by user priority
-                0 if c.is_healthy else 1,       # Healthy first
+                c.priority,                      # By user priority
+                0 if c.is_healthy else 1,        # Healthy first
             )
         )
 
