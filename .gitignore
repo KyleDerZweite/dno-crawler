@@ -131,3 +131,7 @@ Thumbs.db
 # End of .gitignore
 backend/data/cache/models_registry.json
 data/auth/*
+
+# Seed data - only keep parquet files, ignore large JSON/CSV
+data/seed-data/*.json
+data/seed-data/*.csv
