@@ -121,9 +121,13 @@ class DNOModel(Base, TimestampMixin):
 
     # -------------------------------------------------------------------------
     # Crawlability Info (from skeleton creation/robots.txt analysis)
+    # TTL: robots_txt = 150 days, sitemap = 120 days
     # -------------------------------------------------------------------------
     robots_txt: Mapped[str | None] = mapped_column(Text)
-    sitemap_urls: Mapped[list | None] = mapped_column(JSON)
+    robots_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # TTL: 150 days
+    sitemap_urls: Mapped[list | None] = mapped_column(JSON)  # URLs declared in robots.txt
+    sitemap_parsed_urls: Mapped[list | None] = mapped_column(JSON)  # All URLs extracted from sitemaps (recursively)
+    sitemap_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # TTL: 120 days
     disallow_paths: Mapped[list | None] = mapped_column(JSON)
     crawlable: Mapped[bool] = mapped_column(Boolean, default=True)
     crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))

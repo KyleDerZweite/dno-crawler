@@ -135,3 +135,10 @@ data/auth/*
 # Seed data - only keep parquet files, ignore large JSON/CSV
 data/seed-data/*.json
 data/seed-data/*.csv
+data/seed-data/convert.py
+
+# Sample/debug data - generated during extraction and crawl debugging
+data/samples/extraction/
+data/samples/crawl/
+data/samples/debug/
+data/samples/training/

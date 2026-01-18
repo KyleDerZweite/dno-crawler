@@ -1,12 +1,10 @@
 # Observability Stack Setup
 
-> **Last Updated:** 2026-01-09
-> 
-> This file is designed to be copied to your infrastructure repository.
+Last Updated: 2026-01-17
 
-Complete setup guide for a self-hosted observability stack using OpenTelemetry Collector, Loki, Prometheus, and Grafana.
+This file is designed to be copied to your infrastructure repository.
 
----
+Complete setup guide for a self hosted observability stack using OpenTelemetry Collector, Loki, Prometheus, and Grafana.
 
 ## Architecture Overview
 
@@ -40,12 +38,10 @@ Complete setup guide for a self-hosted observability stack using OpenTelemetry C
               └───────────┘
 ```
 
----
-
 ## Quick Start
 
 ```bash
-# Clone/copy these files to your infra repo
+# Clone or copy these files to your infra repo
 mkdir -p observability
 cd observability
 
@@ -54,8 +50,6 @@ cd observability
 docker compose up -d
 ```
 
----
-
 ## Docker Compose
 
 ```yaml
@@ -63,10 +57,8 @@ docker compose up -d
 version: '3.8'
 
 services:
-  # ============================================
   # OpenTelemetry Collector
-  # Receives logs/metrics from all applications
-  # ============================================
+  # Receives logs and metrics from all applications
   otel-collector:
     image: otel/opentelemetry-collector-contrib:latest
     container_name: otel-collector
@@ -84,9 +76,7 @@ services:
     networks:
       - observability
 
-  # ============================================
-  # Loki - Log aggregation
-  # ============================================
+  # Loki for Log aggregation
   loki:
     image: grafana/loki:latest
     container_name: loki
@@ -100,9 +90,7 @@ services:
     networks:
       - observability
 
-  # ============================================
-  # Prometheus - Metrics aggregation
-  # ============================================
+  # Prometheus for Metrics aggregation
   prometheus:
     image: prom/prometheus:latest
     container_name: prometheus
@@ -120,9 +108,7 @@ services:
     networks:
       - observability
 
-  # ============================================
-  # Grafana - Dashboards & Visualization
-  # ============================================
+  # Grafana for Dashboards and Visualization
   grafana:
     image: grafana/grafana:latest
     container_name: grafana
@@ -154,8 +140,6 @@ volumes:
   grafana_data:
 ```
 
----
-
 ## Configuration Files
 
 ### Directory Structure
@@ -173,8 +157,6 @@ observability/
             └── datasources/
                 └── datasources.yml
 ```
-
----
 
 ### OpenTelemetry Collector
 
@@ -242,10 +224,6 @@ exporters:
   prometheus:
     endpoint: 0.0.0.0:8889
     namespace: otel
-  
-  # Debug output (disable in production)
-  # debug:
-  #   verbosity: detailed
 
 service:
   pipelines:
@@ -259,8 +237,6 @@ service:
       processors: [memory_limiter, batch]
       exporters: [prometheus]
 ```
-
----
 
 ### Loki
 
@@ -317,8 +293,6 @@ compactor:
   delete_request_store: filesystem
 ```
 
----
-
 ### Prometheus
 
 ```yaml
@@ -350,8 +324,6 @@ scrape_configs:
   #   metrics_path: /metrics
 ```
 
----
-
 ### Grafana Data Sources
 
 ```yaml
@@ -375,8 +347,6 @@ datasources:
       timeInterval: "15s"
 ```
 
----
-
 ## Environment Variables
 
 ```bash
@@ -387,21 +357,19 @@ GRAFANA_PASSWORD=your-secure-password
 GRAFANA_ROOT_URL=https://grafana.yourdomain.com
 ```
 
----
-
 ## Sending Logs from Applications
 
 ### Python (structlog + OTLP)
 
 ```python
-# Option 1: stdout JSON (recommended - collector reads Docker logs)
+# Option 1 stdout JSON (recommended as collector reads Docker logs)
 import json
 import sys
 
 def emit_event(event: dict):
     print(json.dumps(event), file=sys.stdout, flush=True)
 
-# Option 2: Direct OTLP HTTP
+# Option 2 Direct OTLP HTTP
 import httpx
 
 async def send_to_otel(event: dict):
@@ -432,10 +400,10 @@ async def send_to_otel(event: dict):
 
 ### Docker Logging Driver
 
-Configure containers to send logs directly:
+Configure containers to send logs directly.
 
 ```yaml
-# In your application's docker-compose.yml
+# In your application docker-compose.yml
 services:
   my-app:
     image: my-app:latest
@@ -447,8 +415,6 @@ services:
     # OTel collector reads from /var/lib/docker/containers
 ```
 
----
-
 ## Useful Loki Queries (LogQL)
 
 ```logql
@@ -458,10 +424,10 @@ services:
 # Errors only
 {service="dno-crawler"} |= "error" | json | level = "error"
 
-# Slow requests (>2 seconds)
+# Slow requests (greater than 2 seconds)
 {service="dno-crawler"} | json | duration_ms > 2000
 
-# Specific user's requests
+# Specific user requests
 {service="dno-crawler"} | json | user_id = "user_456"
 
 # Error rate (last 5 minutes)
@@ -473,26 +439,31 @@ topk(10, avg by (http_path) (
 ))
 ```
 
----
-
 ## Grafana Dashboard Ideas
 
 ### Request Overview Panel
-- Request rate by status code (2xx, 4xx, 5xx)
-- P50/P95/P99 latency histogram
-- Error rate trend
+
+| Metric | Description |
+|--------|-------------|
+| Request rate by status code | Track 2xx, 4xx, 5xx distributions |
+| P50/P95/P99 latency histogram | Latency percentiles over time |
+| Error rate trend | Error percentage trend line |
 
 ### Service Health Panel
-- Active services
-- Log ingestion rate
-- Error count by service
+
+| Metric | Description |
+|--------|-------------|
+| Active services | Currently reporting services |
+| Log ingestion rate | Logs per second |
+| Error count by service | Error distribution across services |
 
 ### User Activity Panel
-- Requests by user tier
-- Top users by request count
-- User error rate
 
----
+| Metric | Description |
+|--------|-------------|
+| Requests by user tier | Distribution across subscription tiers |
+| Top users by request count | Most active users |
+| User error rate | Errors per user |
 
 ## Resource Requirements
 
@@ -504,9 +475,7 @@ topk(10, avg by (http_path) (
 | Grafana | 256MB | 512MB | 1GB |
 | **Total** | **~1.2GB** | **~2.5GB** | **~70GB** |
 
-Suitable for: VPS with 4GB RAM, 100GB+ storage
-
----
+Suitable for VPS with 4GB RAM and 100GB+ storage.
 
 ## Maintenance
 
@@ -539,23 +508,21 @@ docker compose pull
 docker compose up -d
 ```
 
----
-
 ## Troubleshooting
 
 ### Logs not appearing in Loki
 
-1. Check OTel Collector logs: `docker logs otel-collector`
-2. Verify Loki is healthy: `curl http://localhost:3100/ready`
+1. Check OTel Collector logs with `docker logs otel-collector`
+2. Verify Loki is healthy with `curl http://localhost:3100/ready`
 3. Check labels are being set correctly
 
 ### High memory usage
 
-1. Reduce Loki's `max_streams_per_user`
-2. Lower OTel Collector's batch size
+1. Reduce Loki `max_streams_per_user` setting
+2. Lower OTel Collector batch size
 3. Increase sampling rate (drop more logs)
 
-### Grafana can't connect to data sources
+### Grafana cannot connect to data sources
 
-1. Verify network connectivity: `docker exec grafana ping loki`
+1. Verify network connectivity with `docker exec grafana ping loki`
 2. Check data source URLs use container names, not localhost

@@ -2,11 +2,11 @@
 
 ## Overview
 
-DNO Crawler is a full-stack application for automated extraction of regulatory data from German Distribution Network Operators (DNOs). The system features a React SPA frontend for user interaction and a FastAPI backend that orchestrates data retrieval via synchronous APIs and asynchronous background workers.
+DNO Crawler is a full stack application for automated extraction of regulatory data from German Distribution Network Operators (DNOs). The system features a React SPA frontend for user interaction and a FastAPI backend that orchestrates data retrieval via synchronous APIs and asynchronous background workers.
 
 ## 1. System Architecture
 
-The system follows a microservices-lite architecture with clear separation between the API layer, background processing, and data persistence.
+The system follows a microservices lite architecture with clear separation between the API layer, background processing, and data persistence.
 
 ```mermaid
 flowchart TD
@@ -39,6 +39,7 @@ flowchart TD
             AdminRoute[Admin Dashboard]
             FilesRoute[File Downloads]
             VerifyRoute[Data Verification]
+            AIRoute[AI Provider Management]
         end
         
         subgraph Services ["Service Layer"]
@@ -46,6 +47,7 @@ flowchart TD
             VNBSvc[VNB Digital Client]
             BDEWSvc[BDEW Client]
             MaStRSvc[MaStR Seed Importer]
+            VerifierSvc[Content Verifier]
         end
     end
 
@@ -54,10 +56,12 @@ flowchart TD
         RedisQ[(Redis Queue)]
         Worker[arq Worker]
         subgraph Pipeline ["Extraction Pipeline"]
+            GatherStep[Step 00: Gather Context]
             DiscoverStep[Step 01: Discover]
-            DownloadStep[Step 03: Download]
-            ExtractStep[Step 04: Extract]
-            ValidateStep[Step 05: Validate]
+            DownloadStep[Step 02: Download]
+            ExtractStep[Step 03: Extract]
+            ValidateStep[Step 04: Validate]
+            FinalizeStep[Step 05: Finalize]
         end
     end
 
@@ -116,16 +120,13 @@ flowchart TD
 
 ### Key Components
 
-- **Frontend**: React 19 SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling.
-- **Public API**: Rate-limited endpoints for address search and skeleton DNO creation. No authentication required.
-- **Protected API**: Secured by `Depends(get_current_user)`. Provides DNO management, job triggering, data verification, and admin functions.
-- **Service Layer**: Integrates with three external data sources:
-  - **VNB Digital**: GraphQL API for real-time address-to-DNO resolution
-  - **BDEW Registry**: JTables endpoint (POST request interception) for BDEW codes
-  - **MaStR Importer**: Processes manual CSV/XML exports from Bundesnetzagentur
-- **Async Worker**: arq-powered Redis worker executes multi-step extraction pipeline without blocking HTTP requests.
-
----
+| Component | Description |
+|-----------|-------------|
+| Frontend | React 19 SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling. |
+| Public API | Rate limited endpoints for address search and skeleton DNO creation. No authentication required. |
+| Protected API | Secured by `Depends(get_current_user)`. Provides DNO management, job triggering, data verification, AI provider management, and admin functions. |
+| Service Layer | Integrates with three external data sources and provides business logic for verification, pattern learning, and content analysis. |
+| Async Worker | arq powered Redis worker executes multi step extraction pipeline without blocking HTTP requests. |
 
 ## 2. Core User Journey
 
@@ -153,7 +154,7 @@ sequenceDiagram
     API-->>Frontend: 200 OK (User Info)
 
     %% Search Flow
-    Note over User, Worker: Search & DNO Resolution
+    Note over User, Worker: Search and DNO Resolution
     User->>Frontend: Enter Address "Musterstr. 1, Berlin"
     Frontend->>API: POST /api/v1/search
     API->>DB: Check Location Cache (address_hash)
@@ -184,10 +185,10 @@ sequenceDiagram
         Worker->>DNOSite: BFS crawl with keyword scoring
     end
     
-    Worker->>DNOSite: Step 03: Download File
-    Worker->>Worker: Step 04: Extract (Regex first, AI fallback)
-    Worker->>Worker: Step 05: Validate
-    Worker->>DB: Step 06: Save Netzentgelte & HLZF
+    Worker->>DNOSite: Step 02: Download File
+    Worker->>Worker: Step 03: Extract (Regex first, AI fallback)
+    Worker->>Worker: Step 04: Validate
+    Worker->>DB: Step 05: Save Netzentgelte and HLZF
     Worker->>DB: Update Job (Status: completed)
     
     %% Result Retrieval
@@ -197,16 +198,14 @@ sequenceDiagram
     end
     
     Frontend->>API: GET /api/v1/dnos/{id}
-    API->>DB: Fetch DNO with Netzentgelte & HLZF
+    API->>DB: Fetch DNO with Netzentgelte and HLZF
     DB-->>API: Return Data
     API-->>Frontend: Display Data Tables
 ```
 
----
-
 ## 3. External Data Sources
 
-The system aggregates DNO metadata from three authoritative sources using a hub-and-spoke pattern.
+The system aggregates DNO metadata from three authoritative sources using a hub and spoke pattern.
 
 ```mermaid
 erDiagram
@@ -252,11 +251,9 @@ erDiagram
 
 | Source | Method | Update Frequency | Data Provided |
 |--------|--------|------------------|---------------|
-| **VNB Digital** | GraphQL API queries | Real-time | Address resolution, official names, homepage URLs, contact info |
-| **Marktstammdatenregister** | Manual XML/CSV export | Periodic (manual) | Market roles (Marktrollen), ACER codes, legal names, registered addresses |
-| **BDEW Codes Registry** | JTables POST interception | On-demand | BDEW identification codes, grid operator function codes |
-
----
+| VNB Digital | GraphQL API queries | Real time | Address resolution, official names, homepage URLs, contact info |
+| Marktstammdatenregister | Manual XML/CSV export | Periodic (manual) | Market roles (Marktrollen), ACER codes, legal names, registered addresses |
+| BDEW Codes Registry | JTables POST interception | On demand | BDEW identification codes, grid operator function codes |
 
 ## 4. Database Schema
 
@@ -267,6 +264,9 @@ erDiagram
     dnos ||--o{ hlzf : "has"
     dnos ||--o{ crawl_jobs : "target of"
     dnos ||--o{ dno_source_profiles : "configured by"
+    dnos ||--o| dno_mastr_data : "enriched by"
+    dnos ||--o| dno_vnb_data : "enriched by"
+    dnos ||--o{ dno_bdew_data : "enriched by"
     
     dnos {
         int id PK
@@ -305,6 +305,8 @@ erDiagram
         string extraction_source "ai|pdf_regex|html_parser|manual"
         string extraction_model "gemini-2.0-flash|etc"
         string verification_status
+        datetime flagged_at
+        text flag_reason
     }
 
     hlzf {
@@ -317,14 +319,17 @@ erDiagram
         text sommer
         text herbst
         string extraction_source
+        string verification_status
     }
 
     crawl_jobs ||--o{ crawl_job_steps : "contains"
     crawl_jobs {
         int id PK
         int dno_id FK
+        int parent_job_id FK
         int year
         string data_type "netzentgelte|hlzf"
+        string job_type "crawl|extract|full"
         string status "pending|running|completed|failed"
         int progress
         string current_step
@@ -345,13 +350,13 @@ erDiagram
         int dno_id FK
         string data_type
         string source_format "pdf|html|xlsx"
-        string url_pattern "URL with {year} placeholder"
+        string url_pattern "URL with year placeholder"
         string discovery_method "pattern_match|bfs_crawl|exact_url"
     }
     
     crawl_path_patterns {
         int id PK
-        string path_pattern UK "e.g. /downloads/{year}/netzentgelte.pdf"
+        string path_pattern UK "e.g. /downloads/year/netzentgelte.pdf"
         string data_type
         int success_count
         int fail_count
@@ -367,23 +372,35 @@ erDiagram
         string file_hash
         string extraction_method
     }
+
+    ai_provider_configs {
+        int id PK
+        string name UK
+        string provider_type
+        string auth_type "api_key|oauth"
+        bool is_active
+        int priority
+        int rate_limit_rpm
+        datetime last_error_at
+    }
 ```
 
 ### Key Entities
 
-- **DNOModel (`dnos`)**: Hub entity in a hub-and-spoke pattern. Contains resolved display fields (best values from MaStR/VNB/BDEW), quick-access external IDs, and crawlability metadata.
-- **Source Data Tables**: `dno_mastr_data`, `dno_vnb_data`, `dno_bdew_data` store raw data from each external source.
-- **LocationModel (`locations`)**: Maps addresses and coordinates to DNOs. Uses `address_hash` for O(1) cache lookups.
-- **Data Tables (`netzentgelte`, `hlzf`)**: Extracted pricing and time-window data with provenance tracking (extraction source, model used).
-- **Source Profiles (`dno_source_profiles`)**: Per-DNO learned patterns for fast re-crawling.
-- **Path Patterns (`crawl_path_patterns`)**: Cross-DNO URL patterns with success/failure statistics for prioritized discovery.
-- **Job Tracking (`crawl_jobs`, `crawl_job_steps`)**: State machine for background tasks with step-level granularity.
-
----
+| Entity | Description |
+|--------|-------------|
+| DNOModel (`dnos`) | Hub entity in a hub and spoke pattern. Contains resolved display fields (best values from MaStR/VNB/BDEW), quick access external IDs, and crawlability metadata including robots.txt and sitemap data. |
+| Source Data Tables | `dno_mastr_data`, `dno_vnb_data`, `dno_bdew_data` store raw data from each external source. |
+| LocationModel (`locations`) | Maps addresses and coordinates to DNOs. Uses `address_hash` for O(1) cache lookups. |
+| Data Tables (`netzentgelte`, `hlzf`) | Extracted pricing and time window data with provenance tracking (extraction source, model used) and verification status. |
+| Source Profiles (`dno_source_profiles`) | Per DNO learned patterns for fast re crawling. |
+| Path Patterns (`crawl_path_patterns`) | Cross DNO URL patterns with success/failure statistics for prioritized discovery. |
+| Job Tracking (`crawl_jobs`, `crawl_job_steps`) | State machine for background tasks with step level granularity and parent job linking for split extraction. |
+| AI Provider Configs (`ai_provider_configs`) | Multi provider AI configuration supporting both API key and OAuth authentication methods. |
 
 ## 5. Extraction Pipeline
 
-The extraction layer implements a cost-aware, deterministic-first approach.
+The extraction layer implements a cost aware, deterministic first approach.
 
 ```mermaid
 flowchart TD
@@ -414,42 +431,41 @@ flowchart TD
 
 | Data Type | Rule |
 |-----------|------|
-| Netzentgelte | ≥3 voltage levels, each with at least one price value (arbeit or leistung) |
-| HLZF | ≥1 record with winter time window present |
+| Netzentgelte | At least 3 voltage levels, each with at least one price value (arbeit or leistung) |
+| HLZF | At least 1 record with winter time window present |
 
 ### AI Optimization
 
 1. Extract text from each PDF page using pdfplumber
-2. Filter pages containing target keywords (reduces payload by 60-80%)
+2. Filter pages containing target keywords (reduces payload by 60 to 80 percent)
 3. Send optimized PDF to vision model
 4. If no data found, retry with full PDF before falling back to failure
 
----
-
 ## 6. Security Architecture
 
-- **Authentication**: OIDC-based via Zitadel. Frontend handles redirect flow and attaches Bearer tokens via Axios interceptors. Mock mode available for development.
-- **Authorization**: Role-based access control via `Depends(get_current_user)` and `Depends(require_admin)`.
-- **Secret Management**: All credentials managed via environment variables and `.env` files.
-- **Rate Limiting**: IP-based rate limiting on public endpoints. Per-user quotas on protected endpoints.
-- **Data Protection**: PostgreSQL connections use SSL in production. File storage uses content hashing for integrity verification.
-
----
+| Aspect | Implementation |
+|--------|----------------|
+| Authentication | OIDC based via Zitadel. Frontend handles redirect flow and attaches Bearer tokens via Axios interceptors. Mock mode available for development. |
+| Authorization | Role based access control via `Depends(get_current_user)` and `Depends(require_admin)`. |
+| Secret Management | All credentials managed via environment variables and `.env` files. |
+| Rate Limiting | IP based rate limiting on public endpoints. Per user quotas on protected endpoints. |
+| Data Protection | PostgreSQL connections use SSL in production. File storage uses content hashing for integrity verification. |
 
 ## 7. Observability
 
-- **Logging**: Structured JSON logging via `structlog` with correlation IDs for request tracing.
-- **Health Endpoint**: `GET /api/v1/health` returns service status for uptime monitoring.
-- **Job Visibility**: Real-time step-by-step progress via `crawl_jobs` and `crawl_job_steps` tables, exposed through polling API.
-- **Query Logging**: `query_logs` table tracks user searches for analytics.
-
----
+| Aspect | Implementation |
+|--------|----------------|
+| Logging | Structured JSON logging via `structlog` with correlation IDs for request tracing. |
+| Health Endpoint | `GET /api/v1/health` returns service status for uptime monitoring. |
+| Job Visibility | Real time step by step progress via `crawl_jobs` and `crawl_job_steps` tables, exposed through polling API. |
+| Query Logging | `query_logs` table tracks user searches for analytics. |
+| System Logs | `system_logs` table stores system level events with trace IDs. |
 
 ## 8. Production Maintenance
 
 ### Database Migrations
 
-Schema changes are versioned via Alembic:
+Schema changes are versioned via Alembic.
 
 ```bash
 cd backend
@@ -463,8 +479,10 @@ The `crawl_recovery` service automatically resets jobs stuck in `running` or `cr
 
 ### Container Health Checks
 
-All services in `docker-compose.yml` include health checks:
+All services in `docker-compose.yml` include health checks.
 
-- **PostgreSQL**: `pg_isready`
-- **Redis**: `redis-cli ping`
-- **Backend**: `curl /api/health`
+| Service | Health Check |
+|---------|--------------|
+| PostgreSQL | `pg_isready` |
+| Redis | `redis-cli ping` |
+| Backend | `curl /api/health` |

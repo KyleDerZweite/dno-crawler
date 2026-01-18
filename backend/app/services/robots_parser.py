@@ -24,6 +24,7 @@ class RobotsResult:
     disallow_paths: list[str] = field(default_factory=list)
     crawlable: bool = True
     blocked_reason: str | None = None
+    sitemap_verified: bool = False  # True if sitemap URL was successfully accessed
 
 
 # Indicators that a site is using JavaScript protection
@@ -261,3 +262,147 @@ async def fetch_robots_txt(
         result.crawlable = False
         result.blocked_reason = "request_error"
         return result
+
+
+async def verify_sitemap_access(
+    client: httpx.AsyncClient,
+    sitemap_url: str,
+    timeout: float = 10.0,
+) -> tuple[bool, str | None]:
+    """
+    Verify that a sitemap URL is accessible (not protected).
+
+    This is a secondary check after robots.txt passes to detect
+    false positives where robots.txt is open but content is protected.
+
+    Args:
+        client: HTTP client
+        sitemap_url: Full URL to the sitemap
+        timeout: Request timeout
+
+    Returns:
+        (is_accessible, blocked_reason) - True if accessible, False if protected
+    """
+    log = logger.bind(sitemap_url=sitemap_url)
+
+    try:
+        response = await client.get(sitemap_url, timeout=timeout, follow_redirects=True)
+        content = response.text
+        status = response.status_code
+
+        # Check HTTP status
+        if status == 403:
+            cf_mitigated = response.headers.get("cf-mitigated", "").lower()
+            server = response.headers.get("server", "").lower()
+            if cf_mitigated == "challenge" or "cloudflare" in server:
+                log.warning("Sitemap blocked by Cloudflare (403)")
+                return False, "cloudflare"
+            log.warning("Sitemap returned 403 - access denied")
+            return False, "access_denied"
+
+        if status == 429:
+            log.warning("Sitemap rate limited (429)")
+            return False, "rate_limited_or_ip_blocked"
+
+        if status != 200:
+            log.warning("Sitemap returned unexpected status", status=status)
+            return False, f"http_error_{status}"
+
+        # Check for Cloudflare challenge in headers
+        cf_mitigated = response.headers.get("cf-mitigated", "").lower()
+        if cf_mitigated == "challenge":
+            log.warning("Sitemap blocked by Cloudflare challenge")
+            return False, "cloudflare"
+
+        # Check for JS protection in content
+        is_protected, protection_type = detect_js_protection(content)
+        if is_protected:
+            log.warning("Sitemap uses JavaScript protection", protection=protection_type)
+            return False, protection_type
+
+        # Check if response is HTML instead of XML (sitemap should be XML)
+        content_lower = content.lower()
+        if "<html" in content_lower[:500] or "<!doctype" in content_lower[:100]:
+            # Received HTML - check for protection
+            is_protected, protection_type = detect_js_protection(content)
+            if is_protected:
+                return False, protection_type
+            # HTML but no protection - might be error page, site may still work
+            log.warning("Sitemap returned HTML instead of XML")
+            return True, None
+
+        # Check for valid sitemap content
+        if "<urlset" in content_lower or "<sitemapindex" in content_lower:
+            log.info("Sitemap verified successfully")
+            return True, None
+
+        # Unknown content - assume accessible
+        log.debug("Sitemap content format unknown, assuming accessible")
+        return True, None
+
+    except httpx.TimeoutException:
+        log.warning("Timeout fetching sitemap")
+        return False, "timeout"
+
+    except httpx.ConnectError as e:
+        log.warning("Connection failed fetching sitemap", error=str(e))
+        return False, "connection_failed"
+
+    except httpx.RequestError as e:
+        log.warning("Request error fetching sitemap", error=str(e))
+        return False, "request_error"
+
+
+async def fetch_and_verify_robots(
+    client: httpx.AsyncClient,
+    website: str,
+    timeout: float = 10.0,
+    verify_sitemap: bool = True,
+) -> RobotsResult:
+    """
+    Fetch robots.txt and optionally verify sitemap accessibility.
+
+    This is the recommended entry point for crawlability checks.
+    It combines robots.txt parsing with sitemap verification to
+    detect sites where robots.txt is open but content is protected.
+
+    Args:
+        client: HTTP client
+        website: Base website URL
+        timeout: Request timeout
+        verify_sitemap: If True, verify first sitemap URL after robots.txt
+
+    Returns:
+        RobotsResult with crawlability and sitemap verification info
+    """
+    log = logger.bind(website=website)
+
+    # First, fetch and parse robots.txt
+    result = await fetch_robots_txt(client, website, timeout)
+
+    # If robots.txt reports not crawlable, no need to check sitemap
+    if not result.crawlable:
+        return result
+
+    # Verify sitemap if requested and sitemaps are available
+    if verify_sitemap and result.sitemap_urls:
+        sitemap_url = result.sitemap_urls[0]
+        log.info("Verifying sitemap accessibility", sitemap_url=sitemap_url)
+
+        is_accessible, blocked_reason = await verify_sitemap_access(
+            client, sitemap_url, timeout
+        )
+
+        if is_accessible:
+            result.sitemap_verified = True
+        else:
+            # Sitemap is blocked - mark site as protected
+            result.sitemap_verified = False
+            result.crawlable = False
+            result.blocked_reason = blocked_reason
+            log.warning(
+                "Site marked as protected - robots.txt OK but sitemap blocked",
+                blocked_reason=blocked_reason,
+            )
+
+    return result

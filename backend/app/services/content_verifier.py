@@ -107,8 +107,8 @@ STRUCTURE_PATTERNS = {
 class ContentVerifier:
     """Verifies content matches expected data type."""
 
-    # Maximum bytes to fetch for sniffing
-    SNIFF_SIZE = 15 * 1024  # 15KB
+    # Maximum bytes to fetch for sniffing (100KB to handle larger PDFs)
+    SNIFF_SIZE = 100 * 1024  # 100KB
 
     def __init__(self, client: httpx.AsyncClient | None = None):
         self.client = client

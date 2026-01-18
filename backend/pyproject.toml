@@ -59,6 +59,7 @@ dependencies = [
     "python-dateutil>=2.8.2",
 
     # Data formats
+    "pandas>=2.0.0",   # DataFrame operations for seed data
     "pyarrow>=15.0.0", # Parquet support for seed data
 ]
 

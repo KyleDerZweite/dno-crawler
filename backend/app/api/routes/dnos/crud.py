@@ -6,7 +6,7 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import delete, func, or_, select, text
+from sqlalchemy import case, delete, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
@@ -289,6 +289,8 @@ async def list_dnos_detailed(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, description="Items per page (25, 50, 100, 250)"),
     q: str | None = Query(None, description="Search term"),
+    status_filter: str | None = Query(None, alias="status", description="Filter by status: uncrawled, crawled, running, pending, protected"),
+    sort_by: str = Query("name_asc", description="Sort by: name_asc, name_desc, score_asc, score_desc, region_asc"),
 ) -> APIResponse:
     """
     List all DNOs with detailed information (paginated).
@@ -298,6 +300,7 @@ async def list_dnos_detailed(
     - pending: at least one pending job (none running)
     - crawled: has data points and no active jobs
     - uncrawled: no data points and no active jobs
+    - protected: crawlable=False (blocked by robots.txt, Cloudflare, etc.)
     """
     # Validate per_page
     allowed_per_page = [25, 50, 100, 250]
@@ -309,21 +312,86 @@ async def list_dnos_detailed(
 
     # Apply search filter if provided
     if q:
-        # Use Trigram Similarity for fuzzy matching
-        # Order by similarity descending (most similar first)
+        # =======================================================================
+        # HYBRID SEARCH: Combines multiple strategies for robust matching
+        # =======================================================================
+        # Strategy 1: ILIKE contains - catches exact substrings like "Ulm"
+        # Strategy 2: Trigram similarity - fuzzy matching for typos
+        # Strategy 3: Region matching - search in region field too
+        # =======================================================================
+        
+        q_normalized = q.strip().lower()
+        q_len = len(q_normalized)
+        
+        # Dynamic similarity threshold based on query length
+        # Short queries need lower threshold since trigrams work poorly
+        if q_len <= 3:
+            similarity_threshold = 0.08  # Very permissive for short terms
+        elif q_len <= 6:
+            similarity_threshold = 0.12  # Moderate for medium terms
+        else:
+            similarity_threshold = 0.2  # Stricter for long terms
+        
+        # Trigram similarity score
         similarity = func.similarity(DNOModel.name, q)
         
-        # sorting is the primary mechanism.
-        similarity_score = 0.2
-        query = query.filter(similarity > similarity_score).order_by(similarity.desc())
+        # ILIKE pattern for contains matching (case-insensitive)
+        ilike_pattern = f"%{q}%"
+        contains_match = DNOModel.name.ilike(ilike_pattern)
+        region_match = DNOModel.region.ilike(ilike_pattern)
+        
+        # Combined filter: Match if ANY strategy succeeds
+        # This ensures short queries like "Ulm" work via ILIKE even if trigram fails
+        combined_filter = or_(
+            similarity > similarity_threshold,  # Fuzzy match
+            contains_match,                      # Exact substring in name
+            region_match,                        # Match in region
+        )
+        
+        # Scoring: Prioritize exact matches, then fuzzy matches
+        # CASE expression to boost exact substring matches
+        exact_boost = case(
+            (contains_match, 2.0),  # Boost for exact substring match
+            else_=0.0
+        )
+        region_boost = case(
+            (region_match, 0.5),  # Small boost for region match
+            else_=0.0
+        )
+        
+        # Combined score: trigram similarity + bonuses for exact matches
+        combined_score = similarity + exact_boost + region_boost
+        
+        # Don't apply default sort for search - use relevance
+        query = query.filter(combined_filter)
+        search_order = combined_score.desc()
 
-        # Count with filter (approximation for pagination)
-        count_query = select(func.count()).select_from(DNOModel).where(similarity > similarity_score)
+        # Count with combined filter
+        count_query = select(func.count()).select_from(DNOModel).where(combined_filter)
     else:
-        # Default sort
-        query = query.order_by(DNOModel.name)
+        search_order = None
         # Total count without filter
         count_query = select(func.count()).select_from(DNOModel)
+
+    # Apply status filter for "protected" (can be done at DB level)
+    if status_filter == "protected":
+        query = query.filter(DNOModel.crawlable == False)  # noqa: E712
+        count_query = count_query.where(DNOModel.crawlable == False)  # noqa: E712
+
+    # Apply sorting (unless searching - then relevance takes priority)
+    if q and search_order is not None:
+        # For search, use relevance score as primary sort
+        query = query.order_by(search_order, DNOModel.name)
+    else:
+        # Apply explicit sort
+        if sort_by == "name_desc":
+            query = query.order_by(DNOModel.name.desc())
+        elif sort_by == "region_asc":
+            query = query.order_by(DNOModel.region.asc().nullslast(), DNOModel.name)
+        elif sort_by == "region_desc":
+            query = query.order_by(DNOModel.region.desc().nullslast(), DNOModel.name)
+        else:  # Default: name_asc
+            query = query.order_by(DNOModel.name)
 
     total_count_result = await db.execute(count_query)
     total = total_count_result.scalar() or 0
@@ -389,10 +457,10 @@ async def list_dnos_detailed(
     )
     job_statuses = {}
     for row in job_status_result.fetchall():
-        dno_id, status, count = row
+        dno_id, job_status_val, count = row
         if dno_id not in job_statuses:
             job_statuses[dno_id] = {"running": 0, "pending": 0}
-        job_statuses[dno_id][status] = count
+        job_statuses[dno_id][job_status_val] = count
 
     data = []
     for dno in dnos:
@@ -411,6 +479,21 @@ async def list_dnos_detailed(
         else:
             live_status = "uncrawled"
 
+        # Apply status filter for dynamic statuses (post-fetch filtering)
+        if status_filter and status_filter != "protected":
+            if status_filter == "running" and live_status != "running":
+                continue
+            if status_filter == "pending" and live_status != "pending":
+                continue
+            if status_filter == "crawled" and live_status != "crawled":
+                continue
+            if status_filter == "uncrawled" and live_status != "uncrawled":
+                continue
+
+        # Calculate completeness score (percentage)
+        # Score is based on having data - max at ~50 data points
+        score = min(round((data_points_count / 50) * 100), 100)
+
         dno_data = {
             "id": str(dno.id),
             "slug": dno.slug,
@@ -421,9 +504,12 @@ async def list_dnos_detailed(
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
+            "crawlable": getattr(dno, 'crawlable', True),
+            "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
             "data_points_count": data_points_count,
             "netzentgelte_count": netzentgelte_count,
             "hlzf_count": hlzf_count,
+            "score": score,
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         }
@@ -436,10 +522,20 @@ async def list_dnos_detailed(
 
         data.append(dno_data)
 
+    # Sort by score if requested (post-fetch since score is computed)
+    if sort_by == "score_desc":
+        data.sort(key=lambda x: x["score"], reverse=True)
+    elif sort_by == "score_asc":
+        data.sort(key=lambda x: x["score"], reverse=False)
+
+    # Note: For status filtering, total count may be inaccurate since we filter post-fetch
+    # For production, this should be done with subqueries
+    actual_count = len(data) if status_filter and status_filter != "protected" else total
+
     return APIResponse(
         success=True,
         data=data,
-        meta={"total": total, "page": page, "per_page": per_page, "total_pages": total_pages},
+        meta={"total": actual_count, "page": page, "per_page": per_page, "total_pages": total_pages},
     )
 
 

@@ -61,10 +61,10 @@ The application follows a layered architecture with clear separation between the
 4. **Pipeline Execution**: The worker executes a multi-step pipeline:
    - **Step 00 (Gather Context)**: Loads DNO metadata, source profiles, and enrichment data.
    - **Step 01 (Discover)**: Uses cached file paths, learned URL patterns, or BFS crawling to locate the data source. The `WebCrawler` class implements priority-queue BFS with keyword-based URL scoring.
-   - **Step 03 (Download)**: Fetches the discovered PDF or HTML document to local storage.
-   - **Step 04 (Extract)**: Applies regex extraction (`PDFExtractor`, `HTMLExtractor`) first. If validation fails (e.g., fewer than 3 voltage level records), falls back to `AIExtractor` which uses the OpenAI SDK with vision or text mode.
-   - **Step 05 (Validate)**: Runs sanity checks on extracted records.
-   - **Step 06 (Finalize)**: Persists Netzentgelte and HLZF records, updates source profiles with successful URL patterns for future crawls.
+   - **Step 02 (Download)**: Fetches the discovered PDF or HTML document to local storage.
+   - **Step 03 (Extract)**: Applies regex extraction (`PDFExtractor`, `HTMLExtractor`) first. If validation fails (e.g., fewer than 3 voltage level records), falls back to `AIExtractor` which uses the OpenAI SDK with vision or text mode.
+   - **Step 04 (Validate)**: Runs sanity checks on extracted records.
+   - **Step 05 (Finalize)**: Persists Netzentgelte and HLZF records, updates source profiles with successful URL patterns for future crawls.
 
 5. **Result Retrieval**: Frontend polls `GET /api/v1/dnos/{id}/jobs` until status is `completed`, then fetches structured data via `GET /api/v1/dnos/{id}`.
 

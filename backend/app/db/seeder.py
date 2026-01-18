@@ -1,17 +1,17 @@
 """
 Database seeder for DNO data.
 
-Loads seed data from dnos_seed.json (or dnos_enriched.json if available)
-and upserts into the database using the hub-and-spoke model structure.
+Loads seed data from dnos_enriched.parquet and upserts into the database
+using the hub-and-spoke model structure.
 
 This runs on application/worker startup.
 """
 
-import json
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+import pandas as pd
 import structlog
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -24,8 +24,7 @@ logger = structlog.get_logger()
 
 # Path to seed data (relative to backend root)
 SEED_DATA_DIR = Path(__file__).parent.parent.parent.parent / "data" / "seed-data"
-ENRICHED_DATA_PATH = SEED_DATA_DIR / "dnos_enriched.json"
-BASE_SEED_PATH = SEED_DATA_DIR / "dnos_seed.json"
+SEED_PARQUET_PATH = SEED_DATA_DIR / "dnos_enriched.parquet"
 
 
 def parse_date(date_str: str | None) -> datetime | None:
@@ -41,81 +40,41 @@ def parse_date(date_str: str | None) -> datetime | None:
         return None
 
 
-def transform_csv_to_seed(csv_path: Path, out_path: Path) -> Path:
-    """Transform CSV (OeffentlicheMarktakteure.csv) into base seed JSON.
+def load_seed_data() -> list[dict[str, Any]] | None:
+    """Load seed data from parquet file.
 
-    Extracts basic fields required for seeding: mastr_nr, name, slug, region, is_active
-    and writes them to `out_path` as a JSON array.
+    Returns:
+        List of record dicts, or None if file doesn't exist.
     """
-    import csv
+    import math
 
-    from app.services.vnb.skeleton import generate_slug
+    if not SEED_PARQUET_PATH.exists():
+        return None
 
-    records = []
-    with csv_path.open(newline='', encoding='utf-8') as fh:
-        # CSV uses semicolon delimiter and quoted fields
-        reader = csv.DictReader(fh, delimiter=';')
-        for row in reader:
-            mastr_nr = (row.get('MaStR-Nr.') or row.get('MaStR-Nr') or '').strip()
-            name = (row.get('Name des Marktakteurs') or row.get('Name') or '').strip()
-            region = (row.get('Bundesland') or '').strip()
-            zip_code = (row.get('Postleitzahl') or row.get('PLZ') or '').strip()
-            city = (row.get('Ort') or '').strip()
-            street = (row.get('Straße') or '').strip()
-            house = (row.get('Hausnummer') or '').strip()
+    df = pd.read_parquet(SEED_PARQUET_PATH)
+    # Convert DataFrame to list of dicts
+    records = df.to_dict('records')
 
-            if not mastr_nr or not name:
-                continue
+    # Clean up values: convert numpy types to Python types
+    for record in records:
+        for key, value in list(record.items()):
+            # Convert numpy arrays to lists
+            if hasattr(value, 'tolist'):
+                record[key] = value.tolist()
+            # Convert NaN/NaT to None
+            elif value is None:
+                pass
+            elif isinstance(value, float) and math.isnan(value):
+                record[key] = None
+            elif pd.isna(value):
+                record[key] = None
 
-            record = {
-                'mastr_nr': mastr_nr,
-                'slug': generate_slug(name),
-                'name': name,
-                'region': region or None,
-                'address_components': {
-                    'street': street or None,
-                    'house_number': house or None,
-                    'zip_code': zip_code or None,
-                    'city': city or None,
-                },
-                'is_active': True,
-            }
-            records.append(record)
-
-    # Write out as JSON
-    with out_path.open('w', encoding='utf-8') as outfh:
-        json.dump(records, outfh, ensure_ascii=False, indent=2)
-
-    logger.info('Transformed CSV to seed JSON', csv=str(csv_path), out=str(out_path), count=len(records))
-    return out_path
+    return records
 
 
-def get_seed_file() -> Path | None:
-    """Get the best available seed file (enriched preferred).
-
-    If CSV is present and base seed is missing, transform CSV -> base seed JSON and use it.
+async def seed_dnos(db: AsyncSession) -> tuple[int, int, int]:
     """
-    if ENRICHED_DATA_PATH.exists():
-        return ENRICHED_DATA_PATH
-    if BASE_SEED_PATH.exists():
-        return BASE_SEED_PATH
-
-    # If CSV exists, transform to base seed
-    csv_path = SEED_DATA_DIR / 'OeffentlicheMarktakteure.csv'
-    if csv_path.exists():
-        try:
-            transform_csv_to_seed(csv_path, BASE_SEED_PATH)
-            return BASE_SEED_PATH
-        except Exception as e:
-            logger.error('Failed to transform CSV to seed JSON', error=str(e))
-            return None
-
-    return None
-
-
-async def seed_dnos(db: AsyncSession) -> tuple[int, int, int, str | None]:
-    """
-    Seed DNOs from seed data JSON.
+    Seed DNOs from parquet seed data.
 
     Creates/updates:
     - DNOModel (core hub)
@@ -124,31 +83,14 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int, str | None]:
     - DNOBdewData (BDEW data, if enriched)
 
     Returns:
-        Tuple of (inserted, updated, skipped, seed_source).
-        seed_source: 'enriched' | 'base' | 'generated_from_csv' | None
+        Tuple of (inserted, updated, skipped).
     """
-    seed_file = get_seed_file()
-    seed_source = None
-    if not seed_file:
-        logger.warning("No seed data file found", paths=[str(ENRICHED_DATA_PATH), str(BASE_SEED_PATH)])
-        return 0, 0, 0, None
+    seed_data = load_seed_data()
+    if not seed_data:
+        logger.warning("No seed data file found", path=str(SEED_PARQUET_PATH))
+        return 0, 0, 0
 
-    if seed_file == ENRICHED_DATA_PATH:
-        seed_source = 'enriched'
-    elif seed_file == BASE_SEED_PATH:
-        # If we created this from a CSV transform, tag accordingly
-        seed_source = 'base' if BASE_SEED_PATH.exists() and ENRICHED_DATA_PATH.exists() is False else 'base'
-        # If CSV exists and we transformed it just above, mark as generated_from_csv
-        csv_path = SEED_DATA_DIR / 'OeffentlicheMarktakteure.csv'
-        if csv_path.exists() and not ENRICHED_DATA_PATH.exists() and BASE_SEED_PATH.exists():
-            seed_source = 'generated_from_csv'
-
-    logger.info("Loading seed data", path=str(seed_file), enriched=seed_source == 'enriched')
-
-    with open(seed_file, encoding='utf-8') as f:
-        seed_data = json.load(f)
-
-    logger.info("Loaded seed records", count=len(seed_data))
+    logger.info("Loading seed data", path=str(SEED_PARQUET_PATH), count=len(seed_data))
 
     inserted = 0
     updated = 0
@@ -182,10 +124,9 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int, str | None]:
         updated=updated,
         skipped=skipped,
         total=len(seed_data),
-        seed_source=seed_source,
     )
 
-    return inserted, updated, skipped, seed_source
+    return inserted, updated, skipped
 
 
 async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
@@ -252,11 +193,31 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         dno.enrichment_status = 'pending'
         dno.last_enriched_at = None
 
+    # Seed robots/crawlability data if present
+    if record.get('status'):
+        dno.status = record['status']
+    if record.get('crawlable') is not None:
+        dno.crawlable = record['crawlable']
+    if record.get('blocked_reason'):
+        dno.crawl_blocked_reason = record['blocked_reason']
+    if record.get('robots_txt'):
+        dno.robots_txt = record['robots_txt']
+    if record.get('robots_fetched_at'):
+        dno.robots_fetched_at = parse_date(record['robots_fetched_at'])
+    if record.get('sitemap_urls'):
+        dno.sitemap_urls = record['sitemap_urls']
+    if record.get('sitemap_parsed_urls'):
+        dno.sitemap_parsed_urls = record['sitemap_parsed_urls']
+    if record.get('sitemap_fetched_at'):
+        dno.sitemap_fetched_at = parse_date(record['sitemap_fetched_at'])
+    if record.get('disallow_paths'):
+        dno.disallow_paths = record['disallow_paths']
+
     # Create BDEW data if present in enriched record
     if record.get('bdew_code'):
         await upsert_bdew_data(db, dno, record)
-        # Update primary BDEW code on core
-        dno.primary_bdew_code = record['bdew_code']
+        # Update primary BDEW code on core (convert to string)
+        dno.primary_bdew_code = str(int(record['bdew_code']))
 
     logger.debug(f"{action.capitalize()} DNO from seed", mastr_nr=mastr_nr, name=record['name'])
     return action
@@ -324,6 +285,9 @@ async def upsert_bdew_data(db: AsyncSession, dno: DNOModel, record: dict[str, An
     bdew_code = record.get('bdew_code')
     if not bdew_code:
         return
+
+    # Convert to string (parquet stores as int, DB expects string)
+    bdew_code = str(int(bdew_code))
 
     # Check if this BDEW code already exists
     result = await db.execute(
