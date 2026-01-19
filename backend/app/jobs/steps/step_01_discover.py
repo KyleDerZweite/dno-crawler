@@ -395,6 +395,38 @@ class DiscoverStep(BaseStep):
                     first_rejected=ctx["rejected_candidates"][0] if ctx["rejected_candidates"] else None,
                 )
 
+                # Capture crawl error sample for debugging
+                from app.services.sample_capture import SampleCapture
+                sample_capture = SampleCapture()
+                await sample_capture.capture_crawl_error(
+                    dno_slug=ctx.get("dno_slug", "unknown"),
+                    url=dno_website,
+                    error_type="all_candidates_failed_verification",
+                    error_message=error_msg,
+                    status_code=None,
+                    response_headers=None,
+                    response_body_snippet=None,
+                    request_headers={"User-Agent": bfs_user_agent},
+                    job_id=str(job.id),
+                    step="discover",
+                )
+                # Also capture details of what was tried
+                await sample_capture.capture_crawl_log(
+                    dno_slug=ctx.get("dno_slug", "unknown"),
+                    job_id=str(job.id),
+                    step="discover",
+                    action="verification_failed",
+                    success=False,
+                    details={
+                        "pages_crawled": ctx["pages_crawled"],
+                        "documents_found": len(document_results),
+                        "candidates_tried": candidates_tried,
+                        "rejected_candidates": ctx["rejected_candidates"][:10],  # Cap at 10
+                        "data_type": job.data_type,
+                        "year": job.year,
+                    },
+                )
+
             raise ValueError(error_msg)
 
     def _get_allowed_domains(self, ctx: dict) -> set[str] | None:

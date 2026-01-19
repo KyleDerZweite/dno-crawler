@@ -216,7 +216,7 @@ export interface DNO {
   mastr_nr?: string;
   primary_bdew_code?: string;
   // Status tracking
-  status?: "uncrawled" | "pending" | "running" | "crawled" | "failed";
+  status?: "uncrawled" | "pending" | "running" | "crawled" | "failed" | "protected";
   crawl_locked_at?: string;
   source?: "seed" | "user_discovery";
   // Basic info
@@ -245,6 +245,13 @@ export interface DNO {
   crawlable?: boolean;
   crawl_blocked_reason?: string;
   has_local_files?: boolean;
+  // Technical crawl data (robots.txt + sitemap)
+  robots_txt?: string;
+  robots_fetched_at?: string;  // TTL: 150 days
+  sitemap_urls?: string[];  // Sitemap URLs from robots.txt
+  sitemap_parsed_urls?: string[];  // All URLs extracted from sitemaps
+  sitemap_fetched_at?: string;  // TTL: 120 days
+  disallow_paths?: string[];
   // Source data availability
   has_mastr?: boolean;
   has_vnb?: boolean;
@@ -260,6 +267,7 @@ export interface DNO {
   data_points_count?: number;
   netzentgelte_count?: number;
   hlzf_count?: number;
+  score?: number;  // Completeness score (0-100%)
   created_at?: string;
   updated_at?: string;
 }
@@ -602,6 +610,8 @@ export const api = {
       page?: number;
       per_page?: number;
       q?: string;
+      status?: 'uncrawled' | 'crawled' | 'running' | 'pending' | 'protected';
+      sort_by?: 'name_asc' | 'name_desc' | 'score_asc' | 'score_desc' | 'region_asc';
     }): Promise<ApiResponse<DNO[]>> {
       const { data } = await apiClient.get("/dnos/", {
         params: {
@@ -609,6 +619,8 @@ export const api = {
           page: params?.page,
           per_page: params?.per_page,
           q: params?.q,
+          status: params?.status,
+          sort_by: params?.sort_by,
         },
       });
       return data;

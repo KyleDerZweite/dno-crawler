@@ -36,8 +36,6 @@ async def health_check_job(ctx) -> str:
 
 async def startup_with_seeding(ctx):
     """Initialize the worker context with database seeding (crawl worker only)."""
-    from app.jobs.enrichment_job import queue_enrichment_jobs
-
     logger.info("Starting up worker (with seeding)...")
     await init_db()
 
@@ -45,22 +43,13 @@ async def startup_with_seeding(ctx):
     logger.info("Running database seeder...")
     async with get_db_session() as db:
         try:
-            inserted, updated, skipped, seed_source = await seed_dnos(db)
+            inserted, updated, skipped = await seed_dnos(db)
             logger.info(
                 "Database seeding complete",
                 inserted=inserted,
                 updated=updated,
                 skipped=skipped,
-                seed_source=seed_source,
             )
-
-            # If we seeded from base data (or generated from CSV), queue enrichment jobs.
-            if seed_source in ('base', 'generated_from_csv'):
-                try:
-                    queued = await queue_enrichment_jobs(db)
-                    logger.info("Enqueueing enrichment jobs after seeding", queued=queued)
-                except Exception as e:
-                    logger.error("Failed to queue enrichment jobs after seeding", error=str(e))
         except Exception as e:
             logger.error("Database seeding failed", error=str(e))
             # Don't fail startup on seeding errors

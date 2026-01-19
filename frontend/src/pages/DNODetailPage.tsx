@@ -34,6 +34,8 @@ const navLabels: Record<string, string> = {
     files: "Source Files",
     jobs: "Job History",
     tools: "Tools",
+    technical: "Technical",
+    sql: "SQL Explorer",
 };
 
 export function DNODetailPage() {

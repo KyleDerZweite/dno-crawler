@@ -12,10 +12,10 @@ Pipeline:
 
 from app.jobs.steps.step_00_gather_context import GatherContextStep
 from app.jobs.steps.step_01_discover import DiscoverStep
-from app.jobs.steps.step_03_download import DownloadStep
-from app.jobs.steps.step_04_extract import ExtractStep
-from app.jobs.steps.step_05_validate import ValidateStep
-from app.jobs.steps.step_06_finalize import FinalizeStep
+from app.jobs.steps.step_02_download import DownloadStep
+from app.jobs.steps.step_03_extract import ExtractStep
+from app.jobs.steps.step_04_validate import ValidateStep
+from app.jobs.steps.step_05_finalize import FinalizeStep
 
 # Ordered list of steps for crawl jobs
 CRAWL_JOB_STEPS = [

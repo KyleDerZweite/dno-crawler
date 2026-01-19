@@ -21,6 +21,8 @@ import {
     Wrench,
     ExternalLink,
     Pencil,
+    Settings2,
+    Database,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CrawlDialog } from "./CrawlDialog";
@@ -72,6 +74,8 @@ export function DetailContextSidebar({
         { id: "files", label: "Source Files", icon: FileText, path: `${basePath}/files`, count: filesCount },
         { id: "jobs", label: "Job History", icon: History, path: `${basePath}/jobs`, count: jobsCount },
         { id: "tools", label: "Tools", icon: Wrench, path: `${basePath}/tools` },
+        { id: "technical", label: "Technical", icon: Settings2, path: `${basePath}/technical` },
+        { id: "sql", label: "SQL Explorer", icon: Database, path: `${basePath}/sql` },
     ];
 
     return (

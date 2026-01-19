@@ -8,4 +8,7 @@ export { Analysis } from "./Analysis";
 export { SourceFiles } from "./SourceFiles";
 export { JobHistory } from "./JobHistory";
 export { Tools } from "./Tools";
+export { Technical } from "./Technical";
+export { SQLExplorer } from "./SQLExplorer";
 export type { DNODetailContext } from "./types";
+

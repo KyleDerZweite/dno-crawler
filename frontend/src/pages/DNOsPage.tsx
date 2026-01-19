@@ -35,6 +35,9 @@ import {
   AlertTriangle,
   ChevronLeft,
   ChevronRight,
+  ArrowUpDown,
+  Shield,
+  X,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { AxiosError } from "axios";
@@ -73,12 +76,16 @@ export function DNOsPage() {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(50);
 
-  // Debounce search term
+  // Filter and sort state
+  const [statusFilter, setStatusFilter] = useState<'uncrawled' | 'crawled' | 'running' | 'pending' | 'protected' | undefined>(undefined);
+  const [sortBy, setSortBy] = useState<'name_asc' | 'name_desc' | 'score_asc' | 'score_desc' | 'region_asc'>('name_asc');
+
+  // Debounce search term (200ms for snappy feel)
   useEffect(() => {
     const handler = setTimeout(() => {
       setDebouncedSearchTerm(searchTerm);
       setPage(1); // Reset to first page when search changes
-    }, 500);
+    }, 200);
 
     return () => {
       clearTimeout(handler);
@@ -97,12 +104,14 @@ export function DNOsPage() {
   const { isAdmin } = useAuth();
 
   const { data: dnosResponse, isLoading } = useQuery({
-    queryKey: ["dnos", page, perPage, debouncedSearchTerm],
-    queryFn: () => api.dnos.list({ 
-      include_stats: true, 
-      page, 
+    queryKey: ["dnos", page, perPage, debouncedSearchTerm, statusFilter, sortBy],
+    queryFn: () => api.dnos.list({
+      include_stats: true,
+      page,
       per_page: perPage,
-      q: debouncedSearchTerm || undefined 
+      q: debouncedSearchTerm || undefined,
+      status: statusFilter,
+      sort_by: sortBy,
     }),
     refetchOnMount: "always",
     refetchInterval: 5000, // Poll every 5 seconds for live status updates
@@ -110,7 +119,7 @@ export function DNOsPage() {
 
   const dnos = dnosResponse?.data;
   const meta = dnosResponse?.meta;
-  
+
   // Use dnos directly since filtering is now server-side
   const displayedDnos = dnos;
 
@@ -440,8 +449,9 @@ export function DNOsPage() {
         )}
       </div>
 
-      {/* Search */}
-      <Card className="p-4">
+      {/* Search, Filters & Sort */}
+      <Card className="p-4 space-y-4">
+        {/* Search Row */}
         <div className="flex gap-3">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
@@ -453,6 +463,94 @@ export function DNOsPage() {
               className="pl-10"
             />
           </div>
+          {/* Sort Dropdown */}
+          <Select value={sortBy} onValueChange={(value) => { setSortBy(value as typeof sortBy); setPage(1); }}>
+            <SelectTrigger className="w-[180px]">
+              <ArrowUpDown className="h-4 w-4 mr-2" />
+              <SelectValue placeholder="Sort by" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="name_asc">Name (A-Z)</SelectItem>
+              <SelectItem value="name_desc">Name (Z-A)</SelectItem>
+              <SelectItem value="score_desc">Score (High-Low)</SelectItem>
+              <SelectItem value="score_asc">Score (Low-High)</SelectItem>
+              <SelectItem value="region_asc">Region (A-Z)</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Filter Chips Row */}
+        <div className="flex flex-wrap gap-2">
+          <button
+            onClick={() => { setStatusFilter(undefined); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === undefined
+              ? 'bg-primary text-primary-foreground'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            All
+          </button>
+          <button
+            onClick={() => { setStatusFilter('uncrawled'); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === 'uncrawled'
+              ? 'bg-muted-foreground/20 text-foreground ring-2 ring-muted-foreground/40'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            <Database className="h-3.5 w-3.5" />
+            Uncrawled
+          </button>
+          <button
+            onClick={() => { setStatusFilter('crawled'); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === 'crawled'
+              ? 'bg-green-500/20 text-green-700 dark:text-green-400 ring-2 ring-green-500/40'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            <Check className="h-3.5 w-3.5" />
+            Crawled
+          </button>
+          <button
+            onClick={() => { setStatusFilter('running'); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === 'running'
+              ? 'bg-blue-500/20 text-blue-700 dark:text-blue-400 ring-2 ring-blue-500/40'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            <Loader2 className="h-3.5 w-3.5" />
+            Running
+          </button>
+          <button
+            onClick={() => { setStatusFilter('pending'); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === 'pending'
+              ? 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 ring-2 ring-yellow-500/40'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            <Clock className="h-3.5 w-3.5" />
+            Pending
+          </button>
+          <button
+            onClick={() => { setStatusFilter('protected'); setPage(1); }}
+            className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium transition-colors ${statusFilter === 'protected'
+              ? 'bg-orange-500/20 text-orange-700 dark:text-orange-400 ring-2 ring-orange-500/40'
+              : 'bg-muted text-muted-foreground hover:bg-muted/80'
+              }`}
+          >
+            <Shield className="h-3.5 w-3.5" />
+            Protected
+          </button>
+
+          {/* Clear filters button (shows when any filter is active) */}
+          {(statusFilter || searchTerm) && (
+            <button
+              onClick={() => { setStatusFilter(undefined); setSearchTerm(''); setPage(1); }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-medium bg-destructive/10 text-destructive hover:bg-destructive/20 transition-colors"
+            >
+              <X className="h-3.5 w-3.5" />
+              Clear filters
+            </button>
+          )}
         </div>
       </Card>
 
@@ -581,6 +679,16 @@ export function DNOsPage() {
 
 function DNOCard({ dno }: { dno: DNO }) {
   const getStatusBadge = () => {
+    // First check if it's protected (crawlable = false)
+    if (dno.crawlable === false) {
+      return (
+        <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+          <Shield className="h-3 w-3" />
+          Protected
+        </span>
+      );
+    }
+
     switch (dno.status) {
       case "crawled":
         return (
@@ -607,6 +715,13 @@ function DNOCard({ dno }: { dno: DNO }) {
         return (
           <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400">
             Failed
+          </span>
+        );
+      case "protected":
+        return (
+          <span className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400">
+            <Shield className="h-3 w-3" />
+            Protected
           </span>
         );
       default:

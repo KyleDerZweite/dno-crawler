@@ -18,6 +18,8 @@ import {
   SourceFiles,
   JobHistory,
   Tools,
+  Technical,
+  SQLExplorer,
 } from "./features/dno-detail/views";
 
 function LoginRedirect() {
@@ -79,6 +81,8 @@ function App() {
           <Route path="files" element={<SourceFiles />} />
           <Route path="jobs" element={<JobHistory />} />
           <Route path="tools" element={<Tools />} />
+          <Route path="technical" element={<Technical />} />
+          <Route path="sql" element={<SQLExplorer />} />
         </Route>
         <Route path="jobs" element={<JobsPage />} />
         <Route path="jobs/:id" element={<JobDetailsPage />} />

@@ -12,7 +12,9 @@ export default defineConfig({
   },
   server: {
     allowedHosts: [
-      "localhost"
+      "localhost",
+      "dno-crawler-dev.kylehub.dev",
+      "dno-crawler.kylehub.dev"
     ],
     proxy: {
       "/api": {

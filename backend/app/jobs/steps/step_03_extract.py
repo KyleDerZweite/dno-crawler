@@ -282,23 +282,7 @@ class ExtractStep(BaseStep):
                 flag_modified(job, 'context')
                 await db.commit()
 
-                # Capture training sample: regex failed, AI succeeded
-                dno_slug = ctx.get("dno_slug", "unknown")
-                sample_capture = SampleCapture()
-                await sample_capture.capture(
-                    category="training",
-                    dno_slug=dno_slug,
-                    year=job.year,
-                    data_type=job.data_type,
-                    source_file_path=str(path),
-                    source_format=file_format,
-                    regex_result=records,
-                    regex_fail_reason=reason,
-                    ai_result=extracted_data,
-                    ai_model=used_model,
-                    prompt_used=prompt,
-                )
-
+                # Note: No sample capture here - AI succeeded, no debugging needed
                 return f"Extracted {len(extracted_data)} records using AI fallback ({used_model}) - regex failed: {reason}"
 
         # ===== STEP 4: Both failed or AI not configured - use regex but flag =====
@@ -313,10 +297,14 @@ class ExtractStep(BaseStep):
             ai_attempted=ai_result is not None if is_ai_enabled else False,
         )
 
-        # Capture debug sample when AI was attempted but completely failed (rate limited, API error)
+        # Capture debug sample when:
+        # 1. AI was attempted but completely failed (rate limited, API error)
+        # 2. AI is not configured at all
+        dno_slug = ctx.get("dno_slug", "unknown")
+        sample_capture = SampleCapture()
+        
         if is_ai_enabled and ai_result is None:
-            dno_slug = ctx.get("dno_slug", "unknown")
-            sample_capture = SampleCapture()
+            # AI was attempted but failed completely
             await sample_capture.capture(
                 category="debug",
                 dno_slug=dno_slug,
@@ -330,6 +318,22 @@ class ExtractStep(BaseStep):
                 ai_model="unknown",
                 prompt_used=prompt,
                 ai_fail_reason="AI extraction returned None (rate limited or API error)",
+            )
+        elif not is_ai_enabled:
+            # AI not configured - capture for debugging
+            await sample_capture.capture(
+                category="debug",
+                dno_slug=dno_slug,
+                year=job.year,
+                data_type=job.data_type,
+                source_file_path=str(path),
+                source_format=file_format,
+                regex_result=records,
+                regex_fail_reason=reason,
+                ai_result=None,
+                ai_model=None,
+                prompt_used=None,
+                ai_fail_reason="AI not configured",
             )
 
         ctx["extracted_data"] = records
