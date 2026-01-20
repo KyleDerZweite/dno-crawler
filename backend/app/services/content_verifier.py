@@ -453,7 +453,21 @@ class ContentVerifier:
 
 
     def _extract_excel_text(self, content: bytes) -> str | None:
-        """Extract text from Excel content."""
+        """Extract text from Excel content (XLSX and XLS formats)."""
+        # Try XLSX first (most common)
+        text = self._try_xlsx(content)
+        if text:
+            return text
+        
+        # Try XLS (old binary format) if XLSX failed
+        text = self._try_xls(content)
+        if text:
+            return text
+        
+        return None
+
+    def _try_xlsx(self, content: bytes) -> str | None:
+        """Try extracting text from XLSX (Office Open XML)."""
         try:
             import openpyxl
 
@@ -469,8 +483,34 @@ class ContentVerifier:
 
             return "\n".join(text_parts) if text_parts else None
         except Exception as e:
-            self.log.debug("excel_extract_failed", error=str(e))
+            self.log.debug("xlsx_extract_failed", error=str(e))
             return None
+
+    def _try_xls(self, content: bytes) -> str | None:
+        """Try extracting text from XLS (old binary format)."""
+        try:
+            import xlrd
+
+            excel_file = io.BytesIO(content)
+            wb = xlrd.open_workbook(file_contents=excel_file.read())
+
+            text_parts = []
+            for sheet_idx in range(min(2, wb.nsheets)):  # First 2 sheets
+                sheet = wb.sheet_by_index(sheet_idx)
+                for row_idx in range(min(50, sheet.nrows)):  # First 50 rows
+                    row_values = sheet.row_values(row_idx)
+                    row_text = " ".join(str(v) for v in row_values if v)
+                    if row_text.strip():
+                        text_parts.append(row_text)
+
+            return "\n".join(text_parts) if text_parts else None
+        except ImportError:
+            self.log.debug("xlrd_not_installed")
+            return None
+        except Exception as e:
+            self.log.debug("xls_extract_failed", error=str(e))
+            return None
+
 
     def _extract_html_text(self, content: bytes) -> str | None:
         """Extract text from HTML content."""

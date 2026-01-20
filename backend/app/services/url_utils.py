@@ -67,6 +67,8 @@ def normalize_url(url: str) -> str:
     - Remove anchors (#section)
     - Normalize trailing slashes (keep for directories, remove for files)
     - Lowercase hostname
+    - Strip default ports (:80 for http, :443 for https)
+    - Percent-encode unicode characters in path
     - Sort remaining query parameters
 
     Args:
@@ -75,15 +77,24 @@ def normalize_url(url: str) -> str:
     Returns:
         Normalized URL string
     """
+    from urllib.parse import quote
+
     try:
         parsed = urlparse(url)
 
         # Lowercase hostname
         hostname = parsed.hostname.lower() if parsed.hostname else ""
 
-        # Rebuild netloc with lowercase hostname
-        if parsed.port and parsed.port not in (80, 443):
-            netloc = f"{hostname}:{parsed.port}"
+        # Strip default ports
+        port = parsed.port
+        if port == 80 and parsed.scheme == "http":
+            port = None
+        elif port == 443 and parsed.scheme == "https":
+            port = None
+
+        # Rebuild netloc without default port
+        if port:
+            netloc = f"{hostname}:{port}"
         else:
             netloc = hostname
 
@@ -91,6 +102,12 @@ def normalize_url(url: str) -> str:
         path = re.sub(r'/+', '/', parsed.path)
         if not path:
             path = "/"
+
+        # Percent-encode unicode characters in path (safe chars preserved)
+        try:
+            path = quote(path, safe='/-_.~!$&\'()*+,;=:@')
+        except Exception:
+            pass  # Keep original if encoding fails
 
         # DON'T add trailing slashes - many sites return 404 for them
         # Just preserve the original slash status (except for homepage)
@@ -110,7 +127,7 @@ def normalize_url(url: str) -> str:
 
         # Remove fragment (anchor)
         return urlunparse((
-            parsed.scheme,
+            parsed.scheme.lower(),  # Also lowercase scheme
             netloc,
             path,
             "",  # params
@@ -119,6 +136,7 @@ def normalize_url(url: str) -> str:
         ))
     except Exception:
         return url  # Return original on error
+
 
 
 def extract_domain(url: str) -> str | None:

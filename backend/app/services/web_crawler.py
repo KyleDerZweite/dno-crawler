@@ -20,7 +20,7 @@ from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, FeatureNotFound
 
 from app.services.url_utils import (
     DOCUMENT_EXTENSIONS,
@@ -31,6 +31,11 @@ from app.services.url_utils import (
 )
 
 logger = structlog.get_logger()
+
+
+# Preferred HTML parsers in order (lxml is fastest, html.parser is most forgiving)
+HTML_PARSERS = ["lxml", "html.parser", "html5lib"]
+
 
 
 # =============================================================================
@@ -300,9 +305,10 @@ class WebCrawler:
                 # Check for possible SPA (suspiciously small content)
                 needs_headless = content_length < 1024 and "text/html" in (content_type or "")
 
-                # Parse HTML
-                soup = BeautifulSoup(content, "lxml")
+                # Parse HTML with fallback parsers
+                soup = self._parse_html(content)
                 title = soup.title.string.strip() if soup.title and soup.title.string else None
+
 
                 # Score this page
                 score = self._score_url(final_url, depth, target_keywords, data_type)
@@ -349,6 +355,28 @@ class WebCrawler:
         )
 
         return results
+
+    def _parse_html(self, content: str) -> BeautifulSoup:
+        """Parse HTML with fallback parsers for malformed content.
+        
+        Tries parsers in order: lxml (fastest) -> html.parser (most forgiving).
+        """
+        last_error = None
+        
+        for parser in HTML_PARSERS:
+            try:
+                return BeautifulSoup(content, parser)
+            except FeatureNotFound:
+                # Parser not installed, try next
+                continue
+            except Exception as e:
+                last_error = e
+                self.log.debug("Parser failed, trying next", parser=parser, error=str(e))
+                continue
+        
+        # All parsers failed, return empty soup
+        self.log.warning("All HTML parsers failed", error=str(last_error))
+        return BeautifulSoup("", "html.parser")
 
     def _is_document(self, url: str, content_type: str | None) -> bool:
         """Check if URL points to a document file."""

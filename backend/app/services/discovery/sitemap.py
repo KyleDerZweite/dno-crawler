@@ -108,6 +108,7 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
     Parse URLs from sitemap XML.
 
     Handles both regular sitemaps and sitemap indexes.
+    Supports multiple namespace variations (http/https, with/without namespace).
 
     Args:
         xml_content: Raw sitemap XML
@@ -121,45 +122,76 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
     nested_sitemaps = []
 
     try:
-        # Handle namespace
-        namespaces = {
-            "sm": "http://www.sitemaps.org/schemas/sitemap/0.9"
-        }
+        # Multiple namespace variations to try
+        namespace_variants = [
+            {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"},
+            {"sm": "https://www.sitemaps.org/schemas/sitemap/0.9"},
+            {},  # No namespace
+        ]
 
         root = ElementTree.fromstring(xml_content)
 
-        # Check for sitemap index (contains other sitemaps)
-        for sitemap_elem in root.findall(".//sm:sitemap", namespaces):
-            loc = sitemap_elem.find("sm:loc", namespaces)
-            if loc is not None and loc.text:
-                nested_sitemaps.append(loc.text)
+        # Try each namespace variant
+        for namespaces in namespace_variants:
+            # Check for sitemap index (contains other sitemaps)
+            if namespaces:
+                for sitemap_elem in root.findall(".//sm:sitemap", namespaces):
+                    loc = sitemap_elem.find("sm:loc", namespaces)
+                    if loc is not None and loc.text:
+                        nested_sitemaps.append(loc.text.strip())
 
-        # Also try without namespace
-        if not nested_sitemaps:
-            for sitemap in root.iter("sitemap"):
-                loc = sitemap.find("loc")
-                if loc is not None and loc.text:
-                    nested_sitemaps.append(loc.text)
+                # Extract URLs from urlset
+                for url_elem in root.findall(".//sm:url", namespaces):
+                    loc = url_elem.find("sm:loc", namespaces)
+                    if loc is not None and loc.text:
+                        urls.append(loc.text.strip())
+            else:
+                # No namespace - iterate directly
+                for sitemap in root.iter("sitemap"):
+                    loc = sitemap.find("loc")
+                    if loc is not None and loc.text:
+                        nested_sitemaps.append(loc.text.strip())
 
-        # Extract URLs from urlset
-        for url_elem in root.findall(".//sm:url", namespaces):
-            loc = url_elem.find("sm:loc", namespaces)
-            if loc is not None and loc.text:
-                urls.append(loc.text)
+                for url_elem in root.iter("url"):
+                    loc = url_elem.find("loc")
+                    if loc is not None and loc.text:
+                        url_text = loc.text.strip()
+                        if url_text not in nested_sitemaps:
+                            urls.append(url_text)
 
-        # Also try without namespace (some sitemaps don't use it)
-        if not urls:
-            for loc in root.iter("loc"):
-                # Skip if this is inside a sitemap element (index)
-                if loc.text and loc.text not in nested_sitemaps:
-                    urls.append(loc.text)
+            # If we found content, stop trying other namespaces
+            if urls or nested_sitemaps:
+                break
+
+        # Final fallback: extract namespace from root element
+        if not urls and not nested_sitemaps:
+            # Try to detect namespace from root tag
+            root_tag = root.tag
+            if "{" in root_tag:
+                ns = root_tag[root_tag.find("{") + 1:root_tag.find("}")]
+                dynamic_ns = {"sm": ns}
+                
+                for sitemap_elem in root.findall(".//sm:sitemap", dynamic_ns):
+                    loc = sitemap_elem.find("sm:loc", dynamic_ns)
+                    if loc is not None and loc.text:
+                        nested_sitemaps.append(loc.text.strip())
+
+                for url_elem in root.findall(".//sm:url", dynamic_ns):
+                    loc = url_elem.find("sm:loc", dynamic_ns)
+                    if loc is not None and loc.text:
+                        urls.append(loc.text.strip())
 
     except ElementTree.ParseError:
         # Try regex fallback for malformed XML
         pattern = r'<loc>([^<]+)</loc>'
-        urls = re.findall(pattern, xml_content)
+        urls = [u.strip() for u in re.findall(pattern, xml_content)]
+
+    # Deduplicate while preserving order
+    urls = list(dict.fromkeys(urls))
+    nested_sitemaps = list(dict.fromkeys(nested_sitemaps))
 
     return urls, nested_sitemaps
+
 
 
 # Language path patterns to filter/prioritize
