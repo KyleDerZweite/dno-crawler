@@ -382,7 +382,33 @@ class ContentVerifier:
                 return None
 
     def _extract_pdf_text(self, content: bytes) -> str | None:
-        """Extract text from PDF content."""
+        """Extract text from PDF content with multiple fallbacks.
+        
+        Strategy:
+        1. Try pdfplumber (best for tables)
+        2. Fallback to PyMuPDF (handles more edge cases, encrypted PDFs)
+        3. Return None if both fail (might need OCR)
+        """
+        # Check for encryption marker early
+        is_encrypted = b'/Encrypt' in content[:2048]
+        if is_encrypted:
+            self.log.debug("PDF appears encrypted - extraction may be limited")
+        
+        # Try pdfplumber first (better for structured tables)
+        text = self._try_pdfplumber(content)
+        if text:
+            return text
+        
+        # Fallback to PyMuPDF (handles more formats)
+        text = self._try_pymupdf(content)
+        if text:
+            return text
+        
+        self.log.debug("pdf_extract_failed", reason="all_methods_failed")
+        return None
+
+    def _try_pdfplumber(self, content: bytes) -> str | None:
+        """Try extracting text using pdfplumber."""
         try:
             import pdfplumber
 
@@ -398,8 +424,33 @@ class ContentVerifier:
 
             return "\n".join(text_parts) if text_parts else None
         except Exception as e:
-            self.log.debug("pdf_extract_failed", error=str(e))
+            self.log.debug("pdfplumber_failed", error=str(e))
             return None
+
+    def _try_pymupdf(self, content: bytes) -> str | None:
+        """Try extracting text using PyMuPDF (fitz)."""
+        try:
+            import fitz  # PyMuPDF
+            
+            pdf_file = io.BytesIO(content)
+            doc = fitz.open(stream=pdf_file, filetype="pdf")
+            
+            text_parts = []
+            for page_num in range(min(3, len(doc))):
+                page = doc[page_num]
+                text = page.get_text()
+                if text:
+                    text_parts.append(text)
+            
+            doc.close()
+            return "\n".join(text_parts) if text_parts else None
+        except ImportError:
+            self.log.debug("pymupdf_not_installed")
+            return None
+        except Exception as e:
+            self.log.debug("pymupdf_failed", error=str(e))
+            return None
+
 
     def _extract_excel_text(self, content: bytes) -> str | None:
         """Extract text from Excel content."""

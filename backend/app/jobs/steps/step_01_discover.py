@@ -5,6 +5,8 @@ Combined strategy and discovery step. Finds data sources via:
 1. Cached file (if exists) → Skip crawling
 2. Exact URL from profile → Try known URL with year substitution
 2.5. Sitemap discovery → Fast sitemap-based discovery via DiscoveryManager
+    - Uses DB-cached sitemap URLs when available (from DNO.sitemap_parsed_urls)
+    - Falls back to fetching fresh sitemap if cache is stale
 3. Learned patterns → Try top patterns on DNO domain
 4. BFS crawl → Full website crawl with keyword scoring
 
@@ -28,8 +30,8 @@ import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import CrawlJobModel
-from app.jobs.steps.base import BaseStep
+from app.db.models import CrawlJobModel, DNOModel
+from app.jobs.steps.base import BaseStep, StepError
 from app.services.content_verifier import ContentVerifier
 from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
@@ -80,22 +82,31 @@ class DiscoverStep(BaseStep):
         dno_crawlable = ctx.get("dno_crawlable", True)
         if not dno_crawlable:
             blocked_reason = ctx.get("crawl_blocked_reason", "unknown protection")
-            from app.jobs.steps.base import StepError
             raise StepError(
                 f"Cancelled: Site is protected ({blocked_reason}) and no local file found "
                 f"for {job.data_type} {job.year}. Please upload the file manually."
             )
 
+        # Load DNO from DB to access cached sitemap data
+        dno = await db.get(DNOModel, job.dno_id)
+        cached_sitemap_urls = dno.sitemap_parsed_urls if dno else None
+
+
         # Build User-Agent for non-BFS strategies (sitemap, pattern match)
         initiator_ip = ctx.get("initiator_ip")
         user_agent = build_user_agent(initiator_ip)
 
-        # Need HTTP client for remaining strategies
+        # Create HTTP client with connection limits for all strategies
         async with httpx.AsyncClient(
-            timeout=15.0,
+            timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
             headers={"User-Agent": user_agent},
             follow_redirects=True,
             trust_env=False,
+            limits=httpx.Limits(
+                max_connections=20,
+                max_keepalive_connections=10,
+                keepalive_expiry=30.0,
+            ),
         ) as client:
             prober = UrlProber(client)
             learner = PatternLearner()
@@ -156,14 +167,24 @@ class DiscoverStep(BaseStep):
             if dno_website:
                 discovery = DiscoveryManager(client)
 
-                log.info("Trying sitemap discovery", website=dno_website[:50])
+                # Use DB-cached sitemap URLs if available
+                if cached_sitemap_urls:
+                    log.info(
+                        "Using cached sitemap URLs from DB",
+                        count=len(cached_sitemap_urls),
+                        website=dno_website[:50],
+                    )
+                else:
+                    log.info("Fetching fresh sitemap", website=dno_website[:50])
 
                 discovery_result = await discovery.discover(
                     base_url=dno_website,
                     data_type=job.data_type,
                     target_year=job.year,
+                    sitemap_urls=cached_sitemap_urls,  # Pass cached URLs
                     max_candidates=10,
                 )
+
 
                 if discovery_result.documents:
                     log.info(

@@ -370,10 +370,25 @@ class WebCrawler:
     def _is_token_url(self, url: str) -> bool:
         """Detect URLs that look like tokenized download links.
 
-        Many CMS platforms (TYPO3, etc.) use opaque token URLs for downloads
-        like /media_token/abc123 or /get_file/xyz without file extensions.
+        Many CMS platforms (TYPO3, SharePoint, ASP.NET, etc.) use opaque token URLs
+        for downloads like /media_token/abc123 or /get_file/xyz without file extensions.
         """
-        return bool(re.search(r'/(media_token|get_file|download_id|fileadmin)/[\w-]+$', url))
+        # Common token/download URL patterns
+        token_patterns = [
+            r'/(media_token|get_file|download_id|fileadmin)/[\w-]+$',
+            r'/ajax/.*download',
+            r'\.(asp|aspx|php)\?.*file',
+            r'/_layouts/.*/download',
+            r'/blob/',
+            r'/download\.(?:php|aspx?)\?',
+            r'/Binaerfile\.asp',
+            r'/getmedia/',
+            r'/dms_download/',
+            r'/attachment/',
+            r'/file\.axd',
+        ]
+        return any(re.search(pattern, url, re.IGNORECASE) for pattern in token_patterns)
+
 
     def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
         """Score URL based on relevance.
@@ -406,11 +421,22 @@ class WebCrawler:
                 score += 15
 
         # Year in URL bonus (current/recent years)
-        years = re.findall(r'/(\d{4})/', url_lower)
-        for year in years:
-            current_year = datetime.now().year
-            if current_year - 6 <= int(year) <= current_year:
-                score += 10
+        # Support multiple formats: /2025/, -2025., _2025_, ?year=2025
+        year_patterns = [
+            r'/(\d{4})/',        # /2025/
+            r'-(\d{4})\.',       # -2025.pdf
+            r'_(\d{4})_',        # _2025_
+            r'[?&]year=(\d{4})', # ?year=2025
+            r'/(\d{4})-',        # /2025-01/
+        ]
+        for pattern in year_patterns:
+            matches = re.findall(pattern, url_lower)
+            for year in matches:
+                current_year = datetime.now().year
+                if current_year - 6 <= int(year) <= current_year:
+                    score += 10
+                    break  # Only count once per pattern type
+
 
         # Irrelevant path penalty
         for pattern in IRRELEVANT_PATHS:

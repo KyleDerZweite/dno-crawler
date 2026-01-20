@@ -1,11 +1,13 @@
 """
-Step 03: Download
+Step 02: Download
 
 Downloads the found data source to local storage.
 
 What it does:
 - Skip if strategy is "use_cache"
-- Detect file format from URL (pdf, xlsx, html, etc.)
+- Stream large files with size limits (100MB max)
+- Detect file format from magic bytes, Content-Type, or URL
+- Proper encoding detection for HTML content
 - Download file to: data/downloads/{dno_slug}/{dno_slug}-{data_type}-{year}.{ext}
 - For HTML pages: strip unnecessary content and split by year
 
@@ -21,10 +23,12 @@ File storage convention:
 Output stored in job.context:
 - downloaded_file: local file path
 - file_format: detected format (pdf, xlsx, html, etc.)
+- detected_encoding: character encoding used for HTML
 - years_split: list of years if HTML was split (optional)
 """
 
 import asyncio
+import tempfile
 from pathlib import Path
 
 import httpx
@@ -33,9 +37,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel
-from app.jobs.steps.base import BaseStep
+from app.jobs.steps.base import BaseStep, StepError
+from app.services.encoding_utils import decode_content
+from app.services.retry_utils import fetch_with_retries
 
 logger = structlog.get_logger()
+
+
+# Maximum file size (100MB)
+MAX_FILE_SIZE = 100 * 1024 * 1024
+
+# Magic bytes for file format detection
+MAGIC_BYTES = {
+    b'%PDF': 'pdf',
+    b'PK\x03\x04': 'xlsx',  # ZIP-based (XLSX, DOCX, PPTX)
+    b'\xd0\xcf\x11\xe0': 'xls',  # OLE2 compound document (XLS, DOC)
+}
 
 
 class DownloadStep(BaseStep):
@@ -48,35 +65,50 @@ class DownloadStep(BaseStep):
 
         # Skip if using cache
         if strategy == "use_cache":
-            # Use the cached file
-            ctx["downloaded_file"] = ctx.get("file_to_process")
-            ctx["file_format"] = self._detect_format(ctx["downloaded_file"])
+            cached_file = ctx.get("file_to_process")
+            ctx["downloaded_file"] = cached_file
+            ctx["file_format"] = self._detect_format_from_url(cached_file) if cached_file else "unknown"
+            job.context = ctx
             return "Skipped → Using cached file"
 
         url = ctx.get("found_url")
         if not url:
-            raise ValueError("No URL to download - search step may have failed")
+            raise StepError("No URL to download - discovery step may have failed")
 
         # Build save dir
         dno_slug = ctx.get("dno_slug", "unknown")
         save_dir = Path(settings.downloads_path) / dno_slug
         save_dir.mkdir(parents=True, exist_ok=True)
 
-        # Download the file
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-            response = await client.get(url)
-            response.raise_for_status()
+        log = logger.bind(dno=dno_slug, url=url[:60])
 
-            # Detect format from Content-Type header (more reliable than URL)
-            content_type = response.headers.get("content-type", "").lower()
-            file_format = self._detect_format_from_content_type(content_type, url)
+        # Download with streaming and retries
+        async with httpx.AsyncClient(
+            timeout=httpx.Timeout(connect=10.0, read=60.0, write=10.0, pool=10.0),
+            follow_redirects=True,
+            limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
+        ) as client:
+            content, content_type, file_size = await self._stream_download(
+                client, url, log
+            )
 
+            # Detect format from multiple sources
+            file_format = self._detect_format(content, content_type, url)
+            
             # Build save path with correct extension
             save_path = save_dir / f"{dno_slug}-{job.data_type}-{job.year}.{file_format}"
 
-            # For HTML files: strip and split by year
+            # For HTML files: detect encoding and process
             if file_format == "html":
-                html_content = response.content.decode("utf-8", errors="replace")
+                html_content, detected_encoding = decode_content(content, content_type)
+                ctx["detected_encoding"] = detected_encoding
+                
+                log.info(
+                    "Processing HTML content",
+                    encoding=detected_encoding,
+                    size_kb=len(content) // 1024,
+                )
+                
                 result = await self._process_html(
                     html_content=html_content,
                     save_dir=save_dir,
@@ -92,17 +124,172 @@ class DownloadStep(BaseStep):
                     job.context = ctx
 
                     years_str = ", ".join(str(y) for y in result.get("years_found", []))
-                    return f"Downloaded & split HTML: {result['file_path']} (years: {years_str})"
+                    return f"Downloaded & split HTML: {Path(result['file_path']).name} (years: {years_str})"
+                else:
+                    # HTML processing failed - save raw content as fallback
+                    log.warning(
+                        "HTML processing failed, saving raw content",
+                        encoding=detected_encoding,
+                    )
+                    save_path.write_text(html_content, encoding="utf-8")
+                    ctx["downloaded_file"] = str(save_path)
+                    ctx["file_format"] = "html"
+                    ctx["html_processing_failed"] = True
+                    job.context = ctx
+                    return f"Downloaded HTML (unprocessed): {save_path.name} ({file_size // 1024} KB)"
 
-            # Standard file: save directly
-            save_path.write_bytes(response.content)
+            # Binary file: save directly
+            save_path.write_bytes(content)
 
         # Update context
         ctx["downloaded_file"] = str(save_path)
         ctx["file_format"] = file_format
         job.context = ctx
 
-        return f"Downloaded to: {save_path.name} ({file_format.upper()}, {len(response.content) // 1024} KB)"
+        return f"Downloaded to: {save_path.name} ({file_format.upper()}, {file_size // 1024} KB)"
+
+    async def _stream_download(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        log: structlog.stdlib.BoundLogger,
+    ) -> tuple[bytes, str, int]:
+        """
+        Stream download with size limit and retries.
+        
+        Returns:
+            Tuple of (content_bytes, content_type, file_size)
+        
+        Raises:
+            StepError: If download fails or exceeds size limit
+        """
+        try:
+            async with client.stream("GET", url) as response:
+                response.raise_for_status()
+                
+                content_type = response.headers.get("content-type", "")
+                content_length = response.headers.get("content-length")
+                
+                # Check declared size
+                if content_length:
+                    declared_size = int(content_length)
+                    if declared_size > MAX_FILE_SIZE:
+                        raise StepError(
+                            f"File too large: {declared_size // (1024*1024)}MB exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
+                        )
+                
+                # Stream content with size tracking
+                chunks = []
+                total_size = 0
+                
+                async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                    total_size += len(chunk)
+                    
+                    if total_size > MAX_FILE_SIZE:
+                        raise StepError(
+                            f"Download exceeded size limit ({MAX_FILE_SIZE // (1024*1024)}MB)"
+                        )
+                    
+                    chunks.append(chunk)
+                
+                content = b"".join(chunks)
+                
+                log.info(
+                    "Download complete",
+                    size_kb=total_size // 1024,
+                    content_type=content_type[:50] if content_type else "unknown",
+                )
+                
+                return content, content_type, total_size
+                
+        except httpx.TimeoutException as e:
+            raise StepError(f"Download timeout: {e}") from e
+        except httpx.HTTPStatusError as e:
+            raise StepError(f"HTTP error {e.response.status_code}: {e}") from e
+        except httpx.RequestError as e:
+            raise StepError(f"Request failed: {e}") from e
+
+    def _detect_format(
+        self,
+        content: bytes,
+        content_type: str,
+        url: str,
+    ) -> str:
+        """
+        Detect file format from multiple sources (priority order):
+        1. Magic bytes (most reliable)
+        2. Content-Disposition header filename
+        3. Content-Type header
+        4. URL extension
+        """
+        # 1. Magic bytes detection (first 16 bytes)
+        header = content[:16] if content else b""
+        for magic, fmt in MAGIC_BYTES.items():
+            if header.startswith(magic):
+                return fmt
+        
+        # Check for XLSX vs DOCX (both are ZIP-based)
+        if header.startswith(b'PK\x03\x04'):
+            # Could be xlsx, docx, or pptx - check for specific signatures
+            if b'[Content_Types].xml' in content[:2048]:
+                if b'workbook.xml' in content[:10000]:
+                    return 'xlsx'
+                elif b'word/' in content[:10000]:
+                    return 'docx'
+                elif b'ppt/' in content[:10000]:
+                    return 'pptx'
+            return 'xlsx'  # Default for Office Open XML
+
+        # 2. Content-Type header
+        ct_lower = content_type.lower()
+        
+        # Handle common content types
+        if "pdf" in ct_lower:
+            return "pdf"
+        elif "spreadsheet" in ct_lower or "excel" in ct_lower or "ms-excel" in ct_lower:
+            return "xlsx"
+        elif "msword" in ct_lower or "wordprocessing" in ct_lower:
+            return "docx"
+        elif "text/html" in ct_lower or "application/xhtml" in ct_lower:
+            return "html"
+        elif "text/csv" in ct_lower:
+            return "csv"
+        elif "octet-stream" in ct_lower or "force-download" in ct_lower:
+            # Generic binary - fall through to URL detection
+            pass
+
+        # 3. Fall back to URL-based detection
+        return self._detect_format_from_url(url)
+
+    def _detect_format_from_url(self, url_or_path: str) -> str:
+        """Detect file format from URL or path extension."""
+        if not url_or_path:
+            return "html"
+            
+        url_lower = url_or_path.lower()
+        
+        # Strip query parameters for extension detection
+        path = url_lower.split("?")[0]
+        
+        if path.endswith(".pdf"):
+            return "pdf"
+        elif path.endswith(".xlsx"):
+            return "xlsx"
+        elif path.endswith(".xls"):
+            return "xls"
+        elif path.endswith(".docx"):
+            return "docx"
+        elif path.endswith(".doc"):
+            return "doc"
+        elif path.endswith(".csv"):
+            return "csv"
+        elif path.endswith(".pptx"):
+            return "pptx"
+        elif path.endswith((".html", ".htm")):
+            return "html"
+        else:
+            # Assume HTML if no recognizable extension
+            return "html"
 
     async def _process_html(
         self,
@@ -115,78 +302,56 @@ class DownloadStep(BaseStep):
         """Process HTML: strip unnecessary content and split by year."""
         from app.services.extraction.html_stripper import HtmlStripper
 
-        stripper = HtmlStripper()
+        try:
+            stripper = HtmlStripper()
 
-        # Strip and split into year-specific files
-        created_files = await asyncio.to_thread(
-            stripper.strip_and_split,
-            html_content=html_content,
-            output_dir=save_dir,
-            slug=dno_slug,
-            data_type=data_type
-        )
-
-        if not created_files:
-            logger.warning("html_strip_failed", slug=dno_slug, data_type=data_type)
-            return None
-
-        years_found = [year for year, _ in created_files]
-
-        # Find the file for our target year
-        target_file = None
-        for year, file_path in created_files:
-            if year == target_year:
-                target_file = str(file_path)
-                break
-
-        # If target year not found, use the first file
-        if not target_file and created_files:
-            target_file = str(created_files[0][1])
-            logger.warning(
-                "target_year_not_found",
-                target_year=target_year,
-                available_years=years_found,
-                using=target_file
+            # Strip and split into year-specific files
+            created_files = await asyncio.to_thread(
+                stripper.strip_and_split,
+                html_content=html_content,
+                output_dir=save_dir,
+                slug=dno_slug,
+                data_type=data_type
             )
 
-        return {
-            "file_path": target_file,
-            "years_found": years_found
-        }
+            if not created_files:
+                logger.warning(
+                    "html_strip_failed",
+                    slug=dno_slug,
+                    data_type=data_type,
+                    reason="no_files_created",
+                )
+                return None
 
-    def _detect_format_from_content_type(self, content_type: str, url: str) -> str:
-        """Detect file format from Content-Type header, fall back to URL."""
-        # Check Content-Type header first (most reliable)
-        if "pdf" in content_type:
-            return "pdf"
-        elif "spreadsheet" in content_type or "excel" in content_type:
-            return "xlsx"
-        elif "msword" in content_type or "wordprocessing" in content_type:
-            return "docx"
-        elif "text/html" in content_type:
-            return "html"
-        elif "text/csv" in content_type:
-            return "csv"
-        # Fall back to URL-based detection
-        return self._detect_format(url)
+            years_found = [year for year, _ in created_files]
 
-    def _detect_format(self, url_or_path: str) -> str:
-        """Detect file format from URL or path (fallback)."""
-        url_lower = url_or_path.lower()
+            # Find the file for our target year
+            target_file = None
+            for year, file_path in created_files:
+                if year == target_year:
+                    target_file = str(file_path)
+                    break
 
-        if url_lower.endswith(".pdf"):
-            return "pdf"
-        elif url_lower.endswith(".xlsx"):
-            return "xlsx"
-        elif url_lower.endswith(".xls"):
-            return "xls"
-        elif url_lower.endswith(".docx"):
-            return "docx"
-        elif url_lower.endswith(".csv"):
-            return "csv"
-        elif url_lower.endswith(".pptx"):
-            return "pptx"
-        else:
-            # Assume HTML if no extension
-            return "html"
+            # If target year not found, use the first file
+            if not target_file and created_files:
+                target_file = str(created_files[0][1])
+                logger.warning(
+                    "target_year_not_found",
+                    target_year=target_year,
+                    available_years=years_found,
+                    using=target_file
+                )
 
+            return {
+                "file_path": target_file,
+                "years_found": years_found
+            }
+            
+        except Exception as e:
+            logger.warning(
+                "html_processing_exception",
+                slug=dno_slug,
+                data_type=data_type,
+                error=str(e),
+            )
+            return None

@@ -52,8 +52,10 @@ dependencies = [
     # Utilities
     "python-dotenv>=1.0.0",
     "structlog>=24.1.0",
-    "tenacity>=8.2.3",      # Retries
-    "aiofiles>=23.0.0",     # Async file I/O
+    "tenacity>=8.2.3",           # Retries
+    "aiofiles>=23.0.0",          # Async file I/O
+    "charset_normalizer>=3.3.0", # Encoding detection
+
 
     # Date/Time
     "python-dateutil>=2.8.2",
