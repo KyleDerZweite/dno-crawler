@@ -385,6 +385,16 @@ class UrlProber:
                     continue
 
                 # Check final status
+                if response.status_code == 429:
+                    # Rate limited - log and return failure (caller can retry)
+                    retry_after = response.headers.get("retry-after")
+                    self.log.warning(
+                        "Rate limited (429)",
+                        url=current_url[:60],
+                        retry_after=retry_after,
+                    )
+                    return False, None, None, None
+
                 if response.status_code not in (200, 206):
                     return False, None, None, None
 
@@ -417,6 +427,7 @@ class UrlProber:
         except Exception as e:
             self.log.debug("Probe failed", url=url[:80], error=str(e))
             return False, None, None, None
+
 
     async def _peek_with_get(self, url: str) -> httpx.Response | None:
         """Fallback probe using streaming GET when HEAD is blocked.

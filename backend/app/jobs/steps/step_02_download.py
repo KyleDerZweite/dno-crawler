@@ -153,6 +153,7 @@ class DownloadStep(BaseStep):
         client: httpx.AsyncClient,
         url: str,
         log: structlog.stdlib.BoundLogger,
+        max_retries: int = 3,
     ) -> tuple[bytes, str, int]:
         """
         Stream download with size limit and retries.
@@ -163,51 +164,90 @@ class DownloadStep(BaseStep):
         Raises:
             StepError: If download fails or exceeds size limit
         """
-        try:
-            async with client.stream("GET", url) as response:
-                response.raise_for_status()
-                
-                content_type = response.headers.get("content-type", "")
-                content_length = response.headers.get("content-length")
-                
-                # Check declared size
-                if content_length:
-                    declared_size = int(content_length)
-                    if declared_size > MAX_FILE_SIZE:
-                        raise StepError(
-                            f"File too large: {declared_size // (1024*1024)}MB exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
-                        )
-                
-                # Stream content with size tracking
-                chunks = []
-                total_size = 0
-                
-                async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
-                    total_size += len(chunk)
+        from app.services.retry_utils import RETRYABLE_EXCEPTIONS
+        import asyncio
+        
+        last_error = None
+        
+        for attempt in range(1, max_retries + 1):
+            try:
+                async with client.stream("GET", url) as response:
+                    # Handle rate limiting
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("retry-after", "5")
+                        wait_time = min(float(retry_after), 30.0)
+                        log.warning("Rate limited, waiting", wait_time=wait_time, attempt=attempt)
+                        await asyncio.sleep(wait_time)
+                        continue
                     
-                    if total_size > MAX_FILE_SIZE:
-                        raise StepError(
-                            f"Download exceeded size limit ({MAX_FILE_SIZE // (1024*1024)}MB)"
-                        )
+                    response.raise_for_status()
                     
-                    chunks.append(chunk)
-                
-                content = b"".join(chunks)
-                
-                log.info(
-                    "Download complete",
-                    size_kb=total_size // 1024,
-                    content_type=content_type[:50] if content_type else "unknown",
-                )
-                
-                return content, content_type, total_size
-                
-        except httpx.TimeoutException as e:
-            raise StepError(f"Download timeout: {e}") from e
-        except httpx.HTTPStatusError as e:
-            raise StepError(f"HTTP error {e.response.status_code}: {e}") from e
-        except httpx.RequestError as e:
-            raise StepError(f"Request failed: {e}") from e
+                    content_type = response.headers.get("content-type", "")
+                    content_length = response.headers.get("content-length")
+                    
+                    # Check declared size
+                    if content_length:
+                        declared_size = int(content_length)
+                        if declared_size > MAX_FILE_SIZE:
+                            raise StepError(
+                                f"File too large: {declared_size // (1024*1024)}MB exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
+                            )
+                    
+                    # Stream content with size tracking
+                    chunks = []
+                    total_size = 0
+                    
+                    async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                        total_size += len(chunk)
+                        
+                        if total_size > MAX_FILE_SIZE:
+                            raise StepError(
+                                f"Download exceeded size limit ({MAX_FILE_SIZE // (1024*1024)}MB)"
+                            )
+                        
+                        chunks.append(chunk)
+                    
+                    content = b"".join(chunks)
+                    
+                    log.info(
+                        "Download complete",
+                        size_kb=total_size // 1024,
+                        content_type=content_type[:50] if content_type else "unknown",
+                    )
+                    
+                    return content, content_type, total_size
+                    
+            except RETRYABLE_EXCEPTIONS as e:
+                last_error = e
+                if attempt < max_retries:
+                    wait_time = 0.5 * (2 ** (attempt - 1))  # Exponential backoff
+                    log.warning(
+                        "Download failed, retrying",
+                        error=str(e),
+                        attempt=attempt,
+                        wait_time=wait_time,
+                    )
+                    await asyncio.sleep(wait_time)
+                continue
+            except httpx.HTTPStatusError as e:
+                # Server errors (5xx) can be retried
+                if e.response.status_code >= 500 and attempt < max_retries:
+                    wait_time = 0.5 * (2 ** (attempt - 1))
+                    log.warning(
+                        "Server error, retrying",
+                        status=e.response.status_code,
+                        attempt=attempt,
+                    )
+                    await asyncio.sleep(wait_time)
+                    last_error = e
+                    continue
+                raise StepError(f"HTTP error {e.response.status_code}: {e}") from e
+        
+        # All retries exhausted
+        if last_error:
+            raise StepError(f"Download failed after {max_retries} attempts: {last_error}") from last_error
+        raise StepError(f"Download failed after {max_retries} attempts")
+
 
     def _detect_format(
         self,

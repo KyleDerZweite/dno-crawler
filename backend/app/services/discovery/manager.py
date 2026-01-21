@@ -91,14 +91,16 @@ class DiscoveryManager:
             strategy=DiscoveryStrategy.SITEMAP,
         )
 
-        # Strategy 1: Sitemap discovery
+        # Strategy 1: Sitemap discovery (uses cached URLs if available)
         sitemap_result = await discover_via_sitemap(
             client=self.client,
             base_url=base_url,
             data_type=data_type,
             target_year=target_year,
+            sitemap_urls=sitemap_urls,  # Use pre-parsed URLs from DB
             max_candidates=max_candidates,
         )
+
 
         result.documents.extend(sitemap_result.documents)
         result.sitemap_urls_checked = sitemap_result.sitemap_urls_checked

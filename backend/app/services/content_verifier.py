@@ -328,8 +328,10 @@ class ContentVerifier:
         return await self._do_fetch_partial(self.client, url)
 
     async def _do_fetch_partial(self, client: httpx.AsyncClient, url: str) -> bytes | None:
-        """Perform the actual partial fetch."""
-        try:
+        """Perform the actual partial fetch with retries."""
+        from app.services.retry_utils import with_retries, RETRYABLE_EXCEPTIONS
+        
+        async def _fetch() -> bytes | None:
             # Try Range request first
             response = await client.get(
                 url,
@@ -339,11 +341,27 @@ class ContentVerifier:
 
             if response.status_code in (200, 206):
                 return response.content[:self.SNIFF_SIZE]
+            
+            # Don't retry on client errors (4xx)
+            if 400 <= response.status_code < 500:
+                return None
+            
+            # Raise on server errors to trigger retry
+            if response.status_code >= 500:
+                raise httpx.HTTPStatusError(
+                    f"Server error {response.status_code}",
+                    request=response.request,
+                    response=response,
+                )
 
             return None
+        
+        try:
+            return await with_retries(_fetch, max_attempts=3, backoff_base=0.5)
         except Exception as e:
             self.log.debug("fetch_partial_failed", url=url[:80], error=str(e))
             return None
+
 
     def _detect_content_type(self, url: str) -> str:
         """Detect content type from URL."""

@@ -89,7 +89,28 @@ class DiscoverStep(BaseStep):
 
         # Load DNO from DB to access cached sitemap data
         dno = await db.get(DNOModel, job.dno_id)
-        cached_sitemap_urls = dno.sitemap_parsed_urls if dno else None
+        
+        # Check sitemap cache with TTL (120 days)
+        cached_sitemap_urls = None
+        if dno and dno.sitemap_parsed_urls and dno.sitemap_fetched_at:
+            from datetime import datetime, timedelta, UTC
+            sitemap_ttl_days = 120
+            cache_age = datetime.now(UTC) - dno.sitemap_fetched_at.replace(tzinfo=UTC)
+            
+            if cache_age < timedelta(days=sitemap_ttl_days):
+                cached_sitemap_urls = dno.sitemap_parsed_urls
+                log.info(
+                    "Using cached sitemap URLs",
+                    count=len(cached_sitemap_urls),
+                    age_days=cache_age.days,
+                )
+            else:
+                log.info(
+                    "Sitemap cache expired",
+                    age_days=cache_age.days,
+                    ttl_days=sitemap_ttl_days,
+                )
+
 
 
         # Build User-Agent for non-BFS strategies (sitemap, pattern match)

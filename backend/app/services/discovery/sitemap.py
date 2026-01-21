@@ -83,10 +83,17 @@ async def fetch_sitemap(
     for path in SITEMAP_PATHS:
         sitemap_urls.append(site_base + path)
 
-    # Step 3: Try each sitemap URL
+    # Step 3: Try each sitemap URL with retries
     for url in sitemap_urls:
         try:
-            response = await client.get(url, timeout=10.0, follow_redirects=True)
+            from app.services.retry_utils import with_retries
+            
+            async def _fetch_sitemap_url(sitemap_url: str) -> httpx.Response:
+                return await client.get(sitemap_url, timeout=10.0, follow_redirects=True)
+            
+            response = await with_retries(
+                _fetch_sitemap_url, url, max_attempts=2, backoff_base=0.5
+            )
 
             # Check if it's valid XML (not a Cloudflare challenge)
             if response.status_code == 200:
@@ -98,6 +105,7 @@ async def fetch_sitemap(
         except Exception as e:
             log.debug("Sitemap fetch failed", url=url[:60], error=str(e))
             continue
+
 
     log.info("No sitemap found", base_url=base_url)
     return None
@@ -319,6 +327,7 @@ async def discover_via_sitemap(
     data_type: str,
     target_year: int | None = None,
     sitemap_content: str | None = None,
+    sitemap_urls: list[str] | None = None,
     max_candidates: int = 50,
 ) -> DiscoveryResult:
     """
@@ -333,6 +342,7 @@ async def discover_via_sitemap(
         data_type: "netzentgelte" or "hlzf"
         target_year: Optional target year
         sitemap_content: Pre-fetched sitemap content (or None to fetch fresh)
+        sitemap_urls: Pre-parsed sitemap URLs from DB cache (fastest path)
         max_candidates: Max candidates to return
 
     Returns:
@@ -347,20 +357,29 @@ async def discover_via_sitemap(
         strategy=DiscoveryStrategy.SITEMAP,
     )
 
-    # Fetch sitemap if not provided
-    if not sitemap_content:
-        sitemap_content = await fetch_sitemap(client, base_url)
+    urls = []
+    nested_sitemaps = []
 
-    if not sitemap_content:
-        log.info("No sitemap available")
-        result.errors.append("No sitemap found")
-        return result
+    # Fast path: use pre-parsed URLs from DB cache
+    if sitemap_urls:
+        log.info("Using cached sitemap URLs", count=len(sitemap_urls))
+        urls = sitemap_urls
+    else:
+        # Fetch sitemap if not provided
+        if not sitemap_content:
+            sitemap_content = await fetch_sitemap(client, base_url)
 
-    # Parse URLs from sitemap (handles sitemap indexes recursively)
-    urls, nested_sitemaps = parse_sitemap(sitemap_content)
-    
+        if not sitemap_content:
+            log.info("No sitemap available")
+            result.errors.append("No sitemap found")
+            return result
+
+        # Parse URLs from sitemap (handles sitemap indexes recursively)
+        urls, nested_sitemaps = parse_sitemap(sitemap_content)
+
     # If this is a sitemap index, recursively fetch nested sitemaps
     if nested_sitemaps and not urls:
+
         log.info("Sitemap is an index, fetching nested sitemaps", count=len(nested_sitemaps))
         # Get the sitemap URL we're working with
         parsed = urlparse(base_url)
