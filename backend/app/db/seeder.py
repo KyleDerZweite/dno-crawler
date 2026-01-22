@@ -55,11 +55,18 @@ def load_seed_data() -> list[dict[str, Any]] | None:
     # Convert DataFrame to list of dicts
     records = df.to_dict('records')
 
-    # Clean up values: convert numpy types to Python types
+    # Clean up values: convert numpy/pandas types to Python types
     for record in records:
         for key, value in list(record.items()):
+            # Handle pandas Timestamp objects (from datetime64 columns)
+            if isinstance(value, pd.Timestamp):
+                if pd.isna(value):
+                    record[key] = None
+                else:
+                    # Convert to ISO string format for parse_date
+                    record[key] = value.isoformat()
             # Convert numpy arrays to lists
-            if hasattr(value, 'tolist'):
+            elif hasattr(value, 'tolist'):
                 record[key] = value.tolist()
             # Convert NaN/NaT to None
             elif value is None:

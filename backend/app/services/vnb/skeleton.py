@@ -234,7 +234,7 @@ class SkeletonService:
         result = await db.execute(
             select(LocationModel).where(LocationModel.address_hash == address_hash)
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def find_location_by_geocoord(
         self,
@@ -258,7 +258,7 @@ class SkeletonService:
                 func.abs(LocationModel.longitude - snapped_lon) < tolerance,
             )
         )
-        return result.scalar_one_or_none()
+        return result.scalars().first()
 
     async def get_or_create_location(
         self,

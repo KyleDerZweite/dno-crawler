@@ -33,7 +33,7 @@ def get_crawl_steps():
     if CRAWL_STEPS is None:
         from app.jobs.steps.step_00_gather_context import GatherContextStep
         from app.jobs.steps.step_01_discover import DiscoverStep
-        from app.jobs.steps.step_03_download import DownloadStep
+        from app.jobs.steps.step_02_download import DownloadStep
 
         CRAWL_STEPS = [
             GatherContextStep(),
@@ -91,8 +91,10 @@ async def process_crawl(
             job.completed_at = datetime.utcnow()
             await db.commit()
 
-            # Now enqueue the extract job
-            extract_job_id = await _enqueue_extract_job(db, job, log)
+            # Now enqueue the extract job (unless skip_extract is set)
+            extract_job_id = None
+            if not job.context.get("skip_extract"):
+                extract_job_id = await _enqueue_extract_job(db, job, log)
 
             if extract_job_id:
                 # Update this job with the child reference

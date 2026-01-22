@@ -274,7 +274,7 @@ async def public_search(
             db, rate_limiter, request.coordinates, filter_years, log
         )
     else:
-        return await _search_by_dno(db, request.dno, filter_years, log)
+        return await _search_by_dno(db, request.dno, filter_years, log, rate_limiter)
 
 
 # =============================================================================
@@ -542,30 +542,123 @@ async def _search_by_dno(
     dno_input: DNOSearchInput,
     years: list[int] | None,
     log,
+    rate_limiter: "RateLimiter | None" = None,
 ) -> PublicSearchResponse:
-    """Search by DNO name or ID directly."""
+    """
+    Search by DNO name or ID directly.
+    
+    Waterfall logic:
+    1. Search local DB with fuzzy matching
+    2. If not found, search VNB Digital API by name
+    3. If VNB returns results, create skeleton DNO
+    """
     log = log.bind(dno_name=dno_input.dno_name, dno_id=dno_input.dno_id)
 
-    # Build query
+    # Build query for local DB search
     if dno_input.dno_id:
         query = select(DNOModel).where(DNOModel.vnb_id == dno_input.dno_id)
     elif dno_input.dno_name:
+        # Fuzzy search: match name, official_name, or slug
+        search_term = dno_input.dno_name.strip()
         query = select(DNOModel).where(
-            (DNOModel.name.ilike(f"%{dno_input.dno_name}%")) |
-            (DNOModel.slug == dno_input.dno_name.lower())
+            (DNOModel.name.ilike(f"%{search_term}%")) |
+            (DNOModel.official_name.ilike(f"%{search_term}%")) |
+            (DNOModel.slug == search_term.lower().replace(" ", "-"))
         )
     else:
         raise HTTPException(400, "Either dno_id or dno_name must be provided")
 
     result = await db.execute(query)
-    dno = result.scalar_one_or_none()
+    dno = result.scalars().first()
 
-    if not dno:
+    if dno:
+        log.info("Found DNO in local database", dno_id=dno.id, dno_name=dno.name)
+        return await _build_response(db, dno, None, years)
+
+    # Not found in DB - try VNB Digital API for fuzzy search
+    log.info("DNO not in local DB, searching VNB Digital API")
+    
+    search_name = dno_input.dno_name or dno_input.dno_id
+    if not search_name:
         return PublicSearchResponse(
             found=False,
             has_data=False,
             message="DNO not found. Try searching by address instead.",
         )
+
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+
+    vnb_client = VNBDigitalClient(request_delay=0.5)
+    vnb_results = await vnb_client.search_vnb(search_name)
+
+    if not vnb_results:
+        log.warning("No VNB found for search term", search_term=search_name)
+        return PublicSearchResponse(
+            found=False,
+            has_data=False,
+            message=f"No distribution network operator found matching '{search_name}'. Try searching by address instead.",
+        )
+
+    # Use the first (best) match
+    vnb = vnb_results[0]
+    log.info("Found VNB via API", vnb_id=vnb.vnb_id, vnb_name=vnb.name)
+
+    # Fetch extended details (website, contact info)
+    if rate_limiter:
+        await rate_limiter.before_vnb_call()
+
+    dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
+
+    # Try to enrich address with postal code + city from Impressum
+    enriched_address = dno_details.address if dno_details else None
+    if dno_details and dno_details.homepage_url and dno_details.address:
+        from app.services.impressum_extractor import impressum_extractor
+        full_addr = await impressum_extractor.extract_full_address(
+            dno_details.homepage_url,
+            dno_details.address,
+        )
+        if full_addr:
+            enriched_address = full_addr.formatted
+
+    # Fetch robots.txt to determine crawlability
+    robots_result = None
+    if dno_details and dno_details.homepage_url:
+        import httpx
+
+        from app.services.robots_parser import fetch_robots_txt
+
+        async with httpx.AsyncClient(
+            headers={"User-Agent": "DNO-Crawler/1.0"},
+            follow_redirects=True,
+            timeout=10.0,
+        ) as http_client:
+            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
+
+    # Create or get DNO skeleton
+    dno, dno_created = await skeleton_service.get_or_create_dno(
+        db,
+        name=vnb.name,
+        vnb_id=vnb.vnb_id,
+        official_name=vnb.subtitle,  # VNB subtitle is usually the official/legal name
+        website=dno_details.homepage_url if dno_details else None,
+        phone=dno_details.phone if dno_details else None,
+        email=dno_details.email if dno_details else None,
+        contact_address=enriched_address,
+        # Crawlability info
+        robots_txt=robots_result.raw_content if robots_result else None,
+        sitemap_urls=robots_result.sitemap_urls if robots_result else None,
+        disallow_paths=robots_result.disallow_paths if robots_result else None,
+        crawlable=robots_result.crawlable if robots_result else True,
+        crawl_blocked_reason=robots_result.blocked_reason if robots_result else None,
+    )
+
+    log.info(
+        "Created DNO skeleton from VNB search",
+        dno_created=dno_created,
+        dno_name=dno.name,
+        has_website=bool(dno.website),
+    )
 
     return await _build_response(db, dno, None, years)
 
