@@ -69,6 +69,9 @@ class Settings(BaseSettings):
         "Mozilla/5.0 (compatible; DNOCrawler/1.0; +https://github.com/KyleDerZweite/dno-crawler)"
     )
 
+    # AI (Optional Auto-Config)
+    openrouter_key: str | None = Field(default=None, validation_alias="OPENROUTER_KEY")
+
     # Storage (STORAGE_PATH env var maps to storage_path)
     storage_path: str = Field(default="/data", validation_alias="STORAGE_PATH")
 

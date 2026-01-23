@@ -43,6 +43,16 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     await init_db()
     logger.info("Database initialized")
 
+    # Seed AI configuration (if OPENROUTER_KEY is set)
+    try:
+        from app.db import get_db_session
+        from app.db.ai_seeder import seed_ai_config
+        
+        async with get_db_session() as db:
+            await seed_ai_config(db)
+    except Exception as e:
+        logger.warning("Failed to seed AI config", error=str(e))
+
     # Initialize rate limiter if Redis available
     try:
         from redis.asyncio import Redis
