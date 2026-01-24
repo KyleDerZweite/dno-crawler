@@ -143,7 +143,7 @@ export function DataExplorer() {
             </div>
 
             {/* Filters Row */}
-            <div className="flex flex-wrap gap-2 items-center bg-card p-2 rounded-lg border">
+            <div className="flex flex-wrap gap-2 items-center bg-card/50 backdrop-blur-sm p-3 rounded-xl border border-[#34d399]/10 shadow-xl">
                 <span className="text-xs font-semibold text-muted-foreground px-2">FILTERS</span>
                 <div className="h-4 w-[1px] bg-border mx-1"></div>
                 <span className="text-xs text-muted-foreground">Year:</span>
@@ -172,40 +172,36 @@ export function DataExplorer() {
             </div>
 
             {/* Netzentgelte Table */}
-            <div className="border rounded-lg bg-card overflow-hidden">
-                <NetzentgelteTable
-                    data={filteredNetzentgelte}
-                    isLoading={dataLoading}
-                    dnoId={String(numericId)}
-                    isAdmin={isAdmin}
-                    onEdit={(item: Netzentgelte) => {
-                        setEditModalType('netzentgelte');
-                        setEditRecord({ id: item.id, leistung: item.leistung ?? undefined, arbeit: item.arbeit ?? undefined });
-                        setEditModalOpen(true);
-                    }}
-                    onDelete={(id: number) => deleteNetzentgelteMutation.mutate(id)}
-                    openMenuId={openMenuId}
-                    onMenuOpenChange={setOpenMenuId}
-                />
-            </div>
+            <NetzentgelteTable
+                data={filteredNetzentgelte}
+                isLoading={dataLoading}
+                dnoId={String(numericId)}
+                isAdmin={isAdmin}
+                onEdit={(item: Netzentgelte) => {
+                    setEditModalType('netzentgelte');
+                    setEditRecord({ id: item.id, leistung: item.leistung ?? undefined, arbeit: item.arbeit ?? undefined });
+                    setEditModalOpen(true);
+                }}
+                onDelete={(id: number) => deleteNetzentgelteMutation.mutate(id)}
+                openMenuId={openMenuId}
+                onMenuOpenChange={setOpenMenuId}
+            />
 
             {/* HLZF Table */}
-            <div className="border rounded-lg bg-card overflow-hidden">
-                <HLZFTable
-                    data={filteredHLZF}
-                    isLoading={dataLoading}
-                    dnoId={numericId!}
-                    isAdmin={isAdmin}
-                    onEdit={(item: HLZF) => {
-                        setEditModalType('hlzf');
-                        setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
-                        setEditModalOpen(true);
-                    }}
-                    onDelete={(id: number) => deleteHLZFMutation.mutate(id)}
-                    openMenuId={openMenuId}
-                    onMenuOpenChange={setOpenMenuId}
-                />
-            </div>
+            <HLZFTable
+                data={filteredHLZF}
+                isLoading={dataLoading}
+                dnoId={numericId!}
+                isAdmin={isAdmin}
+                onEdit={(item: HLZF) => {
+                    setEditModalType('hlzf');
+                    setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
+                    setEditModalOpen(true);
+                }}
+                onDelete={(id: number) => deleteHLZFMutation.mutate(id)}
+                openMenuId={openMenuId}
+                onMenuOpenChange={setOpenMenuId}
+            />
 
             <EditRecordDialog
                 open={editModalOpen}

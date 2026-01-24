@@ -182,14 +182,24 @@ async def create_dno(
     if website:
         import httpx
 
-        from app.services.robots_parser import fetch_robots_txt
-
+        from app.services.robots_parser import fetch_robots_txt, fetch_site_tech_info
+        
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
             timeout=10.0,
         ) as http_client:
-            robots_result = await fetch_robots_txt(http_client, website)
+            # Parallel check: Robots/Sitemap + Tech Stack
+            robots_task = fetch_robots_txt(http_client, website)
+            tech_task = fetch_site_tech_info(http_client, website)
+            
+            # Note: fetch_robots_txt in crud.py is using the old import which doesn't include the new default sitemap check logic
+            # Use fetch_and_verify_robots instead for full logic
+            from app.services.robots_parser import fetch_and_verify_robots
+            robots_result = await fetch_and_verify_robots(http_client, website, verify_sitemap=False)
+            
+            tech_info = await tech_task
+            
             if robots_result:
                 crawlable = robots_result.crawlable
                 crawl_blocked_reason = robots_result.blocked_reason
@@ -209,12 +219,15 @@ async def create_dno(
         phone=phone,
         email=email,
         contact_address=contact_address,
-        # Crawlability info from robots.txt check
+        # Crawlability info
         crawlable=crawlable,
         crawl_blocked_reason=crawl_blocked_reason,
         robots_txt=robots_txt,
         sitemap_urls=sitemap_urls,
         disallow_paths=disallow_paths,
+        # Tech Info
+        cms_system=tech_info.get("cms") if website and 'tech_info' in locals() else None,
+        tech_stack_details=tech_info if website and 'tech_info' in locals() else None,
     )
     db.add(dno)
     await db.commit()
@@ -679,6 +692,10 @@ async def get_dno_details(
             "crawlable": getattr(dno, 'crawlable', True),
             "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
             "has_local_files": has_local_files,
+            "robots_txt": getattr(dno, 'robots_txt', None),
+            "sitemap_urls": getattr(dno, 'sitemap_urls', []),
+            "cms_system": getattr(dno, 'cms_system', None),
+            "tech_stack_details": getattr(dno, 'tech_stack_details', None),
             # Source data availability
             "has_mastr": dno.has_mastr,
             "has_vnb": dno.has_vnb,

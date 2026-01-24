@@ -96,7 +96,19 @@ export function Overview() {
     // Calculate stats
     const netzentgelteCount = netzentgelte.filter((n: any) => n.leistung || n.arbeit).length;
     const hlzfCount = hlzf.filter((h: any) => h.winter || h.sommer).length;
-    const years = new Set([...netzentgelte.map((n: any) => n.year), ...hlzf.map((h: any) => h.year)]).size;
+    // Calculate details
+    const netzYears = Array.from(new Set(netzentgelte.map((n: any) => n.year))).sort((a: any, b: any) => b - a);
+    const netzLevels = Array.from(new Set(netzentgelte.map((n: any) => n.voltage_level)));
+    const hlzfYears = Array.from(new Set(hlzf.map((h: any) => h.year))).sort((a: any, b: any) => b - a);
+
+    // Check which seasons are present in HLZF data
+    const hlzfSeasons = new Set<string>();
+    hlzf.forEach((h: any) => {
+        if (h.winter) hlzfSeasons.add("Winter");
+        if (h.fruehling) hlzfSeasons.add("Spring");
+        if (h.sommer) hlzfSeasons.add("Summer");
+        if (h.herbst) hlzfSeasons.add("Autumn");
+    });
 
     // Get status display config
     const statusDisplay = getStatusDisplay(dno.status ?? "uncrawled", dno.crawl_blocked_reason);
@@ -106,6 +118,7 @@ export function Overview() {
         <div className="space-y-6 animate-in fade-in duration-300">
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Netzentgelte Card */}
                 <Card className="p-4 flex flex-col justify-between">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 rounded-lg bg-purple-500/10 text-purple-500">
@@ -114,12 +127,36 @@ export function Overview() {
                         <span className="text-sm text-muted-foreground font-medium">Netzentgelte</span>
                     </div>
                     <div>
-                        <p className="text-2xl font-bold">{netzentgelteCount}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Records found across {years} years
-                        </p>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold">{netzentgelteCount}</p>
+                            <span className="text-xs text-muted-foreground">records</span>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-border/50 space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Years found</span>
+                                <span className="font-medium truncate max-w-[120px] text-right" title={netzYears.join(", ")}>
+                                    {netzYears.slice(0, 3).join(", ")}{netzYears.length > 3 ? "..." : ""}
+                                    {netzYears.length === 0 && "-"}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Voltage Levels</span>
+                                <span className="font-medium truncate max-w-[120px] text-right" title={netzLevels.join(", ")}>
+                                    {netzLevels.length > 0 ? `${netzLevels.length} levels` : "-"}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">State</span>
+                                <span className="font-medium text-purple-600">
+                                    {netzentgelteCount > 0 ? "Active" : "No Data"}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </Card>
+
+                {/* HLZF Card */}
                 <Card className="p-4 flex flex-col justify-between">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="p-2 rounded-lg bg-blue-500/10 text-blue-500">
@@ -128,10 +165,32 @@ export function Overview() {
                         <span className="text-sm text-muted-foreground font-medium">HLZF</span>
                     </div>
                     <div>
-                        <p className="text-2xl font-bold">{hlzfCount}</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                            Time windows identified
-                        </p>
+                        <div className="flex items-baseline gap-2">
+                            <p className="text-2xl font-bold">{hlzfCount}</p>
+                            <span className="text-xs text-muted-foreground">windows</span>
+                        </div>
+
+                        <div className="mt-4 pt-4 border-t border-border/50 space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Years found</span>
+                                <span className="font-medium truncate max-w-[120px] text-right" title={hlzfYears.join(", ")}>
+                                    {hlzfYears.slice(0, 3).join(", ")}{hlzfYears.length > 3 ? "..." : ""}
+                                    {hlzfYears.length === 0 && "-"}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Seasons</span>
+                                <span className="font-medium truncate max-w-[120px] text-right">
+                                    {hlzfSeasons.size > 0 ? `${hlzfSeasons.size}/4 found` : "-"}
+                                </span>
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">State</span>
+                                <span className="font-medium text-blue-600">
+                                    {hlzfCount > 0 ? "Active" : "No Data"}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </Card>
                 <Card className="p-4 flex flex-col justify-between bg-muted/30">
@@ -154,9 +213,31 @@ export function Overview() {
                                 {statusDisplay.label}
                             </Badge>
                         </div>
-                        <p className="text-xs text-muted-foreground mt-2 truncate">
-                            ID: {dno.slug}
-                        </p>
+
+                        <div className="mt-4 pt-4 border-t border-border/50 space-y-2">
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Robots.txt</span>
+                                {dno.robots_txt ? (
+                                    <span className="text-green-600 font-medium">Found</span>
+                                ) : (
+                                    <span className="text-muted-foreground">Missing</span>
+                                )}
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">Sitemap</span>
+                                {dno.sitemap_urls && dno.sitemap_urls.length > 0 ? (
+                                    <span className="text-green-600 font-medium">Found ({dno.sitemap_urls.length})</span>
+                                ) : (
+                                    <span className="text-muted-foreground">Missing</span>
+                                )}
+                            </div>
+                            <div className="flex justify-between items-center text-xs">
+                                <span className="text-muted-foreground">System</span>
+                                <span className="font-medium truncate max-w-[100px] text-right" title={dno.cms_system || dno.tech_stack_details?.server}>
+                                    {dno.cms_system || dno.tech_stack_details?.server || "-"}
+                                </span>
+                            </div>
+                        </div>
                     </div>
                 </Card>
             </div>

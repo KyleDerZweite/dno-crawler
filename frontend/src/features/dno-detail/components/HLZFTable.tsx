@@ -163,8 +163,8 @@ export function HLZFTable({
                         <tbody>
                             {sortedYears.map((year) => (
                                 <Fragment key={year}>
-                                    <tr className="bg-muted/30">
-                                        <td colSpan={isAdmin ? 7 : 6} className="py-2 px-3 font-semibold text-muted-foreground border-y border-border/50">
+                                    <tr className="bg-muted/10">
+                                        <td colSpan={isAdmin ? 7 : 6} className="py-2 px-3 font-semibold text-muted-foreground border-y border-border/30">
                                             {year}
                                         </td>
                                     </tr>

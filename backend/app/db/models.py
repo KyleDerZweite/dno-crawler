@@ -133,6 +133,12 @@ class DNOModel(Base, TimestampMixin):
     crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))
 
     # -------------------------------------------------------------------------
+    # Technical Stack Info
+    # -------------------------------------------------------------------------
+    cms_system: Mapped[str | None] = mapped_column(String(100))  # e.g. "Typo3", "WordPress"
+    tech_stack_details: Mapped[dict | None] = mapped_column(JSON)  # Full detected stack info
+
+    # -------------------------------------------------------------------------
     # Source Data Relationships (One-to-One/Many)
     # -------------------------------------------------------------------------
     mastr_data: Mapped[Optional["DNOMastrData"]] = relationship(

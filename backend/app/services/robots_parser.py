@@ -380,6 +380,24 @@ async def fetch_and_verify_robots(
     # First, fetch and parse robots.txt
     result = await fetch_robots_txt(client, website, timeout)
 
+    # If no sitemaps found in robots.txt, try standard locations
+    if not result.sitemap_urls and result.crawlable:
+        defaults = ["/sitemap.xml", "/sitemap_index.xml"]
+        base_url = website.rstrip("/")
+        for path in defaults:
+            url = f"{base_url}{path}"
+            try:
+                # Use GET with small byte limit or HEAD (though HEAD often disallowed/unreliable)
+                # GET is safer for detection
+                log.debug("Checking default sitemap location", url=url)
+                resp = await client.get(url, timeout=timeout, follow_redirects=True)
+                if resp.status_code == 200 and ("xml" in resp.headers.get("content-type", "") or "<urlset" in resp.text[:500] or "<sitemapindex" in resp.text[:500]):
+                    log.info("Found sitemap at default location", url=url)
+                    result.sitemap_urls.append(url)
+                    break
+            except Exception:
+                pass
+
     # If robots.txt reports not crawlable, no need to check sitemap
     if not result.crawlable:
         return result
@@ -406,3 +424,88 @@ async def fetch_and_verify_robots(
             )
 
     return result
+
+
+def detect_tech_stack(content: str, headers: dict) -> dict:
+    """
+    Detect technology stack from HTML content and headers.
+    Returns a dictionary of detected technologies.
+    """
+    stack = {
+        "cms": None,
+        "server": None,
+        "generator": None,
+    }
+
+    # Header analysis
+    if "server" in headers:
+        stack["server"] = headers["server"]
+
+    try:
+        from bs4 import BeautifulSoup
+        soup = BeautifulSoup(content, "html.parser")
+
+        # Meta generator
+        generator = soup.find("meta", attrs={"name": "generator"})
+        if generator and generator.get("content"):
+            gen_content = generator["content"]
+            stack["generator"] = gen_content
+            
+            # Simple CMS mapping
+            lower_gen = gen_content.lower()
+            if "typo3" in lower_gen:
+                stack["cms"] = "TYPO3"
+            elif "wordpress" in lower_gen:
+                stack["cms"] = "WordPress"
+            elif "joomla" in lower_gen:
+                stack["cms"] = "Joomla"
+            elif "drupal" in lower_gen:
+                stack["cms"] = "Drupal"
+            elif "contao" in lower_gen:
+                stack["cms"] = "Contao"
+            elif "wix" in lower_gen:
+                stack["cms"] = "Wix"
+            elif "squarespace" in lower_gen:
+                stack["cms"] = "Squarespace"
+
+        # Additional CMS checks if not found via generator
+        if not stack["cms"]:
+            # TYPO3 checks
+            if soup.find("link", href=lambda x: x and "typo3" in x) or \
+               soup.find("script", src=lambda x: x and "typo3" in x):
+                stack["cms"] = "TYPO3"
+            # WordPress checks
+            elif soup.find("link", href=lambda x: x and "wp-content" in x) or \
+                 soup.find("script", src=lambda x: x and "wp-includes" in x):
+                stack["cms"] = "WordPress"
+
+    except Exception:
+        pass
+
+    return stack
+
+
+async def fetch_site_tech_info(
+    client: httpx.AsyncClient,
+    website: str,
+    timeout: float = 10.0,
+) -> dict:
+    """
+    Fetch homepage to detect tech stack.
+    """
+    if not website.startswith("http"):
+        website = f"https://{website}"
+    
+    try:
+        response = await client.get(
+            website, 
+            timeout=timeout, 
+            follow_redirects=True,
+            headers={"User-Agent": "DNO-Crawler/1.0"}
+        )
+        if response.status_code == 200:
+            return detect_tech_stack(response.text, response.headers)
+    except Exception:
+        pass
+    
+    return {}

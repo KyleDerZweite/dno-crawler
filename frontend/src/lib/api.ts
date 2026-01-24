@@ -252,6 +252,13 @@ export interface DNO {
   sitemap_parsed_urls?: string[];  // All URLs extracted from sitemaps
   sitemap_fetched_at?: string;  // TTL: 120 days
   disallow_paths?: string[];
+  // Technical Stack
+  cms_system?: string;
+  tech_stack_details?: {
+    cms?: string;
+    server?: string;
+    generator?: string;
+  };
   // Source data availability
   has_mastr?: boolean;
   has_vnb?: boolean;
