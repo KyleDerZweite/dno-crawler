@@ -153,14 +153,11 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     existing_dno = result.scalar_one_or_none()
 
     if existing_dno:
-        # Check if we should update (only if source data is newer or missing)
-        if existing_dno.mastr_data:
-            # Skip if already has MaStR data (don't overwrite)
-            logger.debug("Skipping existing DNO with MaStR data", mastr_nr=mastr_nr)
-            return 'skipped'
-
+        # For existing DNOs with MaStR data, we still want to update VNB/BDEW
+        # We only skip the full update if everything is already present
         dno = existing_dno
         action = 'updated'
+        skip_mastr = existing_dno.mastr_data is not None
     else:
         # Create new DNO
         dno = DNOModel(
@@ -174,6 +171,7 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         db.add(dno)
         await db.flush()  # Get the ID
         action = 'inserted'
+        skip_mastr = False
 
     # Update core fields (resolved values)
     dno.name = record['name']
@@ -181,8 +179,9 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     dno.region = record.get('region')
     dno.is_active = record.get('is_active', True)
 
-    # Create/update MaStR source data
-    await upsert_mastr_data(db, dno, record)
+    # Create/update MaStR source data (skip if already exists)
+    if not skip_mastr:
+        await upsert_mastr_data(db, dno, record)
 
     # Create VNB data if present in enriched record
     if record.get('vnb_id'):

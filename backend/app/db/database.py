@@ -145,10 +145,13 @@ async def init_db() -> None:
         logger.info("Database tables initialized")
     except Exception as e:
         error_str = str(e)
-        # Race condition: another worker created tables between our check and create
-        # This is fine - tables exist now, which is what we wanted
-        if "duplicate key value violates unique constraint" in error_str and "pg_type_typname_nsp_index" in error_str:
-            logger.info("Database tables already created by another worker")
+        # Race condition: another worker created tables/extensions between our check and create
+        # This is fine - tables/extensions exist now, which is what we wanted
+        race_condition_constraints = ["pg_type_typname_nsp_index", "pg_extension_name_index"]
+        if "duplicate key value violates unique constraint" in error_str and any(
+            constraint in error_str for constraint in race_condition_constraints
+        ):
+            logger.info("Database tables/extensions already created by another worker")
         else:
             logger.error("Failed to initialize database", error=error_str)
             raise
