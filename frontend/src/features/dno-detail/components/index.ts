@@ -13,3 +13,9 @@ export { FilesJobsPanel } from './FilesJobsPanel';
 export { DNOHeader } from './DNOHeader';
 export { DataFilters } from './DataFilters';
 export { DetailContextSidebar } from './DetailContextSidebar';
+
+// Charts
+export { PriceTrendChart } from './PriceTrendChart';
+export { HLZFTimelineChart } from './HLZFTimelineChart';
+export { DataCompletenessHeatmap } from './DataCompletenessHeatmap';
+export { ChartColorPicker } from './ChartColorPicker';
