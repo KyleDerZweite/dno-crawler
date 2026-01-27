@@ -489,6 +489,8 @@ async def list_dnos_detailed(
             live_status = "pending"
         elif data_points_count > 0:
             live_status = "crawled"
+        elif not getattr(dno, "crawlable", True):
+            live_status = "protected"
         else:
             live_status = "uncrawled"
 
@@ -601,6 +603,33 @@ async def get_dno_details(
     dno_dir = Path(storage_path) / "downloads" / dno.slug
     has_local_files = dno_dir.exists() and any(dno_dir.iterdir())
 
+    # -------------------------------------------------------------------------
+    # Dynamic Status Computation
+    # -------------------------------------------------------------------------
+    # Get counts and active jobs for live status
+    stats_query = text("""
+        SELECT 
+            (SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id) as netz_count,
+            (SELECT COUNT(*) FROM hlzf WHERE dno_id = :dno_id) as hlzf_count,
+            (SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'running') as running_jobs,
+            (SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'pending') as pending_jobs
+    """)
+    stats_res = await db.execute(stats_query, {"dno_id": dno.id})
+    netz_c, hlzf_c, running_j, pending_j = stats_res.fetchone()
+    
+    data_points_total = netz_c + hlzf_c
+    
+    if running_j > 0:
+        live_status = "running"
+    elif pending_j > 0:
+        live_status = "pending"
+    elif data_points_total > 0:
+        live_status = "crawled"
+    elif not getattr(dno, "crawlable", True):
+        live_status = "protected"
+    else:
+        live_status = "uncrawled"
+
     # Build MaStR source data
     mastr_data = None
     if dno.mastr_data:
@@ -672,7 +701,7 @@ async def get_dno_details(
             "vnb_id": dno.vnb_id,
             "mastr_nr": dno.mastr_nr,
             "primary_bdew_code": dno.primary_bdew_code,
-            "status": getattr(dno, 'status', 'uncrawled'),
+            "status": live_status,
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
