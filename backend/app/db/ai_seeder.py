@@ -40,6 +40,7 @@ async def seed_ai_config(db: AsyncSession) -> None:
             config_id=existing_config.id,
             api_key=settings.openrouter_key,
             is_enabled=True,
+            supports_files=True,
         )
     else:
         logger.info("Creating new OpenRouter configuration from environment")
@@ -52,5 +53,8 @@ async def seed_ai_config(db: AsyncSession) -> None:
             api_url=OpenRouterProvider.API_URL,
             supports_text=True,
             supports_vision=True,
-            supports_files=False,
+            supports_files=True,
         )
+    
+    await db.commit()
+    logger.info("AI configuration seeded successfully")
