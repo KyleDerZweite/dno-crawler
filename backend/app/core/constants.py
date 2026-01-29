@@ -121,11 +121,11 @@ def normalize_voltage_level(level: str) -> str | None:
     # Clean and lowercase for matching
     cleaned = level.strip().lower()
     cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
-    
+
     # Normalize separators: remove spaces around hyphens and slashes
     # e.g. "Hoch - / Mittelspannung" -> "hoch-/mittelspannung"
     cleaned = re.sub(r'\s*([-/])\s*', r'\1', cleaned)
-    
+
     cleaned = re.sub(r'[()]', '', cleaned)  # Remove parentheses
     cleaned = cleaned.strip()
 
@@ -140,7 +140,7 @@ def normalize_voltage_level(level: str) -> str | None:
     # Sort aliases by length (descending) to match specific phrases first
     # e.g. Match "umspannung hoch-/mittelspannung" before "mittelspannung"
     sorted_aliases = sorted(VOLTAGE_LEVEL_ALIASES.keys(), key=len, reverse=True)
-    
+
     for alias in sorted_aliases:
         # Also clean the alias for comparison (though aliases should be clean in constant)
         clean_alias = re.sub(r'\s*([-/])\s*', r'\1', alias)

@@ -89,14 +89,14 @@ class DiscoverStep(BaseStep):
 
         # Load DNO from DB to access cached sitemap data
         dno = await db.get(DNOModel, job.dno_id)
-        
+
         # Check sitemap cache with TTL (120 days)
         cached_sitemap_urls = None
         if dno and dno.sitemap_parsed_urls and dno.sitemap_fetched_at:
-            from datetime import datetime, timedelta, UTC
+            from datetime import UTC, datetime, timedelta
             sitemap_ttl_days = 120
             cache_age = datetime.now(UTC) - dno.sitemap_fetched_at.replace(tzinfo=UTC)
-            
+
             if cache_age < timedelta(days=sitemap_ttl_days):
                 cached_sitemap_urls = dno.sitemap_parsed_urls
                 log.info(

@@ -1,8 +1,10 @@
 
 import asyncio
+
 import httpx
-from app.services.robots_parser import fetch_and_verify_robots
 import structlog
+
+from app.services.robots_parser import fetch_and_verify_robots
 
 # Configure structured logging for the test
 structlog.configure(

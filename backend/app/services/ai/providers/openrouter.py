@@ -7,7 +7,6 @@ Primary AI provider using native OpenRouter SDK with:
 - Async context manager for proper resource cleanup
 """
 
-import json
 from typing import Any
 
 import httpx
@@ -22,23 +21,23 @@ logger = structlog.get_logger()
 
 class OpenRouterProvider(BaseProvider):
     """OpenRouter provider using native SDK with reasoning token support."""
-    
+
     DEFAULT_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
     API_URL = "https://openrouter.ai/api/v1"
     MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models"
-    
+
     def __init__(self, config: AIProviderConfigModel):
         super().__init__(config)
         self._client: OpenRouter | None = None
-    
+
     @property
     def provider_name(self) -> str:
         return "openrouter"
-    
+
     # -------------------------------------------------------------------------
     # Class Methods (no config needed)
     # -------------------------------------------------------------------------
-    
+
     @classmethod
     async def get_available_models(cls) -> list[dict[str, Any]]:
         """Fetch models from public OpenRouter API, filtered by modalities.
@@ -54,13 +53,13 @@ class OpenRouterProvider(BaseProvider):
                 resp = await client.get(cls.MODELS_ENDPOINT, timeout=15.0)
                 resp.raise_for_status()
                 data = resp.json().get("data", [])
-            
+
             models = []
             for m in data:
                 arch = m.get("architecture", {})
                 input_mods = arch.get("input_modalities", [])
                 output_mods = arch.get("output_modalities", [])
-                
+
                 # Filter: must support image input AND text output
                 if "image" in input_mods and "text" in output_mods:
                     models.append({
@@ -69,22 +68,22 @@ class OpenRouterProvider(BaseProvider):
                         "supports_vision": True,
                         "supports_files": "file" in input_mods,
                     })
-            
+
             logger.info("openrouter_models_fetched", count=len(models))
             return models
-            
+
         except Exception as e:
             logger.warning("openrouter_models_fetch_failed", error=str(e))
             return []
-    
+
     @classmethod
     def get_default_model(cls) -> str:
         return cls.DEFAULT_MODEL
-    
+
     @classmethod
     def get_default_url(cls) -> str | None:
         return cls.API_URL
-    
+
     @classmethod
     def get_reasoning_options(cls) -> dict[str, Any] | None:
         """Return OpenRouter-specific reasoning options.
@@ -105,7 +104,7 @@ class OpenRouterProvider(BaseProvider):
                 "effort": "{level}",  # "reasoning": {"effort": "high"}
             },
         }
-    
+
     @classmethod
     def get_provider_info(cls) -> dict[str, Any]:
         """Return OpenRouter provider display info."""
@@ -116,11 +115,11 @@ class OpenRouterProvider(BaseProvider):
             # Official OpenRouter logo
             "icon_svg": """<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" fill="currentColor"/><path d="M3.10913 12.07C3.65512 12.07 5.76627 11.5988 6.85825 10.98C7.95023 10.3612 7.95023 10.3612 10.207 8.75965C13.0642 6.73196 15.0845 7.41088 18.3968 7.41088" stroke="currentColor" stroke-width="3.27593"/><path d="M21.6 7.43108L16.0037 10.6622V4.20001L21.6 7.43108Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" fill="currentColor"/><path d="M3 12.072C3.54599 12.072 5.65714 12.5432 6.74912 13.162C7.8411 13.7808 7.8411 13.7808 10.0978 15.3823C12.9551 17.41 14.9753 16.7311 18.2877 16.7311" stroke="currentColor" stroke-width="3.27593"/><path d="M21.4909 16.7109L15.8945 13.4798V19.942L21.4909 16.7109Z" fill="currentColor" stroke="currentColor" stroke-width="0.0363992"/></svg>""",
         }
-    
+
     # -------------------------------------------------------------------------
     # Instance Methods
     # -------------------------------------------------------------------------
-    
+
     def _build_reasoning_config(self) -> dict[str, Any] | None:
         """Build OpenRouter unified reasoning config from model_parameters.
         
@@ -132,23 +131,23 @@ class OpenRouterProvider(BaseProvider):
         See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
         """
         params = self.config.model_parameters or {}
-        
+
         # Check for reasoning_level (effort-based)
         if params.get("reasoning_level"):
             level = params["reasoning_level"]
             if level == "none":
                 return None  # Disabled
             return {"effort": level}
-        
+
         # Check for reasoning_budget (token-based)
         if params.get("reasoning_budget"):
             budget = int(params["reasoning_budget"])
             if budget <= 0:
                 return None  # Disabled
             return {"max_tokens": budget}
-        
+
         return None
-    
+
     async def extract_text(
         self,
         content: str,
@@ -160,26 +159,26 @@ class OpenRouterProvider(BaseProvider):
             model=self.model_name,
             content_len=len(content),
         )
-        
+
         full_prompt = f"{prompt}\n\n---\n\nContent to extract from:\n\n{content}"
         reasoning = self._build_reasoning_config()
-        
+
         # Build request kwargs
         request_kwargs: dict[str, Any] = {
             "model": self.config.model,
             "messages": [{"role": "user", "content": full_prompt}],
             "response_format": {"type": "json_object"},
         }
-        
+
         if reasoning:
             request_kwargs["reasoning"] = reasoning
-        
+
         async with OpenRouter(api_key=self._get_api_key()) as client:
             response = await client.chat.send_async(**request_kwargs)
-        
+
         response_content = response.choices[0].message.content
         result = self._parse_json_response(response_content)
-        
+
         # Extract usage
         usage = None
         if response.usage:
@@ -188,13 +187,13 @@ class OpenRouterProvider(BaseProvider):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-        
+
         logger.info(
             "openrouter_extract_text_success",
             model=self.model_name,
             records=len(result.get("data", [])),
         )
-        
+
         result["_extraction_meta"] = {
             "raw_response": response_content,
             "mode": "text",
@@ -203,9 +202,9 @@ class OpenRouterProvider(BaseProvider):
             "usage": usage,
             "reasoning_used": reasoning is not None,
         }
-        
+
         return result
-    
+
     async def extract_vision(
         self,
         image_data: str,
@@ -218,9 +217,9 @@ class OpenRouterProvider(BaseProvider):
             model=self.model_name,
             mime_type=mime_type,
         )
-        
+
         reasoning = self._build_reasoning_config()
-        
+
         request_kwargs: dict[str, Any] = {
             "model": self.config.model,
             "messages": [{
@@ -235,16 +234,16 @@ class OpenRouterProvider(BaseProvider):
             }],
             "response_format": {"type": "json_object"},
         }
-        
+
         if reasoning:
             request_kwargs["reasoning"] = reasoning
-        
+
         async with OpenRouter(api_key=self._get_api_key()) as client:
             response = await client.chat.send_async(**request_kwargs)
-        
+
         response_content = response.choices[0].message.content
         result = self._parse_json_response(response_content)
-        
+
         # Extract usage
         usage = None
         if response.usage:
@@ -253,13 +252,13 @@ class OpenRouterProvider(BaseProvider):
                 "completion_tokens": response.usage.completion_tokens,
                 "total_tokens": response.usage.total_tokens,
             }
-        
+
         logger.info(
             "openrouter_extract_vision_success",
             model=self.model_name,
             records=len(result.get("data", [])),
         )
-        
+
         result["_extraction_meta"] = {
             "raw_response": response_content,
             "mode": "vision",
@@ -268,9 +267,9 @@ class OpenRouterProvider(BaseProvider):
             "usage": usage,
             "reasoning_used": reasoning is not None,
         }
-        
+
         return result
-    
+
     async def health_check(self) -> bool:
         """Check if OpenRouter is reachable."""
         try:

@@ -35,11 +35,11 @@ def get_all_providers() -> dict[str, dict]:
 
 
 __all__ = [
+    "PROVIDER_REGISTRY",
     "BaseProvider",
     "CustomProvider",
     "LiteLLMProvider",
     "OpenRouterProvider",
-    "PROVIDER_REGISTRY",
     "get_all_providers",
 ]
 

@@ -14,10 +14,11 @@ Security features:
 """
 
 import asyncio
+import contextlib
 import ipaddress
 import re
 import socket
-from urllib.parse import parse_qs, urlencode, urljoin, urlparse, urlunparse
+from urllib.parse import parse_qs, quote, urlencode, urljoin, urlparse, urlunparse
 from urllib.robotparser import RobotFileParser
 
 import httpx
@@ -32,6 +33,9 @@ logger = structlog.get_logger()
 
 # Allowed ports for URL probe
 ALLOWED_PORTS = {80, 443}
+HTTP_OK = 200
+HTTP_PARTIAL = 206
+HTTP_TOO_MANY_REQUESTS = 429
 
 # Allowed content types for data sources
 ALLOWED_CONTENT_TYPES = {
@@ -77,8 +81,6 @@ def normalize_url(url: str) -> str:
     Returns:
         Normalized URL string
     """
-    from urllib.parse import quote
-
     try:
         parsed = urlparse(url)
 
@@ -87,16 +89,11 @@ def normalize_url(url: str) -> str:
 
         # Strip default ports
         port = parsed.port
-        if port == 80 and parsed.scheme == "http":
-            port = None
-        elif port == 443 and parsed.scheme == "https":
+        if (port == 80 and parsed.scheme == "http") or (port == 443 and parsed.scheme == "https"):
             port = None
 
         # Rebuild netloc without default port
-        if port:
-            netloc = f"{hostname}:{port}"
-        else:
-            netloc = hostname
+        netloc = f"{hostname}:{port}" if port else hostname
 
         # Clean path - normalize double slashes
         path = re.sub(r'/+', '/', parsed.path)
@@ -104,10 +101,8 @@ def normalize_url(url: str) -> str:
             path = "/"
 
         # Percent-encode unicode characters in path (safe chars preserved)
-        try:
+        with contextlib.suppress(Exception):
             path = quote(path, safe='/-_.~!$&\'()*+,;=:@')
-        except Exception:
-            pass  # Keep original if encoding fails
 
         # DON'T add trailing slashes - many sites return 404 for them
         # Just preserve the original slash status (except for homepage)
@@ -203,7 +198,7 @@ class RobotsChecker:
         robots_url = f"{domain}/robots.txt"
         try:
             response = await self.client.get(robots_url, timeout=5.0)
-            if response.status_code == 200:
+            if response.status_code == HTTP_OK:
                 rp = RobotFileParser()
                 rp.parse(response.text.splitlines())
                 self._cache[domain] = rp
@@ -263,9 +258,9 @@ class UrlProber:
     def _is_allowed_domain(self, host: str, allowed_domains: set[str]) -> bool:
         """Check if host matches allowed domains (exact or subdomain)."""
         host = host.lower()
-        for domain in allowed_domains:
-            domain = domain.lower()
-            if host == domain or host.endswith("." + domain):
+        for allowed_domain in allowed_domains:
+            allowed_domain = allowed_domain.lower()
+            if host == allowed_domain or host.endswith("." + allowed_domain):
                 return True
         return False
 
@@ -385,7 +380,7 @@ class UrlProber:
                     continue
 
                 # Check final status
-                if response.status_code == 429:
+                if response.status_code == HTTP_TOO_MANY_REQUESTS:
                     # Rate limited - log and return failure (caller can retry)
                     retry_after = response.headers.get("retry-after")
                     self.log.warning(
@@ -395,7 +390,7 @@ class UrlProber:
                     )
                     return False, None, None, None
 
-                if response.status_code not in (200, 206):
+                if response.status_code not in (HTTP_OK, HTTP_PARTIAL):
                     return False, None, None, None
 
                 # Extract content info
@@ -451,10 +446,8 @@ class UrlProber:
             ) as response:
                 # Read minimal bytes to ensure headers are received
                 # We just need status + headers, not the body
-                try:
+                with contextlib.suppress(Exception):
                     await response.aread()  # Read a tiny bit to finalize headers
-                except Exception:
-                    pass  # Ignore read errors, we have the headers
 
                 # Return a "snapshot" of the response info we need
                 # We can't return the streaming response directly since context exits

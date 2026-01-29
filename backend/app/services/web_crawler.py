@@ -15,6 +15,7 @@ import asyncio
 import random
 import re
 from dataclasses import dataclass, field
+from datetime import datetime
 from heapq import heappop, heappush
 from urllib.parse import urljoin, urlparse
 
@@ -22,8 +23,10 @@ import httpx
 import structlog
 from bs4 import BeautifulSoup, FeatureNotFound
 
+from app.services.content_verifier import score_for_data_type
 from app.services.url_utils import (
     DOCUMENT_EXTENSIONS,
+    HTTP_OK,
     RobotsChecker,
     UrlProber,
     extract_domain,
@@ -32,6 +35,8 @@ from app.services.url_utils import (
 
 logger = structlog.get_logger()
 
+# Minimum content length to trigger SPA/Headless check
+MIN_HTML_CONTENT_LENGTH = 1024
 
 # Preferred HTML parsers in order (lxml is fastest, html.parser is most forgiving)
 HTML_PARSERS = ["lxml", "html.parser", "html5lib"]
@@ -252,86 +257,16 @@ class WebCrawler:
                 delay = max(0.5, self.request_delay * jitter)
                 await asyncio.sleep(delay)
 
-            # Probe URL with HEAD first
-            is_valid, content_type, final_url, content_length = await self.prober.probe(
-                url,
-                allowed_domains=allowed_domains,
-                head_only=True,
+            # Fetch and analyze the URL
+            result, links = await self._fetch_and_analyze(
+                url, depth, target_keywords, data_type, allowed_domains
             )
 
-            if not is_valid or not final_url:
-                continue
-
-            pages_crawled += 1
-
-            # Check if it's a document (PDF, etc) - no need to parse HTML
-            is_document = self._is_document(final_url, content_type)
-
-            if is_document:
-                score = self._score_url(final_url, depth, target_keywords, data_type)
-                result = CrawlResult(
-                    url=url,
-                    final_url=final_url,
-                    content_type=content_type or "unknown",
-                    depth=depth,
-                    score=score,
-                    is_document=True,
-                    content_length=content_length,
-                    keywords_found=self._find_keywords_in_url(final_url, target_keywords),
-                )
-                results.append(result)
-                self.log.debug(
-                    "Found document",
-                    url=final_url[:60],
-                    score=round(score, 2),
-                    content_type=content_type,
-                )
-                continue
-
-            # It's HTML - fetch and parse for links
-            try:
-                response = await self.client.get(
-                    final_url,
-                    timeout=self.timeout,
-                    follow_redirects=True,
-                )
-
-                if response.status_code != 200:
-                    continue
-
-                content = response.text
-                content_length = len(content)
-
-                # Check for possible SPA (suspiciously small content)
-                needs_headless = content_length < 1024 and "text/html" in (content_type or "")
-
-                # Parse HTML with fallback parsers
-                soup = self._parse_html(content)
-                title = soup.title.string.strip() if soup.title and soup.title.string else None
-
-
-                # Score this page
-                score = self._score_url(final_url, depth, target_keywords, data_type)
-                text_content = soup.get_text()
-                text_keywords = self._find_keywords_in_text(text_content, target_keywords)
-
-                result = CrawlResult(
-                    url=url,
-                    final_url=final_url,
-                    content_type=content_type or "text/html",
-                    depth=depth,
-                    score=score + len(text_keywords) * 5,  # Boost for content keywords
-                    title=title,
-                    keywords_found=text_keywords or self._find_keywords_in_url(final_url, target_keywords),
-                    is_document=False,
-                    content_length=content_length,
-                    needs_headless=needs_headless,
-                )
+            if result:
+                pages_crawled += 1
                 results.append(result)
 
-                # Extract and queue links
-                links = self._extract_links(soup, final_url, allowed_domains)
-
+                # Queue discovered links
                 for link in links:
                     normalized_link = normalize_url(link)
                     if normalized_link not in visited:
@@ -339,10 +274,7 @@ class WebCrawler:
                         link_score = self._score_url(normalized_link, depth + 1, target_keywords, data_type)
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
 
-            except httpx.RequestError as e:
-                self.log.debug("Failed to fetch page", url=final_url[:60], error=str(e))
-            except Exception as e:
-                self.log.debug("Error processing page", url=final_url[:60], error=str(e))
+        # Sort results by score (highest first)
 
         # Sort results by score (highest first)
         results.sort(key=lambda r: r.score, reverse=True)
@@ -356,13 +288,105 @@ class WebCrawler:
 
         return results
 
+    async def _fetch_and_analyze(
+        self,
+        url: str,
+        depth: int,
+        target_keywords: list[str],
+        data_type: str | None,
+        allowed_domains: set[str],
+    ) -> tuple[CrawlResult | None, list[str]]:
+        """Fetch using probe and get logic, then analyze the content."""
+        # Probe URL with HEAD first
+        is_valid, content_type, final_url, content_length = await self.prober.probe(
+            url,
+            allowed_domains=allowed_domains,
+            head_only=True,
+        )
+
+        if not is_valid or not final_url:
+            return None, []
+
+        # Check if it's a document (PDF, etc) - no need to parse HTML
+        is_document = self._is_document(final_url, content_type)
+
+        if is_document:
+            score = self._score_url(final_url, depth, target_keywords, data_type)
+            result = CrawlResult(
+                url=url,
+                final_url=final_url,
+                content_type=content_type or "unknown",
+                depth=depth,
+                score=score,
+                is_document=True,
+                content_length=content_length,
+                keywords_found=self._find_keywords_in_url(final_url, target_keywords),
+            )
+            self.log.debug(
+                "Found document",
+                url=final_url[:60],
+                score=round(score, 2),
+                content_type=content_type,
+            )
+            return result, []
+
+        # It's HTML - fetch and parse for links
+        try:
+            response = await self.client.get(
+                final_url,
+                timeout=self.timeout,
+                follow_redirects=True,
+            )
+
+            if response.status_code != HTTP_OK:
+                return None, []
+
+            content = response.text
+            content_length = len(content)
+
+            # Check for possible SPA (suspiciously small content)
+            needs_headless = content_length < MIN_HTML_CONTENT_LENGTH and "text/html" in (content_type or "")
+
+            # Parse HTML with fallback parsers
+            soup = self._parse_html(content)
+            title = soup.title.string.strip() if soup.title and soup.title.string else None
+
+            # Score this page
+            score = self._score_url(final_url, depth, target_keywords, data_type)
+            text_content = soup.get_text()
+            text_keywords = self._find_keywords_in_text(text_content, target_keywords)
+
+            result = CrawlResult(
+                url=url,
+                final_url=final_url,
+                content_type=content_type or "text/html",
+                depth=depth,
+                score=score + len(text_keywords) * 5,  # Boost for content keywords
+                title=title,
+                keywords_found=text_keywords or self._find_keywords_in_url(final_url, target_keywords),
+                is_document=False,
+                content_length=content_length,
+                needs_headless=needs_headless,
+            )
+
+            # Extract links
+            links = self._extract_links(soup, final_url, allowed_domains)
+            return result, links
+
+        except httpx.RequestError as e:
+            self.log.debug("Failed to fetch page", url=final_url[:60], error=str(e))
+        except Exception as e:
+            self.log.debug("Error processing page", url=final_url[:60], error=str(e))
+
+        return None, []
+
     def _parse_html(self, content: str) -> BeautifulSoup:
         """Parse HTML with fallback parsers for malformed content.
-        
+
         Tries parsers in order: lxml (fastest) -> html.parser (most forgiving).
         """
         last_error = None
-        
+
         for parser in HTML_PARSERS:
             try:
                 return BeautifulSoup(content, parser)
@@ -373,7 +397,7 @@ class WebCrawler:
                 last_error = e
                 self.log.debug("Parser failed, trying next", parser=parser, error=str(e))
                 continue
-        
+
         # All parsers failed, return empty soup
         self.log.warning("All HTML parsers failed", error=str(last_error))
         return BeautifulSoup("", "html.parser")
@@ -423,25 +447,14 @@ class WebCrawler:
 
         Higher score = more likely to contain target data.
         """
-        from datetime import datetime
-
-        from app.services.content_verifier import score_for_data_type
-
         score = 0.0
         url_lower = url.lower()
 
         # Depth penalty (prefer shallower)
         score -= depth * 2
 
-        # Boost token URLs significantly - these are likely document downloads
-        if self._is_token_url(url):
-            score += 40
-
         # Document type bonus
-        if any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
-            score += 20
-            if url_lower.endswith(".pdf"):
-                score += 10  # PDFs are most common format
+        score += self._get_document_score(url_lower, url)
 
         # Keyword bonuses
         for keyword in target_keywords:
@@ -449,22 +462,7 @@ class WebCrawler:
                 score += 15
 
         # Year in URL bonus (current/recent years)
-        # Support multiple formats: /2025/, -2025., _2025_, ?year=2025
-        year_patterns = [
-            r'/(\d{4})/',        # /2025/
-            r'-(\d{4})\.',       # -2025.pdf
-            r'_(\d{4})_',        # _2025_
-            r'[?&]year=(\d{4})', # ?year=2025
-            r'/(\d{4})-',        # /2025-01/
-        ]
-        for pattern in year_patterns:
-            matches = re.findall(pattern, url_lower)
-            for year in matches:
-                current_year = datetime.now().year
-                if current_year - 6 <= int(year) <= current_year:
-                    score += 10
-                    break  # Only count once per pattern type
-
+        score += self._get_year_bonus(url_lower)
 
         # Irrelevant path penalty
         for pattern in IRRELEVANT_PATHS:
@@ -481,6 +479,43 @@ class WebCrawler:
         # Data-type-specific scoring
         if data_type:
             score += score_for_data_type(url, data_type)
+
+        return score
+
+    def _get_year_bonus(self, url_lower: str) -> float:
+        """Calculate score bonus for recent years in URL."""
+        bonus = 0.0
+        # Support multiple formats: /2025/, -2025., _2025_, ?year=2025
+        year_patterns = [
+            r'/(\d{4})/',        # /2025/
+            r'-(\d{4})\.',       # -2025.pdf
+            r'_(\d{4})_',        # _2025_
+            r'[?&]year=(\d{4})', # ?year=2025
+            r'/(\d{4})-',        # /2025-01/
+        ]
+
+        current_year = datetime.now().year
+        for pattern in year_patterns:
+            matches = re.findall(pattern, url_lower)
+            for year in matches:
+                if current_year - 6 <= int(year) <= current_year:
+                    bonus += 10
+                    break  # Only count once per pattern type
+        return bonus
+
+    def _get_document_score(self, url_lower: str, url: str) -> float:
+        """Calculate score bonus for document URLs."""
+        score = 0.0
+
+        # Boost token URLs significantly - these are likely document downloads
+        if self._is_token_url(url):
+            score += 40
+
+        # Document type bonus
+        if any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
+            score += 20
+            if url_lower.endswith(".pdf"):
+                score += 10  # PDFs are most common format
 
         return score
 

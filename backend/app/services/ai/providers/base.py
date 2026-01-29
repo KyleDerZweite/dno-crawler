@@ -26,23 +26,23 @@ class BaseProvider(ABC):
     Instance methods (extract_text, extract_vision, health_check) require
     a config instance from the database.
     """
-    
+
     MAX_OUTPUT_TOKENS = 4096
-    
+
     def __init__(self, config: AIProviderConfigModel):
         """Initialize provider with database config."""
         self.config = config
-        
+
     def _get_api_key(self) -> str:
         """Get decrypted API key from config."""
         if self.config.api_key_encrypted:
             return decrypt_secret(self.config.api_key_encrypted)
         return "not-required"
-    
+
     # -------------------------------------------------------------------------
     # Class Methods (no config needed)
     # -------------------------------------------------------------------------
-    
+
     @classmethod
     @abstractmethod
     async def get_available_models(cls) -> list[dict[str, Any]]:
@@ -56,19 +56,19 @@ class BaseProvider(ABC):
             - name: Display name
         """
         ...
-    
+
     @classmethod
     @abstractmethod
     def get_default_model(cls) -> str:
         """Return the recommended default model ID."""
         ...
-    
+
     @classmethod
     @abstractmethod
     def get_default_url(cls) -> str | None:
         """Return the default API URL for this provider, or None if not applicable."""
         ...
-    
+
     @classmethod
     @abstractmethod
     def get_reasoning_options(cls) -> dict[str, Any] | None:
@@ -87,7 +87,7 @@ class BaseProvider(ABC):
         - param_name_tokens: Backend parameter name for token budget
         """
         ...
-    
+
     @classmethod
     @abstractmethod
     def get_provider_info(cls) -> dict[str, Any]:
@@ -100,22 +100,22 @@ class BaseProvider(ABC):
         - icon_svg: Inline SVG string for the logo (or empty string for fallback)
         """
         ...
-    
+
     # -------------------------------------------------------------------------
     # Instance Methods (require config)
     # -------------------------------------------------------------------------
-    
+
     @property
     @abstractmethod
     def provider_name(self) -> str:
         """Get provider name for logging."""
         ...
-    
+
     @property
     def model_name(self) -> str:
         """Get model name from config."""
         return self.config.model
-    
+
     @abstractmethod
     async def extract_text(
         self,
@@ -132,7 +132,7 @@ class BaseProvider(ABC):
             Parsed JSON response with _extraction_meta included
         """
         ...
-    
+
     @abstractmethod
     async def extract_vision(
         self,
@@ -151,16 +151,16 @@ class BaseProvider(ABC):
             Parsed JSON response with _extraction_meta included
         """
         ...
-    
+
     @abstractmethod
     async def health_check(self) -> bool:
         """Check if provider is reachable and working."""
         ...
-    
+
     # -------------------------------------------------------------------------
     # Helper Methods
     # -------------------------------------------------------------------------
-    
+
     def _parse_json_response(self, content: str) -> dict[str, Any]:
         """Parse JSON from model response, handling common edge cases."""
         try:

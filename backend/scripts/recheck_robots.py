@@ -20,7 +20,7 @@ import asyncio
 import json
 import re
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from xml.etree import ElementTree
 
@@ -107,14 +107,14 @@ def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
     german_sitemaps = []
     english_sitemaps = []
     neutral_sitemaps = []
-    
+
     for url in sitemap_urls:
         url_lower = url.lower()
-        
+
         # Check for excluded languages first
         if any(lang in url_lower for lang in EXCLUDE_LANGS):
             continue
-        
+
         # Categorize by language
         if PREFERRED_LANG in url_lower:
             german_sitemaps.append(url)
@@ -123,7 +123,7 @@ def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
         else:
             # No language path - neutral
             neutral_sitemaps.append(url)
-    
+
     # Return in priority order: German first, then English, then neutral
     if german_sitemaps:
         return german_sitemaps + neutral_sitemaps
@@ -171,7 +171,7 @@ async def fetch_sitemap_recursive(
 
         # Filter nested sitemaps by language preference
         filtered_sitemaps = filter_sitemaps_by_language(nested_sitemaps)
-        
+
         # Recursively fetch nested sitemaps
         for nested_url in filtered_sitemaps:
             nested_urls = await fetch_sitemap_recursive(
@@ -204,7 +204,7 @@ async def recheck_robots_for_all(
     skipped = 0
     errors = 0
 
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
 
     async with httpx.AsyncClient(
         headers={"User-Agent": "DNO-Crawler/1.0 (robots + sitemap check)"},

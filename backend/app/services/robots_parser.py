@@ -15,6 +15,12 @@ import structlog
 
 logger = structlog.get_logger()
 
+HTTP_OK = 200
+HTTP_FORBIDDEN = 403
+HTTP_NOT_FOUND = 404
+HTTP_TOO_MANY_REQUESTS = 429
+HTTP_INTERNAL_SERVER_ERROR = 500
+
 
 @dataclass
 class RobotsResult:
@@ -147,7 +153,7 @@ async def fetch_robots_txt(
         # === Check HTTP status codes FIRST ===
 
         # 403 Forbidden - Often Cloudflare or WAF blocking
-        if status == 403:
+        if status == HTTP_FORBIDDEN:
             cf_mitigated = response.headers.get("cf-mitigated", "").lower()
             server = response.headers.get("server", "").lower()
 
@@ -164,7 +170,7 @@ async def fetch_robots_txt(
                 return result
 
         # 429 Too Many Requests - Rate limited or IP banned
-        if status == 429:
+        if status == HTTP_TOO_MANY_REQUESTS:
             retry_after = response.headers.get("retry-after", "unknown")
             log.warning("Site rate limiting or IP blocked (429)", retry_after=retry_after)
             result.crawlable = False
@@ -186,13 +192,13 @@ async def fetch_robots_txt(
             return result
 
         # 404 - No robots.txt, but site is accessible
-        if status == 404:
+        if status == HTTP_NOT_FOUND:
             log.info("No robots.txt found (404) - site is crawlable")
             result.raw_content = None
             return result
 
         # Other non-200 status codes
-        if status != 200:
+        if status != HTTP_OK:
             log.warning("Unexpected HTTP status", status=status)
             result.crawlable = False
             result.blocked_reason = f"http_error_{status}"
@@ -291,7 +297,7 @@ async def verify_sitemap_access(
         status = response.status_code
 
         # Check HTTP status
-        if status == 403:
+        if status == HTTP_FORBIDDEN:
             cf_mitigated = response.headers.get("cf-mitigated", "").lower()
             server = response.headers.get("server", "").lower()
             if cf_mitigated == "challenge" or "cloudflare" in server:
@@ -300,11 +306,11 @@ async def verify_sitemap_access(
             log.warning("Sitemap returned 403 - access denied")
             return False, "access_denied"
 
-        if status == 429:
+        if status == HTTP_TOO_MANY_REQUESTS:
             log.warning("Sitemap rate limited (429)")
             return False, "rate_limited_or_ip_blocked"
 
-        if status != 200:
+        if status != HTTP_OK:
             log.warning("Sitemap returned unexpected status", status=status)
             return False, f"http_error_{status}"
 
@@ -391,7 +397,7 @@ async def fetch_and_verify_robots(
                 # GET is safer for detection
                 log.debug("Checking default sitemap location", url=url)
                 resp = await client.get(url, timeout=timeout, follow_redirects=True)
-                if resp.status_code == 200 and ("xml" in resp.headers.get("content-type", "") or "<urlset" in resp.text[:500] or "<sitemapindex" in resp.text[:500]):
+                if resp.status_code == HTTP_OK and ("xml" in resp.headers.get("content-type", "") or "<urlset" in resp.text[:500] or "<sitemapindex" in resp.text[:500]):
                     log.info("Found sitemap at default location", url=url)
                     result.sitemap_urls.append(url)
                     break
@@ -450,7 +456,7 @@ def detect_tech_stack(content: str, headers: dict) -> dict:
         if generator and generator.get("content"):
             gen_content = generator["content"]
             stack["generator"] = gen_content
-            
+
             # Simple CMS mapping
             lower_gen = gen_content.lower()
             if "typo3" in lower_gen:
@@ -495,17 +501,17 @@ async def fetch_site_tech_info(
     """
     if not website.startswith("http"):
         website = f"https://{website}"
-    
+
     try:
         response = await client.get(
-            website, 
-            timeout=timeout, 
+            website,
+            timeout=timeout,
             follow_redirects=True,
             headers={"User-Agent": "DNO-Crawler/1.0"}
         )
-        if response.status_code == 200:
+        if response.status_code == HTTP_OK:
             return detect_tech_stack(response.text, response.headers)
     except Exception:
         pass
-    
+
     return {}

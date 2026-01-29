@@ -255,7 +255,7 @@ class AIConfigService:
         provider_cls = PROVIDER_REGISTRY.get(provider_type)
         if not provider_cls:
             return {"models": [], "default": "", "reasoning_options": None}
-        
+
         return {
             "models": await provider_cls.get_available_models(),
             "default": provider_cls.get_default_model(),

@@ -31,7 +31,7 @@ async def seed_ai_config(db: AsyncSession) -> None:
         .where(AIProviderConfigModel.provider_type == "openrouter")
     )
     existing_config = result.scalars().first()
-    
+
     config_service = AIConfigService(db)
 
     if existing_config:
@@ -55,6 +55,6 @@ async def seed_ai_config(db: AsyncSession) -> None:
             supports_vision=True,
             supports_files=True,
         )
-    
+
     await db.commit()
     logger.info("AI configuration seeded successfully")

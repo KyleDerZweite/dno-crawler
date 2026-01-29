@@ -8,6 +8,7 @@ Implements rate limiting to avoid overloading the API.
 import asyncio
 import time
 import urllib.parse
+from typing import ClassVar
 
 import httpx
 import structlog
@@ -35,9 +36,9 @@ class VNBDigitalClient:
     Default: 1 request per second, configurable up to 10s between requests.
     """
 
-    API_URL = "https://www.vnbdigital.de/gateway/graphql"
+    API_URL: ClassVar[str] = "https://www.vnbdigital.de/gateway/graphql"
 
-    HEADERS = {
+    HEADERS: ClassVar[dict[str, str]] = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "Content-Type": "application/json",
         "Accept": "*/*",

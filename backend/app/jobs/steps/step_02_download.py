@@ -28,7 +28,6 @@ Output stored in job.context:
 """
 
 import asyncio
-import tempfile
 from pathlib import Path
 
 import httpx
@@ -39,7 +38,6 @@ from app.core.config import settings
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep, StepError
 from app.services.encoding_utils import decode_content
-from app.services.retry_utils import fetch_with_retries
 
 logger = structlog.get_logger()
 
@@ -94,7 +92,7 @@ class DownloadStep(BaseStep):
 
             # Detect format from multiple sources
             file_format = self._detect_format(content, content_type, url)
-            
+
             # Build save path with correct extension
             save_path = save_dir / f"{dno_slug}-{job.data_type}-{job.year}.{file_format}"
 
@@ -102,13 +100,13 @@ class DownloadStep(BaseStep):
             if file_format == "html":
                 html_content, detected_encoding = decode_content(content, content_type)
                 ctx["detected_encoding"] = detected_encoding
-                
+
                 log.info(
                     "Processing HTML content",
                     encoding=detected_encoding,
                     size_kb=len(content) // 1024,
                 )
-                
+
                 result = await self._process_html(
                     html_content=html_content,
                     save_dir=save_dir,
@@ -164,11 +162,12 @@ class DownloadStep(BaseStep):
         Raises:
             StepError: If download fails or exceeds size limit
         """
-        from app.services.retry_utils import RETRYABLE_EXCEPTIONS
         import asyncio
-        
+
+        from app.services.retry_utils import RETRYABLE_EXCEPTIONS
+
         last_error = None
-        
+
         for attempt in range(1, max_retries + 1):
             try:
                 async with client.stream("GET", url) as response:
@@ -179,12 +178,12 @@ class DownloadStep(BaseStep):
                         log.warning("Rate limited, waiting", wait_time=wait_time, attempt=attempt)
                         await asyncio.sleep(wait_time)
                         continue
-                    
+
                     response.raise_for_status()
-                    
+
                     content_type = response.headers.get("content-type", "")
                     content_length = response.headers.get("content-length")
-                    
+
                     # Check declared size
                     if content_length:
                         declared_size = int(content_length)
@@ -192,31 +191,31 @@ class DownloadStep(BaseStep):
                             raise StepError(
                                 f"File too large: {declared_size // (1024*1024)}MB exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
                             )
-                    
+
                     # Stream content with size tracking
                     chunks = []
                     total_size = 0
-                    
+
                     async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
                         total_size += len(chunk)
-                        
+
                         if total_size > MAX_FILE_SIZE:
                             raise StepError(
                                 f"Download exceeded size limit ({MAX_FILE_SIZE // (1024*1024)}MB)"
                             )
-                        
+
                         chunks.append(chunk)
-                    
+
                     content = b"".join(chunks)
-                    
+
                     log.info(
                         "Download complete",
                         size_kb=total_size // 1024,
                         content_type=content_type[:50] if content_type else "unknown",
                     )
-                    
+
                     return content, content_type, total_size
-                    
+
             except RETRYABLE_EXCEPTIONS as e:
                 last_error = e
                 if attempt < max_retries:
@@ -242,7 +241,7 @@ class DownloadStep(BaseStep):
                     last_error = e
                     continue
                 raise StepError(f"HTTP error {e.response.status_code}: {e}") from e
-        
+
         # All retries exhausted
         if last_error:
             raise StepError(f"Download failed after {max_retries} attempts: {last_error}") from last_error
@@ -267,7 +266,7 @@ class DownloadStep(BaseStep):
         for magic, fmt in MAGIC_BYTES.items():
             if header.startswith(magic):
                 return fmt
-        
+
         # Check for XLSX vs DOCX (both are ZIP-based)
         if header.startswith(b'PK\x03\x04'):
             # Could be xlsx, docx, or pptx - check for specific signatures
@@ -282,7 +281,7 @@ class DownloadStep(BaseStep):
 
         # 2. Content-Type header
         ct_lower = content_type.lower()
-        
+
         # Handle common content types
         if "pdf" in ct_lower:
             return "pdf"
@@ -305,12 +304,12 @@ class DownloadStep(BaseStep):
         """Detect file format from URL or path extension."""
         if not url_or_path:
             return "html"
-            
+
         url_lower = url_or_path.lower()
-        
+
         # Strip query parameters for extension detection
         path = url_lower.split("?")[0]
-        
+
         if path.endswith(".pdf"):
             return "pdf"
         elif path.endswith(".xlsx"):
@@ -386,7 +385,7 @@ class DownloadStep(BaseStep):
                 "file_path": target_file,
                 "years_found": years_found
             }
-            
+
         except Exception as e:
             logger.warning(
                 "html_processing_exception",

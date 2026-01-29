@@ -87,10 +87,10 @@ async def fetch_sitemap(
     for url in sitemap_urls:
         try:
             from app.services.retry_utils import with_retries
-            
+
             async def _fetch_sitemap_url(sitemap_url: str) -> httpx.Response:
                 return await client.get(sitemap_url, timeout=10.0, follow_redirects=True)
-            
+
             response = await with_retries(
                 _fetch_sitemap_url, url, max_attempts=2, backoff_base=0.5
             )
@@ -178,7 +178,7 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
             if "{" in root_tag:
                 ns = root_tag[root_tag.find("{") + 1:root_tag.find("}")]
                 dynamic_ns = {"sm": ns}
-                
+
                 for sitemap_elem in root.findall(".//sm:sitemap", dynamic_ns):
                     loc = sitemap_elem.find("sm:loc", dynamic_ns)
                     if loc is not None and loc.text:
@@ -220,14 +220,14 @@ def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
     german_sitemaps = []
     english_sitemaps = []
     neutral_sitemaps = []
-    
+
     for url in sitemap_urls:
         url_lower = url.lower()
-        
+
         # Check for excluded languages first
         if any(lang in url_lower for lang in EXCLUDE_LANGS):
             continue
-        
+
         # Categorize by language
         if PREFERRED_LANG in url_lower:
             german_sitemaps.append(url)
@@ -236,7 +236,7 @@ def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
         else:
             # No language path - neutral
             neutral_sitemaps.append(url)
-    
+
     # Return in priority order: German first, then English, then neutral
     if german_sitemaps:
         return german_sitemaps + neutral_sitemaps
@@ -384,11 +384,11 @@ async def discover_via_sitemap(
         # Get the sitemap URL we're working with
         parsed = urlparse(base_url)
         site_base = f"{parsed.scheme}://{parsed.netloc}"
-        
+
         for nested_url in nested_sitemaps:
             nested_urls = await fetch_and_parse_sitemap_recursive(client, nested_url, max_depth=2)
             urls.extend(nested_urls)
-    
+
     result.sitemap_urls_checked = len(urls)
     log.info("Parsed sitemap", url_count=len(urls), nested_sitemaps_found=len(nested_sitemaps))
 

@@ -329,8 +329,8 @@ class ContentVerifier:
 
     async def _do_fetch_partial(self, client: httpx.AsyncClient, url: str) -> bytes | None:
         """Perform the actual partial fetch with retries."""
-        from app.services.retry_utils import with_retries, RETRYABLE_EXCEPTIONS
-        
+        from app.services.retry_utils import with_retries
+
         async def _fetch() -> bytes | None:
             # Try Range request first
             response = await client.get(
@@ -341,11 +341,11 @@ class ContentVerifier:
 
             if response.status_code in (200, 206):
                 return response.content[:self.SNIFF_SIZE]
-            
+
             # Don't retry on client errors (4xx)
             if 400 <= response.status_code < 500:
                 return None
-            
+
             # Raise on server errors to trigger retry
             if response.status_code >= 500:
                 raise httpx.HTTPStatusError(
@@ -355,7 +355,7 @@ class ContentVerifier:
                 )
 
             return None
-        
+
         try:
             return await with_retries(_fetch, max_attempts=3, backoff_base=0.5)
         except Exception as e:
@@ -411,17 +411,17 @@ class ContentVerifier:
         is_encrypted = b'/Encrypt' in content[:2048]
         if is_encrypted:
             self.log.debug("PDF appears encrypted - extraction may be limited")
-        
+
         # Try pdfplumber first (better for structured tables)
         text = self._try_pdfplumber(content)
         if text:
             return text
-        
+
         # Fallback to PyMuPDF (handles more formats)
         text = self._try_pymupdf(content)
         if text:
             return text
-        
+
         self.log.debug("pdf_extract_failed", reason="all_methods_failed")
         return None
 
@@ -449,17 +449,17 @@ class ContentVerifier:
         """Try extracting text using PyMuPDF (fitz)."""
         try:
             import fitz  # PyMuPDF
-            
+
             pdf_file = io.BytesIO(content)
             doc = fitz.open(stream=pdf_file, filetype="pdf")
-            
+
             text_parts = []
             for page_num in range(min(3, len(doc))):
                 page = doc[page_num]
                 text = page.get_text()
                 if text:
                     text_parts.append(text)
-            
+
             doc.close()
             return "\n".join(text_parts) if text_parts else None
         except ImportError:
@@ -476,12 +476,12 @@ class ContentVerifier:
         text = self._try_xlsx(content)
         if text:
             return text
-        
+
         # Try XLS (old binary format) if XLSX failed
         text = self._try_xls(content)
         if text:
             return text
-        
+
         return None
 
     def _try_xlsx(self, content: bytes) -> str | None:

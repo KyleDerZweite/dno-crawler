@@ -71,9 +71,7 @@ def load_seed_data() -> list[dict[str, Any]] | None:
             # Convert NaN/NaT to None
             elif value is None:
                 pass
-            elif isinstance(value, float) and math.isnan(value):
-                record[key] = None
-            elif pd.isna(value):
+            elif (isinstance(value, float) and math.isnan(value)) or pd.isna(value):
                 record[key] = None
 
     return records

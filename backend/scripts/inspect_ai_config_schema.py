@@ -1,6 +1,7 @@
-import sys
-import os
 import asyncio
+import os
+import sys
+
 from dotenv import load_dotenv
 from sqlalchemy import text
 
@@ -22,6 +23,7 @@ if not os.getenv("DATABASE_URL"):
 
 from app.db.database import get_db_session
 
+
 async def main():
     async with get_db_session() as session:
         print("Inspecting table: ai_provider_configs")
@@ -35,14 +37,14 @@ async def main():
             """)
             result = await session.execute(stmt)
             columns = result.fetchall()
-            
+
             if not columns:
                 print("Table 'ai_provider_configs' does NOT exist.")
             else:
                 print(f"Found {len(columns)} columns:")
                 for col in columns:
                     print(f" - {col.column_name} ({col.data_type})")
-                    
+
         except Exception as e:
             print(f"Error inspecting schema: {e}")
 

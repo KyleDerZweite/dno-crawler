@@ -304,10 +304,10 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
                     # Try to extract table from this page
                     tables = page.extract_tables()
-                    
+
                     # Merge fragmented tables (Netze BW 2023 issue)
                     merged_tables = _merge_tables(tables)
-                    
+
                     for table in merged_tables:
                         hlzf_records = _parse_hlzf_table(table, page_num)
                         if hlzf_records:
@@ -340,11 +340,11 @@ def _merge_tables(tables: list[list]) -> list[list]:
 
     # Group tables by column count
     grouped_tables = {}  # col_count -> list of tables
-    
+
     for table in tables:
         if not table or not table[0]:
             continue
-        
+
         col_count = len(table[0])
         if col_count not in grouped_tables:
             grouped_tables[col_count] = []
@@ -357,13 +357,13 @@ def _merge_tables(tables: list[list]) -> list[list]:
         # We need at least one row to look like a header (contains Season keywords)
         has_header = False
         header_keywords = ["winter", "frühling", "fruehling", "sommer", "herbst"]
-        
+
         full_merged_table = []
-        
+
         for table in table_group:
             # Add all rows from this fragment
             full_merged_table.extend(table)
-            
+
             # Check for header in this fragment
             for row in table:
                 row_str = " ".join(str(c or "").lower() for c in row)

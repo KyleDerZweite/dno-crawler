@@ -1,6 +1,7 @@
-import sys
-import os
 import asyncio
+import os
+import sys
+
 from dotenv import load_dotenv
 from sqlalchemy import text
 
@@ -21,6 +22,7 @@ if not os.getenv("DATABASE_URL"):
     os.environ["DATABASE_URL"] = f"postgresql+asyncpg://{user}:{password}@{host}:{port}/{db}"
 
 from app.db.database import get_db_session
+
 
 async def main():
     async with get_db_session() as session:
@@ -43,7 +45,7 @@ async def main():
             await session.execute(alter_stmt)
             await session.commit()
             print("Successfully added column 'model_parameters'.")
-                    
+
         except Exception as e:
             print(f"Error fixing schema: {e}")
             await session.rollback()

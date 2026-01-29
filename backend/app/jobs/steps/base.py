@@ -94,7 +94,7 @@ class BaseStep(ABC):
             # Update main job
             job.status = "failed"
             job.error_message = f"Step '{self.label}' failed: {e!s}"
-            
+
             # Commit the failure state in a fresh transaction
             await db.commit()
             raise e

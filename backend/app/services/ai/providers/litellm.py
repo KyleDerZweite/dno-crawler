@@ -23,38 +23,38 @@ class LiteLLMProvider(BaseProvider):
     - Access to any model the proxy exposes
     - Unified interface for enterprise deployments
     """
-    
+
     def __init__(self, config: AIProviderConfigModel):
         super().__init__(config)
-    
+
     @property
     def provider_name(self) -> str:
         return "litellm"
-    
+
     # -------------------------------------------------------------------------
     # Class Methods
     # -------------------------------------------------------------------------
-    
+
     @classmethod
     async def get_available_models(cls) -> list[dict[str, Any]]:
         """Return empty list - LiteLLM not yet implemented."""
         return []
-    
+
     @classmethod
     def get_default_model(cls) -> str:
         """No default model for LiteLLM stub."""
         return ""
-    
+
     @classmethod
     def get_default_url(cls) -> str | None:
         """Default would be local proxy."""
         return "http://localhost:4000"
-    
+
     @classmethod
     def get_reasoning_options(cls) -> dict[str, Any] | None:
         """LiteLLM doesn't have standard reasoning options."""
         return None
-    
+
     @classmethod
     def get_provider_info(cls) -> dict[str, Any]:
         """Return LiteLLM provider display info."""
@@ -66,11 +66,11 @@ class LiteLLMProvider(BaseProvider):
             "icon_svg": "",
             "icon_emoji": "🚅",
         }
-    
+
     # -------------------------------------------------------------------------
     # Instance Methods
     # -------------------------------------------------------------------------
-    
+
     async def extract_text(
         self,
         content: str,
@@ -81,7 +81,7 @@ class LiteLLMProvider(BaseProvider):
             "LiteLLM provider is coming soon. "
             "Use OpenRouter or Custom provider for now."
         )
-    
+
     async def extract_vision(
         self,
         image_data: str,
@@ -93,7 +93,7 @@ class LiteLLMProvider(BaseProvider):
             "LiteLLM provider is coming soon. "
             "Use OpenRouter or Custom provider for now."
         )
-    
+
     async def health_check(self) -> bool:
         """Always return False for stub."""
         return False

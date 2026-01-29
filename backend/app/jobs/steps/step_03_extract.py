@@ -302,7 +302,7 @@ class ExtractStep(BaseStep):
         # 2. AI is not configured at all
         dno_slug = ctx.get("dno_slug", "unknown")
         sample_capture = SampleCapture()
-        
+
         if is_ai_enabled and ai_result is None:
             # AI was attempted but failed completely
             await sample_capture.capture(
