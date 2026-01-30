@@ -183,7 +183,7 @@ async def create_dno(
         import httpx
 
         from app.services.robots_parser import fetch_robots_txt, fetch_site_tech_info
-        
+
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
@@ -192,14 +192,14 @@ async def create_dno(
             # Parallel check: Robots/Sitemap + Tech Stack
             robots_task = fetch_robots_txt(http_client, website)
             tech_task = fetch_site_tech_info(http_client, website)
-            
+
             # Note: fetch_robots_txt in crud.py is using the old import which doesn't include the new default sitemap check logic
             # Use fetch_and_verify_robots instead for full logic
             from app.services.robots_parser import fetch_and_verify_robots
             robots_result = await fetch_and_verify_robots(http_client, website, verify_sitemap=False)
-            
+
             tech_info = await tech_task
-            
+
             if robots_result:
                 crawlable = robots_result.crawlable
                 crawl_blocked_reason = robots_result.blocked_reason
@@ -332,10 +332,10 @@ async def list_dnos_detailed(
         # Strategy 2: Trigram similarity - fuzzy matching for typos
         # Strategy 3: Region matching - search in region field too
         # =======================================================================
-        
+
         q_normalized = q.strip().lower()
         q_len = len(q_normalized)
-        
+
         # Dynamic similarity threshold based on query length
         # Short queries need lower threshold since trigrams work poorly
         if q_len <= 3:
@@ -344,15 +344,15 @@ async def list_dnos_detailed(
             similarity_threshold = 0.12  # Moderate for medium terms
         else:
             similarity_threshold = 0.2  # Stricter for long terms
-        
+
         # Trigram similarity score
         similarity = func.similarity(DNOModel.name, q)
-        
+
         # ILIKE pattern for contains matching (case-insensitive)
         ilike_pattern = f"%{q}%"
         contains_match = DNOModel.name.ilike(ilike_pattern)
         region_match = DNOModel.region.ilike(ilike_pattern)
-        
+
         # Combined filter: Match if ANY strategy succeeds
         # This ensures short queries like "Ulm" work via ILIKE even if trigram fails
         combined_filter = or_(
@@ -360,7 +360,7 @@ async def list_dnos_detailed(
             contains_match,                      # Exact substring in name
             region_match,                        # Match in region
         )
-        
+
         # Scoring: Prioritize exact matches, then fuzzy matches
         # CASE expression to boost exact substring matches
         exact_boost = case(
@@ -371,10 +371,10 @@ async def list_dnos_detailed(
             (region_match, 0.5),  # Small boost for region match
             else_=0.0
         )
-        
+
         # Combined score: trigram similarity + bonuses for exact matches
         combined_score = similarity + exact_boost + region_boost
-        
+
         # Don't apply default sort for search - use relevance
         query = query.filter(combined_filter)
         search_order = combined_score.desc()
@@ -395,16 +395,15 @@ async def list_dnos_detailed(
     if q and search_order is not None:
         # For search, use relevance score as primary sort
         query = query.order_by(search_order, DNOModel.name)
-    else:
-        # Apply explicit sort
-        if sort_by == "name_desc":
-            query = query.order_by(DNOModel.name.desc())
-        elif sort_by == "region_asc":
-            query = query.order_by(DNOModel.region.asc().nullslast(), DNOModel.name)
-        elif sort_by == "region_desc":
-            query = query.order_by(DNOModel.region.desc().nullslast(), DNOModel.name)
-        else:  # Default: name_asc
-            query = query.order_by(DNOModel.name)
+    # Apply explicit sort
+    elif sort_by == "name_desc":
+        query = query.order_by(DNOModel.name.desc())
+    elif sort_by == "region_asc":
+        query = query.order_by(DNOModel.region.asc().nullslast(), DNOModel.name)
+    elif sort_by == "region_desc":
+        query = query.order_by(DNOModel.region.desc().nullslast(), DNOModel.name)
+    else:  # Default: name_asc
+        query = query.order_by(DNOModel.name)
 
     total_count_result = await db.execute(count_query)
     total = total_count_result.scalar() or 0
@@ -616,9 +615,9 @@ async def get_dno_details(
     """)
     stats_res = await db.execute(stats_query, {"dno_id": dno.id})
     netz_c, hlzf_c, running_j, pending_j = stats_res.fetchone()
-    
+
     data_points_total = netz_c + hlzf_c
-    
+
     if running_j > 0:
         live_status = "running"
     elif pending_j > 0:

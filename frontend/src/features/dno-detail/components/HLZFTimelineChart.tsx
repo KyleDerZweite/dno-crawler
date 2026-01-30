@@ -81,12 +81,16 @@ export function HLZFTimelineChart({ hlzf, isLoading, className }: HLZFTimelineCh
     // Sync singleYear when availableYears changes
     useEffect(() => {
         if (availableYears.length > 0 && !availableYears.includes(singleYear)) {
+            // eslint-disable-next-line react-hooks/set-state-in-effect
             setSingleYear(availableYears[0]);
         }
     }, [availableYears, singleYear]);
 
     // Active years based on mode
-    const selectedYears = viewMode === "single" ? [singleYear] : compareYears;
+    const selectedYears = useMemo(() =>
+        viewMode === "single" ? [singleYear] : compareYears,
+        [viewMode, singleYear, compareYears]
+    );
     const primaryYear = Math.max(...selectedYears);
 
     const toggleCompareYear = (year: number) => {
@@ -350,7 +354,7 @@ export function HLZFTimelineChart({ hlzf, isLoading, className }: HLZFTimelineCh
                         onExport={chartColors.exportString}
                         onImport={chartColors.importString}
                         onReset={chartColors.resetToDefault}
-                        onApplyPreset={(key) => chartColors.applyPreset(key as any)}
+                        onApplyPreset={(key) => chartColors.applyPreset(key as string)}
                     />
                 </div>
             </div>

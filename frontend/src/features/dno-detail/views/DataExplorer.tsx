@@ -57,7 +57,7 @@ export function DataExplorer() {
 
     // Mutations
     const updateNetzentgelteMutation = useMutation({
-        mutationFn: (data: any) => api.dnos.updateNetzentgelte(String(numericId), data.id, data),
+        mutationFn: (data: Netzentgelte) => api.dnos.updateNetzentgelte(String(numericId), data.id, data),
         onSuccess: () => {
             setEditModalOpen(false);
             refetchData();
@@ -66,7 +66,7 @@ export function DataExplorer() {
     });
 
     const updateHLZFMutation = useMutation({
-        mutationFn: (data: any) => api.dnos.updateHLZF(String(numericId), data.id, data),
+        mutationFn: (data: HLZF) => api.dnos.updateHLZF(String(numericId), data.id, data),
         onSuccess: () => {
             setEditModalOpen(false);
             refetchData();
@@ -211,9 +211,11 @@ export function DataExplorer() {
                 onDataChange={setEditRecord}
                 onSave={() => {
                     if (!editRecord) return;
-                    editModalType === 'netzentgelte'
-                        ? updateNetzentgelteMutation.mutate(editRecord)
-                        : updateHLZFMutation.mutate(editRecord);
+                    if (editModalType === 'netzentgelte') {
+                        updateNetzentgelteMutation.mutate(editRecord);
+                    } else {
+                        updateHLZFMutation.mutate(editRecord);
+                    }
                 }}
                 isPending={updateNetzentgelteMutation.isPending || updateHLZFMutation.isPending}
             />

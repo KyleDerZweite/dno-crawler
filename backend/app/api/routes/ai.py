@@ -93,7 +93,7 @@ async def list_providers(
     Returns info from each provider's get_provider_info() method.
     """
     from app.services.ai.providers import get_all_providers
-    
+
     return APIResponse(
         success=True,
         data={"providers": get_all_providers()},
@@ -110,10 +110,10 @@ async def get_provider(
     Delegates to the provider's class methods for models and configuration.
     """
     from app.services.ai.config_service import AIConfigService
-    
+
     result = await AIConfigService.get_models_for_provider(provider_type)
     default_url = AIConfigService.get_default_url(provider_type)
-    
+
     return APIResponse(
         success=True,
         data={
@@ -138,10 +138,10 @@ async def list_configs(
 ) -> APIResponse:
     """List all saved AI provider configurations."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     configs = await service.list_all()
-    
+
     items = []
     for config in configs:
         items.append({
@@ -168,7 +168,7 @@ async def list_configs(
             "total_tokens_used": config.total_tokens_used,
             "created_at": config.created_at.isoformat() if config.created_at else None,
         })
-    
+
     return APIResponse(
         success=True,
         data={"configs": items, "total": len(items)},
@@ -183,9 +183,9 @@ async def create_config(
 ) -> APIResponse:
     """Create a new AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
-    
+
     config = await service.create(
         name=request.name,
         provider_type=request.provider_type,
@@ -199,9 +199,9 @@ async def create_config(
         model_parameters=request.model_parameters,
         created_by=admin.id,
     )
-    
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message=f"Created AI provider config: {config.name}",
@@ -218,9 +218,9 @@ async def update_config(
 ) -> APIResponse:
     """Update an AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
-    
+
     config = await service.update(
         config_id=config_id,
         name=request.name,
@@ -234,12 +234,12 @@ async def update_config(
         model_parameters=request.model_parameters,
         modified_by=admin.id,
     )
-    
+
     if not config:
         return APIResponse(success=False, message="Configuration not found")
-    
+
     await db.commit()
-    
+
     return APIResponse(
         success=True,
         message=f"Updated AI provider config: {config.name}",
@@ -254,15 +254,15 @@ async def delete_config(
 ) -> APIResponse:
     """Delete an AI provider configuration."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     deleted = await service.delete(config_id)
-    
+
     if not deleted:
         return APIResponse(success=False, message="Configuration not found")
-    
+
     await db.commit()
-    
+
     return APIResponse(success=True, message="AI provider config deleted")
 
 
@@ -274,11 +274,11 @@ async def reorder_configs(
 ) -> APIResponse:
     """Reorder AI provider configurations (fallback priority)."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     await service.reorder(request.config_ids)
     await db.commit()
-    
+
     return APIResponse(success=True, message="Provider order updated")
 
 
@@ -294,10 +294,10 @@ async def test_saved_config(
 ) -> APIResponse:
     """Test a saved AI provider configuration."""
     from app.services.ai.gateway import AIGateway
-    
+
     gateway = AIGateway(db)
     result = await gateway.test_provider(config_id)
-    
+
     return APIResponse(
         success=result.get("success", False),
         message=result.get("message") or result.get("error"),
@@ -316,11 +316,11 @@ async def test_config_preview(
     """
     import time
     from types import SimpleNamespace
-    
+
     from app.services.ai.providers import PROVIDER_REGISTRY
-    
+
     start_time = time.time()
-    
+
     try:
         provider_class = PROVIDER_REGISTRY.get(request.provider_type)
         if not provider_class:
@@ -328,7 +328,7 @@ async def test_config_preview(
                 success=False,
                 message=f"Unknown provider type: {request.provider_type}",
             )
-        
+
         # Create mock config for testing
         mock_config = SimpleNamespace(
             id=0,
@@ -346,16 +346,16 @@ async def test_config_preview(
             oauth_refresh_token_encrypted=None,
             model_parameters=request.model_parameters,
         )
-        
+
         provider = provider_class(mock_config)
-        
+
         # Override API key decryption for testing
         if request.api_key:
             provider.api_key = request.api_key
-        
+
         is_healthy = await provider.health_check()
         elapsed_ms = int((time.time() - start_time) * 1000)
-        
+
         if is_healthy:
             return APIResponse(
                 success=True,
@@ -368,7 +368,7 @@ async def test_config_preview(
                 message=f"Health check failed after {elapsed_ms}ms",
                 data={"model": request.model, "elapsed_ms": elapsed_ms},
             )
-    
+
     except Exception as e:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.warning("ai_config_test_failed", error=str(e), provider=request.provider_type)
@@ -390,12 +390,12 @@ async def get_status(
 ) -> APIResponse:
     """Get overall AI configuration status."""
     from app.services.ai.config_service import AIConfigService
-    
+
     service = AIConfigService(db)
     all_configs = await service.list_all()
     enabled_configs = await service.list_enabled()
     active_config = await service.get_active_config()
-    
+
     return APIResponse(
         success=True,
         data={

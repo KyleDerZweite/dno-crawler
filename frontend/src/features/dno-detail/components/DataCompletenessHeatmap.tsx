@@ -219,7 +219,7 @@ export function DataCompletenessHeatmap({
                         onExport={chartColors.exportString}
                         onImport={chartColors.importString}
                         onReset={chartColors.resetToDefault}
-                        onApplyPreset={(key) => chartColors.applyPreset(key as any)}
+                        onApplyPreset={(key) => chartColors.applyPreset(key as string)}
                     />
                 </div>
             </div>

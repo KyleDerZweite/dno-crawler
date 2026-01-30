@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -490,13 +490,13 @@ function ProviderDialog({
             const params = initialConfig.model_parameters || {};
             if (params.reasoning_level) {
                 setThinkingEnabled(true);
-                setThinkingLevel(params.reasoning_level);
+                setThinkingLevel(params.reasoning_level as string);
                 // If we don't have capability info yet, assume manual level or native level
                 // We'll let the UI resolve based on capability later, but for state:
                 if (!thinkingCapability) setManualThinkingMethod("level");
             } else if (params.reasoning_budget) {
                 setThinkingEnabled(true);
-                setThinkingBudget(params.reasoning_budget);
+                setThinkingBudget(params.reasoning_budget as number);
                 if (!thinkingCapability) setManualThinkingMethod("budget");
             } else {
                 setThinkingEnabled(false);
@@ -518,7 +518,7 @@ function ProviderDialog({
             setThinkingBudget(0);
             setManualThinkingMethod("none");
         }
-    }, [initialConfig, open]);
+    }, [initialConfig, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
     // Enforce mandatory thinking if model capability requires it
     useEffect(() => {
@@ -535,7 +535,7 @@ function ProviderDialog({
         enabled: open,
     });
 
-    const models = modelsData?.data?.models || [];
+    const models = useMemo(() => modelsData?.data?.models || [], [modelsData]);
     const defaultUrl = modelsData?.data?.default_url || "";
     const defaultModel = modelsData?.data?.default_model || "";
     const reasoningOptions = modelsData?.data?.reasoning_options || null;
@@ -564,7 +564,7 @@ function ProviderDialog({
     }, [open, model, models]);
 
     // Generate auto name based on provider and model
-    const generateAutoName = () => {
+    const generateAutoName = useCallback(() => {
         const providerName = providerInfo?.name || providerType;
         const modelName = models.find(m => m.id === model)?.name || model;
 
@@ -573,7 +573,7 @@ function ProviderDialog({
         }
 
         return providerName;
-    };
+    }, [providerInfo, providerType, models, model]);
 
     // Update auto-generated name when dependencies change (if not manually edited)
     useEffect(() => {
@@ -581,7 +581,7 @@ function ProviderDialog({
             const autoName = generateAutoName();
             setName(autoName);
         }
-    }, [providerType, model, nameManuallyEdited, open, models, isEditMode]);
+    }, [providerType, model, nameManuallyEdited, open, models, isEditMode, generateAutoName]);
 
     // When provider changes
     const handleProviderChange = (v: string) => {
@@ -707,7 +707,7 @@ function ProviderDialog({
 
         try {
             // Build model_parameters for the test
-            const testModelParameters: Record<string, any> = {};
+            const testModelParameters: Record<string, unknown> = {};
             if (thinkingEnabled && reasoningOptions) {
                 const effectiveMethod = manualThinkingMethod !== "none"
                     ? manualThinkingMethod
@@ -764,7 +764,7 @@ function ProviderDialog({
             return;
         }
 
-        const modelParameters: Record<string, any> = {};
+        const modelParameters: Record<string, unknown> = {};
 
         // Only add reasoning params for providers that support it (reasoningOptions not null)
         if (thinkingEnabled && reasoningOptions) {

@@ -47,7 +47,7 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     try:
         from app.db import get_db_session
         from app.db.ai_seeder import seed_ai_config
-        
+
         async with get_db_session() as db:
             await seed_ai_config(db)
     except Exception as e:

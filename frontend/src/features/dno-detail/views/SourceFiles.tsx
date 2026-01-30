@@ -86,7 +86,7 @@ export function SourceFiles() {
                         <p className="text-sm">Upload PDF or Excel files to extract data.</p>
                     </div>
                 ) : (
-                    files.map((file: any, i: number) => (
+                    files.map((file, i: number) => (
                         <div key={i} className="p-4 flex items-center justify-between hover:bg-muted/30">
                             <div className="flex items-center gap-4">
                                 <div className="p-2 bg-orange-100 text-orange-600 rounded">

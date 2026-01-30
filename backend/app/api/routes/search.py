@@ -577,7 +577,7 @@ async def _search_by_dno(
 
     # Not found in DB - try VNB Digital API for fuzzy search
     log.info("DNO not in local DB, searching VNB Digital API")
-    
+
     search_name = dno_input.dno_name or dno_input.dno_id
     if not search_name:
         return PublicSearchResponse(

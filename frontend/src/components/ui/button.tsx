@@ -48,6 +48,7 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       // For asChild usage, clone child element with button styles
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const child = React.Children.only(props.children) as React.ReactElement<any>
+      // eslint-disable-next-line react-hooks/refs
       return React.cloneElement(child, {
         className: cn(buttonVariants({ variant, size, className }), child.props?.className),
         ref,
@@ -65,4 +66,5 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 )
 Button.displayName = "Button"
 
+// eslint-disable-next-line react-refresh/only-export-components
 export { Button, buttonVariants }

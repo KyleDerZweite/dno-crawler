@@ -111,7 +111,7 @@ export function DNODetailPage() {
     });
 
     const updateDNOMutation = useMutation({
-        mutationFn: (data: any) => api.dnos.updateDNO(String(numericId), data),
+        mutationFn: (data: Parameters<typeof api.dnos.updateDNO>[1]) => api.dnos.updateDNO(String(numericId), data),
         onSuccess: () => {
             toast({ title: "Updated", description: "DNO metadata saved." });
             setEditDNOOpen(false);

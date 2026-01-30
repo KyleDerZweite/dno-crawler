@@ -113,7 +113,7 @@ export interface AIProviderConfig {
   priority: number;
   status: "active" | "disabled" | "rate_limited" | "unhealthy" | "untested";
   is_subscription: boolean;
-  model_parameters: Record<string, any> | null;
+  model_parameters: Record<string, unknown> | null;
   last_success_at: string | null;
   last_error_at: string | null;
   last_error_message: string | null;
@@ -133,7 +133,7 @@ export interface AIConfigCreate {
   supports_text?: boolean;
   supports_vision?: boolean;
   supports_files?: boolean;
-  model_parameters?: Record<string, any>;
+  model_parameters?: Record<string, unknown>;
 }
 
 export interface AIConfigUpdate {
@@ -145,7 +145,7 @@ export interface AIConfigUpdate {
   supports_vision?: boolean;
   supports_files?: boolean;
   is_enabled?: boolean;
-  model_parameters?: Record<string, any>;
+  model_parameters?: Record<string, unknown>;
 }
 
 
@@ -1078,7 +1078,7 @@ export const api = {
       model: string;
       api_key?: string;
       api_url?: string;
-      model_parameters?: Record<string, any>;
+      model_parameters?: Record<string, unknown>;
     }): Promise<
       ApiResponse<{
         model: string;
@@ -1174,17 +1174,15 @@ export const api = {
     // OAuth credential detection
     async detectCredentials(): Promise<
       ApiResponse<{
-        credentials: {
-          [key: string]: {
-            available: boolean;
-            source?: string | null;
-            email?: string | null;
-            name?: string | null;
-            has_refresh_token?: boolean;
-            instructions?: string;
-            error?: string;
-          };
-        };
+        credentials: Record<string, {
+          available: boolean;
+          source?: string | null;
+          email?: string | null;
+          name?: string | null;
+          has_refresh_token?: boolean;
+          instructions?: string;
+          error?: string;
+        }>;
         any_available: boolean;
       }>
     > {

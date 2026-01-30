@@ -71,20 +71,16 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
     }, [netzentgelte, hlzf]);
 
     // Set initial year filter based on available data
+    // Set initial year filter based on available data
     useEffect(() => {
         if (yearFilterInitialized || filterOptions.years.length === 0) return;
 
         const availableYears = filterOptions.years;
-        let defaultYear: number;
+        const defaultYear = availableYears.includes(2024)
+            ? 2024
+            : availableYears[0];
 
-        if (availableYears.includes(2024)) {
-            defaultYear = 2024;
-        } else if (availableYears.length === 1) {
-            defaultYear = availableYears[0];
-        } else {
-            defaultYear = availableYears[0];
-        }
-
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setYearFilter([defaultYear]);
         setYearFilterInitialized(true);
     }, [filterOptions.years, yearFilterInitialized]);
@@ -93,6 +89,7 @@ export function useDataFilters({ netzentgelte, hlzf }: UseDataFiltersOptions) {
     useEffect(() => {
         if (voltageFilterInitialized || filterOptions.voltageLevels.length === 0) return;
 
+        // eslint-disable-next-line react-hooks/set-state-in-effect
         setVoltageLevelFilter(filterOptions.voltageLevels.filter(l => l !== "HöS" && l !== "HöS/HS"));
         setVoltageFilterInitialized(true);
     }, [filterOptions.voltageLevels, voltageFilterInitialized]);

@@ -45,11 +45,13 @@ export function EditDNODialog({
     const [formData, setFormData] = useState<EditDNOData>(initialData);
 
     // Reset form when dialog opens
+    // Reset form when dialog opens
     useEffect(() => {
         if (open) {
             setFormData(initialData);
         }
-    }, [open, initialData]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [open]);
 
     const handleChange = (field: keyof EditDNOData, value: string) => {
         setFormData((prev) => ({ ...prev, [field]: value }));

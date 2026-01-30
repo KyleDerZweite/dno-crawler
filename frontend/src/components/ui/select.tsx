@@ -43,7 +43,7 @@ interface SelectValueProps extends React.ComponentPropsWithoutRef<typeof Select.
 }
 
 const SelectValue = React.forwardRef<HTMLSpanElement, SelectValueProps>(
-  ({ placeholder, children, ...props }, ref) => (
+  ({ placeholder, ...props }, ref) => (
     <Select.Value ref={ref} {...props}>
       {(value) => value ?? (placeholder ? <span className="text-muted-foreground">{placeholder}</span> : null)}
     </Select.Value>

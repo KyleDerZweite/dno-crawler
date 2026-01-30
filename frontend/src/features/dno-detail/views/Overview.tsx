@@ -7,7 +7,7 @@
 
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api } from "@/lib/api";
+import { api, type Netzentgelte, type HLZF } from "@/lib/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Clock, Activity, Shield, ShieldAlert } from "lucide-react";
@@ -90,20 +90,20 @@ export function Overview() {
         enabled: !!numericId,
     });
 
-    const netzentgelte = dataResponse?.data?.netzentgelte || [];
-    const hlzf = dataResponse?.data?.hlzf || [];
+    const netzentgelte: Netzentgelte[] = dataResponse?.data?.netzentgelte || [];
+    const hlzf: HLZF[] = dataResponse?.data?.hlzf || [];
 
     // Calculate stats
-    const netzentgelteCount = netzentgelte.filter((n: any) => n.leistung || n.arbeit).length;
-    const hlzfCount = hlzf.filter((h: any) => h.winter || h.sommer).length;
+    const netzentgelteCount = netzentgelte.filter((n) => n.leistung || n.arbeit).length;
+    const hlzfCount = hlzf.filter((h) => h.winter || h.sommer).length;
     // Calculate details
-    const netzYears = Array.from(new Set(netzentgelte.map((n: any) => n.year))).sort((a: any, b: any) => b - a);
-    const netzLevels = Array.from(new Set(netzentgelte.map((n: any) => n.voltage_level)));
-    const hlzfYears = Array.from(new Set(hlzf.map((h: any) => h.year))).sort((a: any, b: any) => b - a);
+    const netzYears = Array.from(new Set(netzentgelte.map((n) => n.year))).sort((a, b) => b - a);
+    const netzLevels = Array.from(new Set(netzentgelte.map((n) => n.voltage_level)));
+    const hlzfYears = Array.from(new Set(hlzf.map((h) => h.year))).sort((a, b) => b - a);
 
     // Check which seasons are present in HLZF data
     const hlzfSeasons = new Set<string>();
-    hlzf.forEach((h: any) => {
+    hlzf.forEach((h) => {
         if (h.winter) hlzfSeasons.add("Winter");
         if (h.fruehling) hlzfSeasons.add("Spring");
         if (h.sommer) hlzfSeasons.add("Summer");
