@@ -57,7 +57,8 @@ export function DataExplorer() {
 
     // Mutations
     const updateNetzentgelteMutation = useMutation({
-        mutationFn: (data: Netzentgelte) => api.dnos.updateNetzentgelte(String(numericId), data.id, data),
+        mutationFn: (data: { id: number; leistung?: number; arbeit?: number }) =>
+            api.dnos.updateNetzentgelte(String(numericId), data.id, data),
         onSuccess: () => {
             setEditModalOpen(false);
             refetchData();
@@ -66,7 +67,8 @@ export function DataExplorer() {
     });
 
     const updateHLZFMutation = useMutation({
-        mutationFn: (data: HLZF) => api.dnos.updateHLZF(String(numericId), data.id, data),
+        mutationFn: (data: { id: number; winter?: string; fruehling?: string; sommer?: string; herbst?: string }) =>
+            api.dnos.updateHLZF(String(numericId), data.id, data),
         onSuccess: () => {
             setEditModalOpen(false);
             refetchData();
@@ -195,7 +197,7 @@ export function DataExplorer() {
                 isAdmin={isAdmin}
                 onEdit={(item: HLZF) => {
                     setEditModalType('hlzf');
-                    setEditRecord({ id: item.id, winter: item.winter || '', fruehling: item.fruehling || '', sommer: item.sommer || '', herbst: item.herbst || '' });
+                    setEditRecord({ id: item.id, winter: item.winter ?? '', fruehling: item.fruehling ?? '', sommer: item.sommer ?? '', herbst: item.herbst ?? '' });
                     setEditModalOpen(true);
                 }}
                 onDelete={(id: number) => deleteHLZFMutation.mutate(id)}
