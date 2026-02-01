@@ -25,9 +25,13 @@ Output stored in job.context:
 - rejected_candidates: List of URLs that failed verification
 """
 
+import asyncio
+
 import httpx
 import structlog
+from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
+from urllib.parse import urljoin, urlparse
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel, DNOModel
@@ -35,7 +39,7 @@ from app.jobs.steps.base import BaseStep, StepError
 from app.services.content_verifier import ContentVerifier
 from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
-from app.services.url_utils import UrlProber
+from app.services.url_utils import UrlProber, DOCUMENT_EXTENSIONS, normalize_url
 from app.services.user_agent import build_user_agent, require_contact_for_bfs
 from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 
@@ -46,6 +50,9 @@ MAX_CANDIDATES_TO_TRY = 5
 
 # Minimum confidence required to accept a candidate
 MIN_VERIFICATION_CONFIDENCE = 0.4
+
+# Timeout for BFS crawl (5 minutes) - prevents crawler from hanging indefinitely
+BFS_CRAWL_TIMEOUT_SECONDS = 300
 
 
 class DiscoverStep(BaseStep):
@@ -321,13 +328,43 @@ class DiscoverStep(BaseStep):
             keywords = get_keywords_for_data_type(job.data_type)
             patterns = await learner.get_priority_paths(db, job.data_type, limit=10)
 
-            results = await crawler.crawl(
-                start_url=dno_website,
-                target_keywords=keywords,
-                priority_paths=patterns,
-                target_year=job.year,
-                data_type=job.data_type,  # NEW: pass data_type for scoring
-            )
+            # Wrap BFS crawl in timeout to prevent hanging indefinitely
+            try:
+                results = await asyncio.wait_for(
+                    crawler.crawl(
+                        start_url=dno_website,
+                        target_keywords=keywords,
+                        priority_paths=patterns,
+                        target_year=job.year,
+                        data_type=job.data_type,
+                    ),
+                    timeout=BFS_CRAWL_TIMEOUT_SECONDS,
+                )
+            except asyncio.TimeoutError:
+                log.error(
+                    "BFS crawl timed out",
+                    timeout_seconds=BFS_CRAWL_TIMEOUT_SECONDS,
+                    website=dno_website,
+                )
+                # Capture timeout for debugging
+                from app.services.sample_capture import SampleCapture
+                sample_capture = SampleCapture()
+                await sample_capture.capture_crawl_error(
+                    dno_slug=ctx.get("dno_slug", "unknown"),
+                    url=dno_website,
+                    error_type="bfs_crawl_timeout",
+                    error_message=f"BFS crawl timed out after {BFS_CRAWL_TIMEOUT_SECONDS} seconds",
+                    status_code=None,
+                    response_headers=None,
+                    response_body_snippet=None,
+                    request_headers={"User-Agent": bfs_user_agent},
+                    job_id=str(job.id),
+                    step="discover",
+                )
+                raise StepError(
+                    f"BFS crawl timed out after {BFS_CRAWL_TIMEOUT_SECONDS // 60} minutes. "
+                    f"The website {dno_website} may be too slow or have too many pages to crawl."
+                )
 
             ctx["pages_crawled"] = len(results)
 
@@ -399,24 +436,56 @@ class DiscoverStep(BaseStep):
                     result.final_url, job.data_type, job.year
                 )
 
-                if verification.is_verified and verification.confidence >= 0.5:
-                    ctx["strategy"] = "bfs_crawl"
-                    ctx["found_url"] = result.final_url
-                    ctx["found_content_type"] = result.content_type
-                    ctx["needs_headless_review"] = result.needs_headless
-                    ctx["verification_confidence"] = verification.confidence
-                    job.context = ctx
-                    await db.commit()
-                    log.info(
-                        "Found verified page via BFS (may contain tables/embedded content)",
-                        url=result.final_url[:80],
-                        score=round(result.score, 2),
-                        confidence=verification.confidence,
-                    )
-                    return (
-                        f"Strategy: BFS_CRAWL → {result.final_url} "
-                        f"(landing page, score: {result.score:.1f}, verified: {verification.confidence:.0%})"
-                    )
+                if verification.is_verified:
+                    # Case 1: Landing Page (Verified keywords but no data tables)
+                    # Try to find PDF links on this page
+                    if not verification.has_data_content:
+                        log.info("Potential landing page found, checking for document links", url=result.final_url)
+                        doc_info = await self._check_landing_page_for_documents(
+                            client, result.final_url, verifier, job, allowed_domains
+                        )
+                        
+                        if doc_info:
+                            doc_url, doc_type, doc_conf = doc_info
+                            ctx["strategy"] = "bfs_crawl_landing_link"
+                            ctx["found_url"] = doc_url
+                            ctx["found_content_type"] = doc_type
+                            ctx["verification_confidence"] = doc_conf
+                            ctx["landing_page"] = result.final_url
+                            job.context = ctx
+                            await db.commit()
+                            log.info(
+                                "Found document via landing page",
+                                landing=result.final_url[:60],
+                                document=doc_url[:80],
+                                confidence=doc_conf
+                            )
+                            return (
+                                f"Strategy: BFS_CRAWL (Landing Link) → {doc_url} "
+                                f"(from {result.final_url}, verified: {doc_conf:.0%})"
+                            )
+
+                    # Case 2: Data Page (Verified keywords AND data tables/prices)
+                    # Or Case 3: Landing Page but no better links found (fallback to page itself)
+                    if verification.confidence >= 0.5:
+                        ctx["strategy"] = "bfs_crawl"
+                        ctx["found_url"] = result.final_url
+                        ctx["found_content_type"] = result.content_type
+                        ctx["needs_headless_review"] = result.needs_headless
+                        ctx["verification_confidence"] = verification.confidence
+                        job.context = ctx
+                        await db.commit()
+                        log.info(
+                            "Found verified page via BFS",
+                            url=result.final_url[:80],
+                            score=round(result.score, 2),
+                            confidence=verification.confidence,
+                            has_data=verification.has_data_content
+                        )
+                        return (
+                            f"Strategy: BFS_CRAWL → {result.final_url} "
+                            f"(landing page, score: {result.score:.1f}, verified: {verification.confidence:.0%})"
+                        )
 
             # No verified results found - report what was rejected
             job.context = ctx
@@ -470,6 +539,64 @@ class DiscoverStep(BaseStep):
                 )
 
             raise ValueError(error_msg)
+
+        return None
+
+    async def _check_landing_page_for_documents(
+        self,
+        client: httpx.AsyncClient,
+        url: str,
+        verifier: ContentVerifier,
+        job: CrawlJobModel,
+        allowed_domains: set[str] | None,
+    ) -> tuple[str, str, float] | None:
+        """Check if a landing page contains links to verified documents.
+        
+        Returns:
+            Tuple of (url, content_type, confidence) if found, else None
+        """
+        try:
+            # Fetch page content
+            response = await client.get(url, timeout=10.0)
+            if response.status_code != 200:
+                return None
+                
+            soup = BeautifulSoup(response.text, "lxml")
+            base_url = str(response.url)
+            
+            # Extract links
+            links = []
+            for tag in soup.find_all("a", href=True):
+                href = tag["href"]
+                full_url = urljoin(base_url, href)
+                
+                # Check extension early to avoid processing non-documents
+                if any(full_url.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS):
+                    # Check domain if restricted
+                    if allowed_domains:
+                        domain = urlparse(full_url).hostname
+                        if not domain:
+                            continue
+                        domain = domain.lower()
+                        if domain.startswith("www."):
+                            domain = domain[4:]
+                        if domain not in allowed_domains:
+                            continue
+                            
+                    links.append(full_url)
+            
+            # Verify found links
+            for link in links[:5]:  # Check top 5 links only
+                verification = await verifier.verify_url(link, job.data_type, job.year)
+                
+                if verification.is_verified and verification.has_data_content:
+                    return link, verification.detected_data_type or "unknown", verification.confidence
+                    
+            return None
+            
+        except Exception as e:
+            logger.warning("landing_page_check_failed", url=url, error=str(e))
+            return None
 
     def _get_allowed_domains(self, ctx: dict) -> set[str] | None:
         """Extract allowed domains from context."""

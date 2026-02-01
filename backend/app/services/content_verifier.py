@@ -42,6 +42,7 @@ class VerificationResult:
     keywords_missing: list[str]
     error: str | None = None
     content_sample: str | None = None  # First 500 chars for debugging
+    has_data_content: bool = False  # True if actual data (prices/tables) detected
 
 
 # Keywords that MUST appear for each data type (positive markers)
@@ -87,8 +88,11 @@ NEGATIVE_KEYWORDS = {
 # Patterns that indicate document structure
 STRUCTURE_PATTERNS = {
     "netzentgelte": [
-        r"\d+[,\.]\d+\s*ct",  # Price pattern like "5,67 ct"
+        r"\d+[,\.]\d{2}\s*ct",  # Price pattern like "5,67 ct"
+        r"\d+[,\.]\d{2}\s*€",   # Price pattern like "5,67 €"
+        r"\d+[,\.]\d{2}\s*Euro", # Price pattern "5,67 Euro"
         r"\d+[,\.]\d+\s*€/k[wW]",  # €/kW pattern
+        r"\d+[,\.]\d+\s*ct/k[wW]h", # ct/kWh pattern
         r"(niederspannung|mittelspannung|hochspannung)",  # Voltage levels
     ],
     "hlzf": [
@@ -234,9 +238,14 @@ class ContentVerifier:
 
         # Check structural patterns
         patterns = STRUCTURE_PATTERNS.get(expected_data_type, [])
+        structure_matches = 0
         for pattern in patterns:
             if re.search(pattern, text_lower):
                 structure_score += 2
+                structure_matches += 1
+        
+        # Determine if it has data content (prices/windows)
+        has_data_content = structure_matches > 0
 
         # Year validation (if expected)
         if expected_year and str(expected_year) in text:
@@ -260,6 +269,11 @@ class ContentVerifier:
         # Require required keywords for high confidence
         if not required_met:
             confidence = min(confidence, 0.3)
+            
+        # Reduce confidence if we have keywords but no data content (likely a landing page)
+        if required_met and not has_data_content:
+            # Cap confidence at 0.5 - enough to be interesting, but maybe not enough to be final
+            confidence = min(confidence, 0.5)
 
         confidence = max(0.0, min(1.0, confidence))
 
@@ -279,6 +293,7 @@ class ContentVerifier:
             detected=detected,
             confidence=round(confidence, 2),
             required_met=required_met,
+            has_data=has_data_content,
             positive_count=len([k for k in found_keywords if k in positive]),
             is_verified=is_verified,
         )
@@ -290,6 +305,7 @@ class ContentVerifier:
             keywords_found=list(set(found_keywords))[:10],  # Limit for display
             keywords_missing=list(set(missing_keywords))[:5],
             content_sample=text[:500] if text else None,
+            has_data_content=has_data_content,
         )
 
     def _detect_data_type(self, text_lower: str) -> str | None:

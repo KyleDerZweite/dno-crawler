@@ -104,6 +104,10 @@ class CrawlWorkerSettings:
     # CRITICAL: Only process one job at a time for polite crawling
     max_jobs = 1
 
+    # Job timeout: 10 minutes for crawl jobs (BFS crawling can take time)
+    # Prevents jobs from hanging indefinitely
+    job_timeout = 600
+
 
 class ExtractWorkerSettings:
     """
@@ -131,6 +135,9 @@ class ExtractWorkerSettings:
     # Start with 1, can increase if needed
     max_jobs = 1
 
+    # Job timeout: 5 minutes for extract jobs (AI extraction)
+    job_timeout = 300
+
 
 class WorkerSettings:
     """
@@ -153,6 +160,5 @@ class WorkerSettings:
     # Only process one job at a time
     max_jobs = 1
 
-    # CRITICAL: Only process one search job at a time.
-    # This forces the queue to be strictly sequential.
-    max_jobs = 1
+    # Job timeout: 15 minutes for full pipeline
+    job_timeout = 900
