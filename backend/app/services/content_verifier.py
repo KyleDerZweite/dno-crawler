@@ -78,10 +78,23 @@ NEGATIVE_KEYWORDS = {
     "netzentgelte": [
         # If looking for netzentgelte, these suggest wrong document
         "hochlastzeitfenster", "hlzf", "zeitfenster",
+        # Common non-pricing pages that share grid terminology
+        "hausanschluss", "netzanschluss", "anschlussantrag",
+        "einspeiser", "einspeisevergütung", "photovoltaik",
+        "stromzähler", "zählerstand", "ablesekarte",
+        "störungsmeldung", "störung melden",
+        "stellenangebot", "karriere", "job",
+        "kontaktformular", "anfahrt", "impressum",
+        "datenschutz", "cookie", "agb",
+        "elektromobilität", "ladesäule", "wallbox",
+        "bauherren", "neubau", "baustrom",
     ],
     "hlzf": [
         # If looking for HLZF, these suggest wrong document (but not as strong)
         # Keep light penalties since HLZF docs might mention prices
+        "hausanschluss", "netzanschluss", "anschlussantrag",
+        "stellenangebot", "karriere", "job",
+        "kontaktformular", "impressum", "datenschutz",
     ],
 }
 
