@@ -69,6 +69,20 @@ class DownloadStep(BaseStep):
             job.context = ctx
             return "Skipped → Using cached file"
 
+        # Check if file was already downloaded during discovery (landing page flow)
+        cached_file_path = ctx.get("cached_file_path")
+        if cached_file_path and Path(cached_file_path).exists():
+            # File was already downloaded and verified during discovery
+            ctx["downloaded_file"] = cached_file_path
+            ctx["file_format"] = self._detect_format_from_path(Path(cached_file_path))
+            job.context = ctx
+            logger.info(
+                "using_pre_cached_file",
+                cached_path=cached_file_path,
+                strategy=strategy,
+            )
+            return f"Using pre-cached file from discovery: {cached_file_path}"
+
         url = ctx.get("found_url")
         if not url:
             raise StepError("No URL to download - discovery step may have failed")
@@ -329,6 +343,10 @@ class DownloadStep(BaseStep):
         else:
             # Assume HTML if no recognizable extension
             return "html"
+
+    def _detect_format_from_path(self, file_path: Path) -> str:
+        """Detect file format from a Path object."""
+        return self._detect_format_from_url(str(file_path))
 
     async def _process_html(
         self,

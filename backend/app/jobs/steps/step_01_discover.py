@@ -26,6 +26,7 @@ Output stored in job.context:
 """
 
 import asyncio
+from pathlib import Path
 
 import httpx
 import structlog
@@ -446,19 +447,23 @@ class DiscoverStep(BaseStep):
                         )
                         
                         if doc_info:
-                            doc_url, doc_type, doc_conf = doc_info
+                            doc_url, doc_type, doc_conf, cached_path = doc_info
                             ctx["strategy"] = "bfs_crawl_landing_link"
                             ctx["found_url"] = doc_url
                             ctx["found_content_type"] = doc_type
                             ctx["verification_confidence"] = doc_conf
                             ctx["landing_page"] = result.final_url
+                            # Store cached path so download step can skip re-downloading
+                            if cached_path:
+                                ctx["cached_file_path"] = str(cached_path)
                             job.context = ctx
                             await db.commit()
                             log.info(
                                 "Found document via landing page",
                                 landing=result.final_url[:60],
                                 document=doc_url[:80],
-                                confidence=doc_conf
+                                confidence=doc_conf,
+                                cached=str(cached_path) if cached_path else None,
                             )
                             return (
                                 f"Strategy: BFS_CRAWL (Landing Link) → {doc_url} "
@@ -549,12 +554,17 @@ class DiscoverStep(BaseStep):
         verifier: ContentVerifier,
         job: CrawlJobModel,
         allowed_domains: set[str] | None,
-    ) -> tuple[str, str, float] | None:
+    ) -> tuple[str, str, float, Path | None] | None:
         """Check if a landing page contains links to verified documents.
         
+        Downloads and caches document files for proper verification.
+        Verified files go to downloads/, unverified to bulk-data/.
+        
         Returns:
-            Tuple of (url, content_type, confidence) if found, else None
+            Tuple of (url, content_type, confidence, cached_file_path) if found, else None
         """
+        from app.core.config import settings
+        
         try:
             # Fetch page content
             response = await client.get(url, timeout=10.0)
@@ -564,13 +574,18 @@ class DiscoverStep(BaseStep):
             soup = BeautifulSoup(response.text, "lxml")
             base_url = str(response.url)
             
-            # Extract links
-            links = []
+            # Get DNO info from job context
+            ctx = job.context or {}
+            dno_slug = ctx.get("dno_slug", f"dno_{job.dno_id}")
+            base_data_dir = Path(settings.storage_path)
+            
+            # Extract document links
+            doc_links = []
             for tag in soup.find_all("a", href=True):
                 href = tag["href"]
                 full_url = urljoin(base_url, href)
                 
-                # Check extension early to avoid processing non-documents
+                # Check if it's a document link
                 if any(full_url.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS):
                     # Check domain if restricted
                     if allowed_domains:
@@ -582,15 +597,77 @@ class DiscoverStep(BaseStep):
                             domain = domain[4:]
                         if domain not in allowed_domains:
                             continue
-                            
-                    links.append(full_url)
+                    
+                    # Get link text for scoring
+                    link_text = tag.get_text(strip=True).lower()
+                    doc_links.append((full_url, link_text))
             
-            # Verify found links
-            for link in links[:5]:  # Check top 5 links only
-                verification = await verifier.verify_url(link, job.data_type, job.year)
+            # Score and sort links by relevance
+            def score_link(link_info: tuple[str, str]) -> int:
+                url, text = link_info
+                score = 0
+                url_lower = url.lower()
                 
+                # Year in URL/text
+                if job.year and str(job.year) in url_lower:
+                    score += 10
+                if job.year and str(job.year) in text:
+                    score += 5
+                    
+                # Data type keywords
+                if job.data_type == "netzentgelte":
+                    if any(kw in url_lower or kw in text for kw in ["netzentgelt", "preisblatt", "entgelt"]):
+                        score += 10
+                elif job.data_type == "hlzf":
+                    if any(kw in url_lower or kw in text for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]):
+                        score += 10
+                
+                # Prefer PDFs for netzentgelte
+                if url_lower.endswith(".pdf"):
+                    score += 3
+                    
+                return score
+            
+            doc_links.sort(key=score_link, reverse=True)
+            
+            # Download and verify top candidates
+            for link_url, link_text in doc_links[:5]:
+                logger.info(
+                    "checking_document_link",
+                    url=link_url[:80],
+                    link_text=link_text[:50] if link_text else "",
+                )
+                
+                # Use full-file verification with caching
+                verification, cached_path = await verifier.verify_and_cache_document(
+                    url=link_url,
+                    expected_data_type=job.data_type,
+                    expected_year=job.year,
+                    dno_slug=dno_slug,
+                    base_data_dir=base_data_dir,
+                )
+                
+                # Accept if verified with data content
                 if verification.is_verified and verification.has_data_content:
-                    return link, verification.detected_data_type or "unknown", verification.confidence
+                    logger.info(
+                        "document_verified",
+                        url=link_url[:80],
+                        confidence=verification.confidence,
+                        cached_path=str(cached_path) if cached_path else None,
+                    )
+                    content_type = verifier._detect_content_type(link_url)
+                    return link_url, content_type, verification.confidence, cached_path
+                    
+                # Log why it wasn't accepted
+                logger.debug(
+                    "document_not_verified",
+                    url=link_url[:80],
+                    is_verified=verification.is_verified,
+                    has_data=verification.has_data_content,
+                    confidence=verification.confidence,
+                    error=verification.error,
+                    cached_path=str(cached_path) if cached_path else None,
+                )
                     
             return None
             

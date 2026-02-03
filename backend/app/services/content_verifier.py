@@ -5,7 +5,9 @@ Verifies that discovered content actually matches the expected data type
 before committing to full download/processing.
 
 Features:
-- Partial content fetching (first 15KB) to minimize bandwidth
+- Partial content fetching (100KB) for quick HTML/sitemap verification
+- Full-file download with caching for PDF/document verification
+- Verified files → downloads/{dno_slug}/, unverified → bulk-data/{dno_slug}/
 - Multi-format support: PDF, HTML, XLSX, images
 - Data-type-specific keyword matching
 - Confidence scoring for verification
@@ -18,6 +20,7 @@ from enum import Enum
 
 import httpx
 import structlog
+from pathlib import Path
 
 logger = structlog.get_logger()
 
@@ -192,6 +195,198 @@ class ContentVerifier:
                 keywords_missing=[],
                 error=str(e),
             )
+
+    async def verify_and_cache_document(
+        self,
+        url: str,
+        expected_data_type: str,
+        expected_year: int | None,
+        dno_slug: str,
+        base_data_dir: Path,
+    ) -> tuple[VerificationResult, Path | None]:
+        """Download, verify, and cache a document file.
+        
+        Downloads the complete file to properly verify PDF/Excel content.
+        Stores verified files in downloads/{dno_slug}/, unverified in bulk-data/{dno_slug}/.
+        
+        Args:
+            url: URL to download
+            expected_data_type: "netzentgelte" or "hlzf"
+            expected_year: Expected year (optional)
+            dno_slug: DNO identifier for directory naming
+            base_data_dir: Base data directory (typically Path("data"))
+            
+        Returns:
+            Tuple of (VerificationResult, file_path or None)
+            file_path is where the file was saved (either downloads or bulk-data)
+        """
+        from urllib.parse import urlparse, unquote
+        import hashlib
+        
+        try:
+            content_type = self._detect_content_type(url)
+            
+            # Download full file
+            content = await self._download_full(url)
+            if not content:
+                return VerificationResult(
+                    is_verified=False,
+                    confidence=0.0,
+                    detected_data_type=None,
+                    keywords_found=[],
+                    keywords_missing=[],
+                    error="Failed to download file",
+                ), None
+            
+            # Extract text for verification
+            text = await self._extract_text(content, content_type, url)
+            
+            # Verify content
+            if text:
+                result = self._verify_text(text, expected_data_type, expected_year)
+            else:
+                # Couldn't extract text - might be image-only PDF
+                result = VerificationResult(
+                    is_verified=False,
+                    confidence=0.2,
+                    detected_data_type=None,
+                    keywords_found=[],
+                    keywords_missing=[],
+                    error="Could not extract text from document",
+                )
+            
+            # Determine filename from URL
+            parsed = urlparse(url)
+            original_filename = Path(unquote(parsed.path)).name
+            if not original_filename or original_filename == "/":
+                # Generate filename from URL hash
+                url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
+                ext = self._get_extension_for_content_type(content_type)
+                original_filename = f"document_{url_hash}{ext}"
+            
+            # Determine destination directory
+            if result.is_verified and result.has_data_content:
+                # Verified with data content → downloads directory
+                dest_dir = base_data_dir / "downloads" / dno_slug
+            else:
+                # Unverified or no data content → bulk-data for future use
+                dest_dir = base_data_dir / "bulk-data" / dno_slug
+            
+            # Create directory if needed
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            
+            # Build destination path (add data type and year to filename)
+            name_stem = Path(original_filename).stem
+            ext = Path(original_filename).suffix or self._get_extension_for_content_type(content_type)
+            year_str = str(expected_year) if expected_year else "unknown"
+            dest_filename = f"{dno_slug}-{expected_data_type}-{year_str}{ext}"
+            dest_path = dest_dir / dest_filename
+            
+            # Handle duplicates (add hash suffix if file already exists with different content)
+            if dest_path.exists():
+                existing_hash = hashlib.md5(dest_path.read_bytes()).hexdigest()[:8]
+                new_hash = hashlib.md5(content).hexdigest()[:8]
+                if existing_hash != new_hash:
+                    # Different file - add hash to name
+                    dest_filename = f"{dno_slug}-{expected_data_type}-{year_str}_{new_hash}{ext}"
+                    dest_path = dest_dir / dest_filename
+            
+            # Save file
+            dest_path.write_bytes(content)
+            
+            self.log.info(
+                "document_cached",
+                url=url[:80],
+                dest=str(dest_path),
+                verified=result.is_verified,
+                has_data=result.has_data_content,
+                confidence=round(result.confidence, 2),
+            )
+            
+            return result, dest_path
+            
+        except Exception as e:
+            self.log.warning("verify_and_cache_failed", url=url[:80], error=str(e))
+            return VerificationResult(
+                is_verified=False,
+                confidence=0.0,
+                detected_data_type=None,
+                keywords_found=[],
+                keywords_missing=[],
+                error=str(e),
+            ), None
+
+    async def _download_full(self, url: str, max_size: int = 50 * 1024 * 1024) -> bytes | None:
+        """Download complete file (up to max_size bytes).
+        
+        Args:
+            url: URL to download
+            max_size: Maximum file size to download (default 50MB)
+            
+        Returns:
+            File content as bytes, or None if failed
+        """
+        try:
+            if not self.client:
+                async with httpx.AsyncClient(timeout=60.0, follow_redirects=True) as client:
+                    return await self._do_download_full(client, url, max_size)
+            return await self._do_download_full(self.client, url, max_size)
+        except Exception as e:
+            self.log.debug("download_full_failed", url=url[:80], error=str(e))
+            return None
+    
+    async def _do_download_full(
+        self, 
+        client: httpx.AsyncClient, 
+        url: str, 
+        max_size: int
+    ) -> bytes | None:
+        """Perform the actual full download."""
+        from app.services.retry_utils import with_retries
+        
+        async def _download() -> bytes | None:
+            response = await client.get(url, follow_redirects=True)
+            
+            if response.status_code != 200:
+                if 400 <= response.status_code < 500:
+                    return None
+                if response.status_code >= 500:
+                    raise httpx.HTTPStatusError(
+                        f"Server error {response.status_code}",
+                        request=response.request,
+                        response=response,
+                    )
+                return None
+            
+            # Check content length before accepting
+            content_length = response.headers.get("content-length")
+            if content_length and int(content_length) > max_size:
+                self.log.warning("file_too_large", url=url[:80], size=content_length)
+                return None
+            
+            content = response.content
+            if len(content) > max_size:
+                self.log.warning("file_too_large", url=url[:80], size=len(content))
+                return None
+                
+            return content
+        
+        try:
+            return await with_retries(_download, max_attempts=3, backoff_base=1.0)
+        except Exception as e:
+            self.log.debug("download_full_retries_failed", url=url[:80], error=str(e))
+            return None
+
+    def _get_extension_for_content_type(self, content_type: str) -> str:
+        """Get file extension for a content type."""
+        extensions = {
+            "pdf": ".pdf",
+            "excel": ".xlsx",
+            "html": ".html",
+            "image": ".png",
+            "word": ".docx",
+        }
+        return extensions.get(content_type, ".bin")
 
     def verify_text(
         self,
