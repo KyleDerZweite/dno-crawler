@@ -30,7 +30,8 @@ flowchart TD
         
         subgraph PublicAPI ["Public API Layer"]
             SearchRoute[POST /api/v1/search]
-            HealthRoute[GET /health]
+            HealthRoute[GET /api/health]
+            ReadyRoute[GET /api/ready]
         end
 
         subgraph ProtectedAPI ["Protected API Layer"]
@@ -123,10 +124,10 @@ flowchart TD
 | Component | Description |
 |-----------|-------------|
 | Frontend | React 19 SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling. |
-| Public API | Rate limited endpoints for address search and skeleton DNO creation. No authentication required. |
+| Public API | Rate limited endpoints for address search and skeleton DNO creation. Health check at `GET /api/health` and readiness check at `GET /api/ready`. No authentication required. |
 | Protected API | Secured by `Depends(get_current_user)`. Provides DNO management, job triggering, data verification, AI provider management, and admin functions. |
 | Service Layer | Integrates with three external data sources and provides business logic for verification, pattern learning, and content analysis. |
-| Async Worker | arq powered Redis worker executes multi step extraction pipeline without blocking HTTP requests. |
+| Async Worker | arq powered Redis workers execute multi step extraction pipeline without blocking HTTP requests. Split into `worker-crawl` (discovery and download, single instance for polite crawling) and `worker-extract` (extraction, validation, finalization, scalable). |
 
 ## 2. Core User Journey
 
@@ -289,10 +290,13 @@ erDiagram
         int id PK
         int dno_id FK
         string address_hash UK
+        string street_clean
+        string number_clean
         string zip_code
         string city
         decimal latitude
         decimal longitude
+        string source
     }
 
     netzentgelte {
@@ -302,6 +306,8 @@ erDiagram
         string voltage_level
         float arbeit "ct/kWh"
         float leistung "EUR/kW"
+        float arbeit_unter_2500h "ct/kWh below 2500h"
+        float leistung_unter_2500h "EUR/kW below 2500h"
         string extraction_source "ai|pdf_regex|html_parser|manual"
         string extraction_model "gemini-2.0-flash|etc"
         string verification_status
@@ -375,13 +381,15 @@ erDiagram
 
     ai_provider_configs {
         int id PK
-        string name UK
+        string name
         string provider_type
         string auth_type "api_key|oauth"
-        bool is_active
+        string model
+        bool is_enabled
         int priority
-        int rate_limit_rpm
+        int consecutive_failures
         datetime last_error_at
+        datetime rate_limited_until
     }
 ```
 
@@ -396,7 +404,7 @@ erDiagram
 | Source Profiles (`dno_source_profiles`) | Per DNO learned patterns for fast re crawling. |
 | Path Patterns (`crawl_path_patterns`) | Cross DNO URL patterns with success/failure statistics for prioritized discovery. |
 | Job Tracking (`crawl_jobs`, `crawl_job_steps`) | State machine for background tasks with step level granularity and parent job linking for split extraction. |
-| AI Provider Configs (`ai_provider_configs`) | Multi provider AI configuration supporting both API key and OAuth authentication methods. |
+| AI Provider Configs (`ai_provider_configs`) | Multi provider AI configuration supporting API key and OAuth authentication methods, with priority ordering, usage tracking, and automatic failover via consecutive failure counting. |
 
 ## 5. Extraction Pipeline
 
@@ -456,7 +464,7 @@ flowchart TD
 | Aspect | Implementation |
 |--------|----------------|
 | Logging | Structured JSON logging via `structlog` with correlation IDs for request tracing. |
-| Health Endpoint | `GET /api/v1/health` returns service status for uptime monitoring. |
+| Health Endpoint | `GET /api/health` returns service status, `GET /api/ready` checks database and Redis connectivity. |
 | Job Visibility | Real time step by step progress via `crawl_jobs` and `crawl_job_steps` tables, exposed through polling API. |
 | Query Logging | `query_logs` table tracks user searches for analytics. |
 | System Logs | `system_logs` table stores system level events with trace IDs. |

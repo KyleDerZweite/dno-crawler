@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 async def seed_ai_config(db: AsyncSession) -> None:
     """
     Seed AI configuration from environment variables.
-    
+
     If OPENROUTER_KEY is set in settings, create/update the OpenRouter configuration.
     """
     if not settings.openrouter_key:

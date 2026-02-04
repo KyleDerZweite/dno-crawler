@@ -41,11 +41,11 @@ class OpenRouterProvider(BaseProvider):
     @classmethod
     async def get_available_models(cls) -> list[dict[str, Any]]:
         """Fetch models from public OpenRouter API, filtered by modalities.
-        
+
         Filters for models that support:
         - Input: text + image
         - Output: text
-        
+
         No API key required for this endpoint.
         """
         try:
@@ -87,11 +87,11 @@ class OpenRouterProvider(BaseProvider):
     @classmethod
     def get_reasoning_options(cls) -> dict[str, Any] | None:
         """Return OpenRouter-specific reasoning options.
-        
+
         OpenRouter uses a unified 'reasoning' parameter that supports:
         - effort: "xhigh" | "high" | "medium" | "low" | "minimal" | "none"
         - max_tokens: direct token budget (alternative to effort)
-        
+
         See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
         """
         return {
@@ -122,12 +122,12 @@ class OpenRouterProvider(BaseProvider):
 
     def _build_reasoning_config(self) -> dict[str, Any] | None:
         """Build OpenRouter unified reasoning config from model_parameters.
-        
+
         OpenRouter uses:
         - reasoning.effort: "none" | "minimal" | "low" | "medium" | "high" | "xhigh"
         - reasoning.max_tokens: int (alternative to effort)
         - reasoning.exclude: bool (hide reasoning from response)
-        
+
         See: https://openrouter.ai/docs/guides/best-practices/reasoning-tokens
         """
         params = self.config.model_parameters or {}

@@ -72,10 +72,10 @@ async def shutdown(ctx):
 
 
 # Import job functions
-from app.jobs.crawl_job import process_crawl
-from app.jobs.enrichment_job import enrich_dno
-from app.jobs.extract_job import process_extract
-from app.jobs.search_job import process_dno_crawl  # Legacy full pipeline
+from app.jobs.crawl_job import process_crawl  # noqa: E402
+from app.jobs.enrichment_job import enrich_dno  # noqa: E402
+from app.jobs.extract_job import process_extract  # noqa: E402
+from app.jobs.search_job import process_dno_crawl  # noqa: E402
 
 
 class CrawlWorkerSettings:

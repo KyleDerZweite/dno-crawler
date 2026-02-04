@@ -219,11 +219,16 @@ class FinalizeStep(BaseStep):
             return "NS"
 
         # Specific exact matches for short codes if regex failed
-        if raw == "HS": return "HS"
-        if raw == "MS": return "MS"
-        if raw == "NS": return "NS"
-        if raw == "HS/MS": return "HS/MS"
-        if raw == "MS/NS": return "MS/NS"
+        if raw == "HS":
+            return "HS"
+        if raw == "MS":
+            return "MS"
+        if raw == "NS":
+            return "NS"
+        if raw == "HS/MS":
+            return "HS/MS"
+        if raw == "MS/NS":
+            return "MS/NS"
 
         # Fallback: return cleaned up version
         logger.warning("unknown_voltage_level", raw=raw)

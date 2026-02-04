@@ -16,7 +16,7 @@ class JobType(str, Enum):
 
 
 # Import DataType from core models
-from app.core.models import DataType
+from app.core.models import DataType  # noqa: E402
 
 
 class TriggerCrawlRequest(BaseModel):
@@ -73,7 +73,7 @@ class UpdateHLZFRequest(BaseModel):
 MAX_IMPORT_RECORDS = 500
 
 # Use shared voltage levels from core constants
-from app.core.constants import VERIFICATION_STATUSES, VOLTAGE_LEVELS
+from app.core.constants import VERIFICATION_STATUSES, VOLTAGE_LEVELS  # noqa: E402
 
 VALID_VOLTAGE_LEVELS = list(VOLTAGE_LEVELS)
 

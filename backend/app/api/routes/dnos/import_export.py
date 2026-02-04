@@ -347,11 +347,11 @@ async def import_dno_data(
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Content sanitization failed: {e!s}",
-        )
+        ) from e
     except Exception as e:
         logger.error("import_failed", error=str(e), dno_id=dno_id)
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Import failed: {e!s}",
-        )
+        ) from e

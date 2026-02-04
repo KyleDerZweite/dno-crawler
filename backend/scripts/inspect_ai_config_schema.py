@@ -30,8 +30,8 @@ async def main():
         try:
             # Query information_schema to get columns
             stmt = text("""
-                SELECT column_name, data_type 
-                FROM information_schema.columns 
+                SELECT column_name, data_type
+                FROM information_schema.columns
                 WHERE table_name = 'ai_provider_configs'
                 ORDER BY ordinal_position;
             """)

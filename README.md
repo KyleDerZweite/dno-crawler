@@ -10,7 +10,7 @@ DNO Crawler is a full-stack application for automated extraction of regulatory d
 - **Breadth-First Web Crawler**: Discovers data sources on DNO websites using BFS traversal with adaptive URL scoring, robots.txt compliance, and sitemap parsing.
 - **Regex-First Extraction with AI Fallback**: Prioritizes deterministic regex and HTML parsing for structured data extraction. When sanity checks fail (e.g., insufficient voltage levels), the system falls back to OpenAI-compatible vision/text models (Gemini, OpenRouter, Ollama).
 - **Pattern Learning System**: Records successful URL path patterns with year placeholders (e.g., `/downloads/{year}/netzentgelte.pdf`) in a cross-DNO database, enabling faster discovery on subsequent crawls.
-- **Async Job Queue**: Offloads long-running crawl and extraction tasks to Redis-backed arq workers, providing real-time progress tracking via a polling API.
+- **Async Job Queue**: Offloads long-running crawl and extraction tasks to Redis-backed arq workers (split into `worker-crawl` for discovery/download and `worker-extract` for extraction/validation), providing real-time progress tracking via a polling API.
 - **OIDC Authentication**: Secures protected endpoints via Zitadel-based OpenID Connect, with an automatic mock mode for local development.
 - **Data Provenance Tracking**: Stores extraction metadata (source URL, file hash, extraction method, AI model used) for auditability.
 
@@ -33,10 +33,10 @@ The application follows a layered architecture with clear separation between the
 │  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐  │
 │  │  Public Routes  │  │ Protected Routes│  │      Service Layer          │  │
 │  │  POST /search   │  │ POST /dnos/crawl│  │  VNBDigitalClient (GraphQL) │  │
-│  │  GET /health    │  │ GET /dnos/{id}  │  │  BDEWClient (JTables POST)  │  │
-│  │                 │  │ GET /jobs/{id}  │  │  MaStR Seed Import (Manual) │  │
-│  │                 │  │                 │  │  WebCrawler (BFS Engine)    │  │
-│  │                 │  │                 │  │  AIExtractor (OpenAI SDK)   │  │
+│  │  GET /api/health│  │ GET /dnos/{id}  │  │  BDEWClient (JTables POST)  │  │
+│  │  GET /api/ready │  │ GET /jobs/{id}  │  │  MaStR Seed Import (Manual) │  │
+│  │                 │  │ AI Config CRUD  │  │  WebCrawler (BFS Engine)    │  │
+│  │                 │  │ Admin Dashboard │  │  AIExtractor (OpenAI SDK)   │  │
 │  └─────────────────┘  └─────────────────┘  └─────────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────────────────┘
                                       │
@@ -85,13 +85,20 @@ VNB Digital provides real-time lookups. MaStR data requires periodic manual expo
 | Table | Purpose |
 |-------|---------|
 | `dnos` | Hub entity for DNOs. Contains resolved display fields, external IDs (MaStR, VNB, BDEW), crawlability status, and robots.txt metadata. |
+| `dno_mastr_data` | Raw Marktstammdatenregister data (market roles, addresses, ACER codes). |
+| `dno_vnb_data` | VNB Digital API data (official names, homepage URLs, contact info). |
+| `dno_bdew_data` | BDEW identification codes and market function codes (one to many). |
 | `locations` | Geographic lookups. Maps address hashes and coordinates to DNO IDs for O(1) cache hits. |
-| `netzentgelte` | Network tariffs by year and voltage level. Stores Arbeitspreis (ct/kWh) and Leistungspreis (€/kW). |
-| `hlzf` | Peak-load time windows by year, voltage level, and season (winter, spring, summer, autumn). |
+| `netzentgelte` | Network tariffs by year and voltage level. Stores Arbeitspreis (ct/kWh) and Leistungspreis (EUR/kW). |
+| `hlzf` | Peak load time windows by year, voltage level, and season (winter, spring, summer, autumn). |
+| `data_sources` | Extraction provenance tracking (source URL, file hash, extraction method, confidence). |
 | `dno_source_profiles` | Learned discovery state per DNO and data type. Stores URL patterns with `{year}` placeholders. |
-| `crawl_path_patterns` | Cross-DNO learned URL path patterns with success/failure counts for prioritization. |
-| `crawl_jobs` | Job state machine tracking status, progress, current step, and error messages. |
+| `crawl_path_patterns` | Cross DNO learned URL path patterns with success/failure counts for prioritization. |
+| `crawl_jobs` | Job state machine tracking status, progress, current step, parent job linking, and error messages. |
 | `crawl_job_steps` | Individual step execution records with timestamps and structured details. |
+| `ai_provider_configs` | Multi provider AI configuration with API key and OAuth support, priority ordering. |
+| `query_logs` | User search queries for analytics. |
+| `system_logs` | System level logs with trace IDs. |
 
 ### Extraction Strategy
 
@@ -154,7 +161,7 @@ Access the application:
 
 - **Frontend**: http://localhost:5173
 - **API Documentation**: http://localhost:8000/docs
-- **Health Check**: http://localhost:8000/api/v1/health
+- **Health Check**: http://localhost:8000/api/health
 
 ### Local Development (Without Containers)
 
@@ -208,7 +215,7 @@ The `crawl_recovery` service automatically resets jobs stuck in `running` or `cr
 ### Observability
 
 - **Logging**: Structured JSON logging via `structlog` with correlation IDs
-- **Health Endpoint**: `GET /api/v1/health` for uptime monitoring
+- **Health Endpoint**: `GET /api/health` and `GET /api/ready` for uptime and readiness monitoring
 - **Job Visibility**: Real-time step-by-step progress via `crawl_jobs` and `crawl_job_steps` tables
 
 ## License

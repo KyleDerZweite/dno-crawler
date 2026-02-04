@@ -25,7 +25,7 @@ PROVIDER_REGISTRY: dict[str, type[BaseProvider]] = {
 
 def get_all_providers() -> dict[str, dict]:
     """Return info for all registered providers.
-    
+
     Used by the frontend to dynamically build provider selection UI.
     """
     result = {}

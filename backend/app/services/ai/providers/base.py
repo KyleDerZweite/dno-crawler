@@ -19,10 +19,10 @@ logger = structlog.get_logger()
 
 class BaseProvider(ABC):
     """Abstract base class for AI providers.
-    
+
     Class methods (get_available_models, get_default_model) can be called
     without a config instance - used in the "Add Provider" UI flow.
-    
+
     Instance methods (extract_text, extract_vision, health_check) require
     a config instance from the database.
     """
@@ -47,9 +47,9 @@ class BaseProvider(ABC):
     @abstractmethod
     async def get_available_models(cls) -> list[dict[str, Any]]:
         """Fetch available models from provider.
-        
+
         Must be a @classmethod so it can be called before configuration exists.
-        
+
         Returns:
             List of model dicts with at minimum:
             - id: Model identifier (e.g., "anthropic/claude-3.5-sonnet")
@@ -73,9 +73,9 @@ class BaseProvider(ABC):
     @abstractmethod
     def get_reasoning_options(cls) -> dict[str, Any] | None:
         """Return reasoning configuration options for this provider.
-        
+
         Returns None if provider doesn't support reasoning tokens.
-        
+
         If supported, returns a dict with:
         - method: "level" | "budget" | "both"
         - levels: List of level options (if method is "level" or "both")
@@ -92,7 +92,7 @@ class BaseProvider(ABC):
     @abstractmethod
     def get_provider_info(cls) -> dict[str, Any]:
         """Return provider display info for the frontend UI.
-        
+
         Returns a dict with:
         - name: Display name (e.g., "OpenRouter")
         - description: Short description shown in dropdown
@@ -123,11 +123,11 @@ class BaseProvider(ABC):
         prompt: str,
     ) -> dict[str, Any]:
         """Extract structured data from text content.
-        
+
         Args:
             content: Text content (HTML, plain text, etc.)
             prompt: Extraction prompt with expected JSON schema
-            
+
         Returns:
             Parsed JSON response with _extraction_meta included
         """
@@ -141,12 +141,12 @@ class BaseProvider(ABC):
         prompt: str,
     ) -> dict[str, Any]:
         """Extract structured data from image/document.
-        
+
         Args:
             image_data: Base64-encoded image or document
             mime_type: MIME type (e.g., "image/png", "application/pdf")
             prompt: Extraction prompt with expected JSON schema
-            
+
         Returns:
             Parsed JSON response with _extraction_meta included
         """

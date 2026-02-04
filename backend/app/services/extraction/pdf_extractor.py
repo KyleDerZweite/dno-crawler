@@ -352,7 +352,7 @@ def _merge_tables(tables: list[list]) -> list[list]:
 
     merged_results = []
 
-    for col_count, table_group in grouped_tables.items():
+    for _, table_group in grouped_tables.items():
         # Check if this group looks like an HLZF table
         # We need at least one row to look like a header (contains Season keywords)
         has_header = False
@@ -535,7 +535,7 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
             voltage_level = normalize_voltage_level(str(row[0]).strip())
 
             # Extract seasonal values using the column mapping from header
-            def get_season_value(season_key):
+            def get_season_value(season_key, row=row):
                 col_idx = season_columns.get(season_key)
                 if col_idx is not None and col_idx < len(row):
                     return _clean_time_value(row[col_idx])

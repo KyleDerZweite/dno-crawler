@@ -40,7 +40,7 @@ async def serve_download(filepath: str, request: Request) -> FileResponse:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="File not found",
-        )
+        ) from None
 
     if not file_path.exists() or not file_path.is_file():
         raise HTTPException(

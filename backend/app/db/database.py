@@ -74,7 +74,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail="Database connection failed. Please try again later."
-        )
+        ) from e
     except SQLAlchemyError as e:
         logger.error("Database error", error=str(e))
         if session:
@@ -82,7 +82,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Database operation failed"
-        )
+        ) from e
     except Exception as e:
         # Don't catch application-level exceptions that should be handled by global handlers
         from fastapi.exceptions import HTTPException as FastAPIHTTPException
@@ -100,13 +100,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"An unexpected error occurred: {e!s}"
-        )
+        ) from e
     finally:
         if session:
             await session.close()
 
 
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager  # noqa: E402
 
 
 @asynccontextmanager
@@ -122,7 +122,7 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
     except SQLAlchemyError as e:
         logger.error("Database error in session", error=str(e))
         await session.rollback()
-        raise DatabaseError(f"Database operation failed: {e}", original_error=e)
+        raise DatabaseError(f"Database operation failed: {e}", original_error=e) from e
     finally:
         await session.close()
 

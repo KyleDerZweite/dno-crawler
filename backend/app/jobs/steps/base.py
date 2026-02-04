@@ -11,7 +11,7 @@ logger = structlog.get_logger()
 
 class StepError(Exception):
     """Custom exception for step failures that should be displayed to users.
-    
+
     Use this for controlled failures with user-friendly messages,
     as opposed to unexpected exceptions.
     """

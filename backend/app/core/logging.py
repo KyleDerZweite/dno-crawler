@@ -23,13 +23,13 @@ import structlog
 from structlog.types import Processor
 
 # Context variables for request-scoped wide event
-_request_event: ContextVar[dict[str, Any]] = ContextVar("request_event", default={})
+_request_event: ContextVar[dict[str, Any]] = ContextVar("request_event")
 _request_start: ContextVar[float] = ContextVar("request_start", default=0.0)
 
 
 def get_request_event() -> dict[str, Any]:
     """Get the current request's wide event for enrichment."""
-    return _request_event.get()
+    return _request_event.get({})
 
 
 def enrich_event(**kwargs: Any) -> None:
@@ -46,7 +46,7 @@ def enrich_event(**kwargs: Any) -> None:
             feature_flags={"new_checkout": True},
         )
     """
-    event = _request_event.get()
+    event = _request_event.get({})
     for key, value in kwargs.items():
         # Support nested objects with dot notation
         if "." in key:
@@ -99,7 +99,7 @@ def finalize_request_event(
     error: Exception | None = None,
 ) -> dict[str, Any]:
     """Finalize and return the wide event for emission."""
-    event = _request_event.get()
+    event = _request_event.get({})
     start_time = _request_start.get()
 
     # Add response context
@@ -157,7 +157,7 @@ def should_sample(event: dict[str, Any]) -> bool:
 
 def add_request_id(logger: Any, method_name: str, event_dict: dict) -> dict:
     """Processor to add request_id to all log entries."""
-    current_event = _request_event.get()
+    current_event = _request_event.get({})
     if current_event and "request_id" in current_event:
         event_dict["request_id"] = current_event["request_id"]
     return event_dict

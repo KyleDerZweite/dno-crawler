@@ -120,7 +120,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
     Handles various formats:
     - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
     - "12:15-13:15\n16:45-19:45" (newline-separated)
-    - "08:00 – 12:00" (en-dash with spaces)
+    - "08:00 - 12:00" (en-dash with spaces)
     - "18:00 20:00" (space instead of hyphen - AI error)
     - "entfällt" or "-" (no data)
 
@@ -546,7 +546,7 @@ async def _search_by_dno(
 ) -> PublicSearchResponse:
     """
     Search by DNO name or ID directly.
-    
+
     Waterfall logic:
     1. Search local DB with fuzzy matching
     2. If not found, search VNB Digital API by name

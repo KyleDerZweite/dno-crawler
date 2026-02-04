@@ -66,11 +66,17 @@ backend/
 │       ├── bdew_client.py  # BDEW codes API client
 │       ├── content_verifier.py  # Data verification service
 │       ├── crawl_recovery.py    # Job recovery on startup
+│       ├── encoding_utils.py    # Character encoding detection
 │       ├── file_analyzer.py     # File type detection
+│       ├── html_content_detector.py  # HTML content classification
+│       ├── impressum_extractor.py    # Impressum page address extraction
 │       ├── pattern_learner.py   # URL pattern learning
+│       ├── pdf_downloader.py    # PDF download with retry
+│       ├── retry_utils.py       # Retry and backoff utilities
 │       ├── robots_parser.py     # robots.txt parsing
 │       ├── sample_capture.py    # Sample data capture
 │       ├── url_utils.py         # URL resolution utilities
+│       ├── user_agent.py        # User-Agent string management
 │       └── web_crawler.py       # BFS web crawler
 frontend/
 ├── src/
@@ -164,30 +170,84 @@ npm run dev
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/v1/health` | Health check |
-| `POST /api/v1/search` | Address and coordinate DNO lookup |
+| `GET /api/health` | Health check (service status) |
+| `GET /api/ready` | Readiness check (database and Redis connectivity) |
+| `POST /api/v1/search` | Address, coordinate, and name based DNO lookup |
+| `GET /api/v1/files/downloads/{path}` | Download cached files (rate limited) |
 
-### Protected Endpoints
-
-| Endpoint | Purpose |
-|----------|---------|
-| `GET /api/v1/auth/me` | Current user info |
-| `GET /api/v1/dnos` | List DNOs with pagination and filtering |
-| `GET /api/v1/dnos/{id}` | DNO details with data |
-| `POST /api/v1/dnos/{id}/crawl` | Trigger crawl job |
-| `GET /api/v1/jobs` | List jobs |
-| `GET /api/v1/jobs/{id}` | Job details with steps |
-| `GET /api/v1/files/{path}` | Download cached files |
-| `POST /api/v1/verification/{type}/{id}` | Verify extracted data |
-
-### Admin Endpoints
+### Protected Endpoints (Authenticated User)
 
 | Endpoint | Purpose |
 |----------|---------|
-| `GET /api/v1/admin/stats` | System statistics |
-| `GET /api/v1/admin/dashboard` | Admin dashboard data |
-| `GET /api/v1/admin/flagged` | Flagged data items |
-| `POST /api/v1/admin/bulk-extract` | Bulk extraction operations |
+| `GET /api/v1/auth/me` | Current user info from OIDC token |
+| `GET /api/v1/dnos` | List DNOs with pagination, search, and filtering |
+| `GET /api/v1/dnos/stats` | Dashboard statistics (DNO and data counts) |
+| `GET /api/v1/dnos/search-vnb` | Search VNB Digital for DNO name autocomplete |
+| `GET /api/v1/dnos/search-vnb/{vnb_id}/details` | Get extended VNB details |
+| `POST /api/v1/dnos` | Create a new DNO |
+| `GET /api/v1/dnos/{id}` | DNO details with all associated data |
+| `PATCH /api/v1/dnos/{id}` | Update DNO metadata (admin only) |
+| `DELETE /api/v1/dnos/{id}` | Delete DNO and all associated data (admin only) |
+| `POST /api/v1/dnos/{id}/crawl` | Trigger crawl, extract, or full pipeline job |
+| `GET /api/v1/dnos/{id}/jobs` | Get recent crawl jobs for a DNO |
+| `GET /api/v1/dnos/{id}/data` | Get all Netzentgelte and HLZF data |
+| `PATCH /api/v1/dnos/{id}/netzentgelte/{record_id}` | Update a Netzentgelte record (admin only) |
+| `DELETE /api/v1/dnos/{id}/netzentgelte/{record_id}` | Delete a Netzentgelte record (admin only) |
+| `PATCH /api/v1/dnos/{id}/hlzf/{record_id}` | Update an HLZF record (admin only) |
+| `DELETE /api/v1/dnos/{id}/hlzf/{record_id}` | Delete an HLZF record (admin only) |
+| `GET /api/v1/dnos/{id}/files` | List source files for a DNO |
+| `POST /api/v1/dnos/{id}/upload` | Upload a file for a DNO |
+| `GET /api/v1/dnos/{id}/export` | Export DNO data as JSON download |
+| `POST /api/v1/dnos/{id}/import` | Import JSON data (merge or replace mode) |
+| `GET /api/v1/jobs` | List all jobs with filtering and pagination |
+| `GET /api/v1/jobs/{id}` | Job details with individual step records |
+| `DELETE /api/v1/jobs/{id}` | Delete a job |
+| `POST /api/v1/verification/netzentgelte/{id}/verify` | Mark Netzentgelte record as verified |
+| `POST /api/v1/verification/netzentgelte/{id}/flag` | Flag Netzentgelte record as incorrect |
+| `DELETE /api/v1/verification/netzentgelte/{id}/flag` | Remove flag (maintainer or admin) |
+| `POST /api/v1/verification/hlzf/{id}/verify` | Mark HLZF record as verified |
+| `POST /api/v1/verification/hlzf/{id}/flag` | Flag HLZF record as incorrect |
+| `DELETE /api/v1/verification/hlzf/{id}/flag` | Remove flag (maintainer or admin) |
+
+### Admin Endpoints (Require Admin Role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/admin/dashboard` | Admin dashboard statistics |
+| `GET /api/v1/admin/flagged` | List all flagged data records for review |
+| `GET /api/v1/admin/files` | List cached files with extraction status |
+| `POST /api/v1/admin/extract/preview` | Preview bulk extraction (dry run) |
+| `POST /api/v1/admin/extract/bulk` | Trigger bulk extraction jobs |
+| `GET /api/v1/admin/extract/bulk/status` | Get bulk extraction job status |
+| `POST /api/v1/admin/extract/bulk/cancel` | Cancel pending bulk extraction jobs |
+| `DELETE /api/v1/admin/extract/bulk` | Delete all bulk extraction jobs (reset) |
+
+### AI Provider Endpoints (Require Admin Role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/ai/providers` | List available AI provider types |
+| `GET /api/v1/ai/providers/{type}` | Get provider details and available models |
+| `GET /api/v1/ai/configs` | List all saved AI configurations |
+| `POST /api/v1/ai/configs` | Create a new AI configuration |
+| `PATCH /api/v1/ai/configs/{id}` | Update an AI configuration |
+| `DELETE /api/v1/ai/configs/{id}` | Delete an AI configuration |
+| `POST /api/v1/ai/configs/reorder` | Reorder configurations (fallback priority) |
+| `POST /api/v1/ai/configs/{id}/test` | Test a saved AI configuration |
+| `POST /api/v1/ai/configs/test` | Test configuration before saving |
+| `GET /api/v1/ai/status` | Get overall AI system status |
+
+### OAuth Management Endpoints (Require Admin Role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/admin/oauth/detect-credentials` | Detect available CLI credentials |
+| `POST /api/v1/admin/oauth/google/start` | Start Google OAuth flow |
+| `GET /api/v1/admin/oauth/google/callback` | Handle Google OAuth callback (browser redirect) |
+| `POST /api/v1/admin/oauth/google/callback` | Handle Google OAuth callback (frontend POST) |
+| `GET /api/v1/admin/oauth/google/status` | Check Google OAuth authentication status |
+| `POST /api/v1/admin/oauth/google/logout` | Clear Google OAuth credentials |
+| `POST /api/v1/admin/oauth/google/use-gemini-cli` | Use existing gemini-cli credentials |
 
 ## Frontend Routes
 

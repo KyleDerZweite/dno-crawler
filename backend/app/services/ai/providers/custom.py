@@ -23,7 +23,7 @@ logger = structlog.get_logger()
 
 class CustomProvider(BaseProvider):
     """Generic OpenAI-compatible endpoint provider.
-    
+
     No special features - just basic chat completions.
     User must know their model ID and endpoint URL.
     """

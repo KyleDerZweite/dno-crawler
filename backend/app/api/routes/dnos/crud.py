@@ -607,7 +607,7 @@ async def get_dno_details(
     # -------------------------------------------------------------------------
     # Get counts and active jobs for live status
     stats_query = text("""
-        SELECT 
+        SELECT
             (SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id) as netz_count,
             (SELECT COUNT(*) FROM hlzf WHERE dno_id = :dno_id) as hlzf_count,
             (SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'running') as running_jobs,

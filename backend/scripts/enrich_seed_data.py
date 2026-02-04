@@ -167,6 +167,7 @@ async def enrich_all_records_json(
     Enrich all records and return as list (for JSON output).
     """
     from app.services.bdew_client import BDEWClient
+    from app.services.vnb.client import VNBDigitalClient
 
     log = logger.bind(total=len(records), limit=limit)
     log.info("Starting enrichment (JSON mode)")
@@ -261,6 +262,7 @@ async def enrich_dnos_database(
     from app.db.models import DNOModel
     from app.db.source_models import DNOBdewData, DNOVnbData
     from app.services.bdew_client import BDEWClient
+    from app.services.vnb.client import VNBDigitalClient
 
     log = logger.bind(limit=limit)
     log.info("Starting enrichment (Database mode)")

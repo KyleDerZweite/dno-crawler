@@ -89,7 +89,7 @@ async def list_providers(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """List all available AI provider types with their display info.
-    
+
     Returns info from each provider's get_provider_info() method.
     """
     from app.services.ai.providers import get_all_providers
@@ -106,7 +106,7 @@ async def get_provider(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get provider details including available models.
-    
+
     Delegates to the provider's class methods for models and configuration.
     """
     from app.services.ai.config_service import AIConfigService
@@ -311,7 +311,7 @@ async def test_config_preview(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Test an AI configuration BEFORE saving it.
-    
+
     Sends a quick health check to verify the credentials work.
     """
     import time

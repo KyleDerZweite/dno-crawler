@@ -169,10 +169,10 @@ class DownloadStep(BaseStep):
     ) -> tuple[bytes, str, int]:
         """
         Stream download with size limit and retries.
-        
+
         Returns:
             Tuple of (content_bytes, content_type, file_size)
-        
+
         Raises:
             StepError: If download fails or exceeds size limit
         """

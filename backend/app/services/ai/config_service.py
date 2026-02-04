@@ -246,9 +246,9 @@ class AIConfigService:
     @staticmethod
     async def get_models_for_provider(provider_type: str) -> dict[str, Any]:
         """Get available models for a provider.
-        
+
         Delegates to the provider's class methods.
-        
+
         Returns:
             Dict with models, default model, and reasoning_options
         """

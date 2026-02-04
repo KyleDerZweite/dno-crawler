@@ -30,8 +30,8 @@ async def main():
         try:
             # Check if column exists
             check_stmt = text("""
-                SELECT column_name 
-                FROM information_schema.columns 
+                SELECT column_name
+                FROM information_schema.columns
                 WHERE table_name = 'ai_provider_configs' AND column_name = 'model_parameters';
             """)
             result = await session.execute(check_stmt)

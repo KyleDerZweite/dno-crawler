@@ -17,7 +17,7 @@ logger = structlog.get_logger()
 
 class LiteLLMProvider(BaseProvider):
     """LiteLLM proxy provider - Coming Soon.
-    
+
     This provider will eventually support:
     - Connection to LiteLLM proxy servers
     - Access to any model the proxy exposes

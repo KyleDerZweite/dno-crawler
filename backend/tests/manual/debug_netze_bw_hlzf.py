@@ -3,7 +3,7 @@
 Debug script for Netze BW HLZF extraction issue.
 
 Investigates why only 8 out of 10 expected HLZF records are extracted.
-Expected: 5 voltage levels × 2 years = 10 records
+Expected: 5 voltage levels x 2 years = 10 records
 Actual: 8 records (missing "Umspannung zur Mittelspannung" for both years)
 
 Usage:

@@ -17,10 +17,10 @@ import io
 import re
 from dataclasses import dataclass
 from enum import Enum
+from pathlib import Path
 
 import httpx
 import structlog
-from pathlib import Path
 
 logger = structlog.get_logger()
 
@@ -205,27 +205,27 @@ class ContentVerifier:
         base_data_dir: Path,
     ) -> tuple[VerificationResult, Path | None]:
         """Download, verify, and cache a document file.
-        
+
         Downloads the complete file to properly verify PDF/Excel content.
         Stores verified files in downloads/{dno_slug}/, unverified in bulk-data/{dno_slug}/.
-        
+
         Args:
             url: URL to download
             expected_data_type: "netzentgelte" or "hlzf"
             expected_year: Expected year (optional)
             dno_slug: DNO identifier for directory naming
             base_data_dir: Base data directory (typically Path("data"))
-            
+
         Returns:
             Tuple of (VerificationResult, file_path or None)
             file_path is where the file was saved (either downloads or bulk-data)
         """
-        from urllib.parse import urlparse, unquote
         import hashlib
-        
+        from urllib.parse import unquote, urlparse
+
         try:
             content_type = self._detect_content_type(url)
-            
+
             # Download full file
             content = await self._download_full(url)
             if not content:
@@ -237,10 +237,10 @@ class ContentVerifier:
                     keywords_missing=[],
                     error="Failed to download file",
                 ), None
-            
+
             # Extract text for verification
             text = await self._extract_text(content, content_type, url)
-            
+
             # Verify content
             if text:
                 result = self._verify_text(text, expected_data_type, expected_year)
@@ -254,7 +254,7 @@ class ContentVerifier:
                     keywords_missing=[],
                     error="Could not extract text from document",
                 )
-            
+
             # Determine filename from URL
             parsed = urlparse(url)
             original_filename = Path(unquote(parsed.path)).name
@@ -263,7 +263,7 @@ class ContentVerifier:
                 url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
                 ext = self._get_extension_for_content_type(content_type)
                 original_filename = f"document_{url_hash}{ext}"
-            
+
             # Determine destination directory
             if result.is_verified and result.has_data_content:
                 # Verified with data content → downloads directory
@@ -271,17 +271,16 @@ class ContentVerifier:
             else:
                 # Unverified or no data content → bulk-data for future use
                 dest_dir = base_data_dir / "bulk-data" / dno_slug
-            
+
             # Create directory if needed
             dest_dir.mkdir(parents=True, exist_ok=True)
-            
+
             # Build destination path (add data type and year to filename)
-            name_stem = Path(original_filename).stem
             ext = Path(original_filename).suffix or self._get_extension_for_content_type(content_type)
             year_str = str(expected_year) if expected_year else "unknown"
             dest_filename = f"{dno_slug}-{expected_data_type}-{year_str}{ext}"
             dest_path = dest_dir / dest_filename
-            
+
             # Handle duplicates (add hash suffix if file already exists with different content)
             if dest_path.exists():
                 existing_hash = hashlib.md5(dest_path.read_bytes()).hexdigest()[:8]
@@ -290,10 +289,10 @@ class ContentVerifier:
                     # Different file - add hash to name
                     dest_filename = f"{dno_slug}-{expected_data_type}-{year_str}_{new_hash}{ext}"
                     dest_path = dest_dir / dest_filename
-            
+
             # Save file
             dest_path.write_bytes(content)
-            
+
             self.log.info(
                 "document_cached",
                 url=url[:80],
@@ -302,9 +301,9 @@ class ContentVerifier:
                 has_data=result.has_data_content,
                 confidence=round(result.confidence, 2),
             )
-            
+
             return result, dest_path
-            
+
         except Exception as e:
             self.log.warning("verify_and_cache_failed", url=url[:80], error=str(e))
             return VerificationResult(
@@ -318,11 +317,11 @@ class ContentVerifier:
 
     async def _download_full(self, url: str, max_size: int = 50 * 1024 * 1024) -> bytes | None:
         """Download complete file (up to max_size bytes).
-        
+
         Args:
             url: URL to download
             max_size: Maximum file size to download (default 50MB)
-            
+
         Returns:
             File content as bytes, or None if failed
         """
@@ -334,19 +333,19 @@ class ContentVerifier:
         except Exception as e:
             self.log.debug("download_full_failed", url=url[:80], error=str(e))
             return None
-    
+
     async def _do_download_full(
-        self, 
-        client: httpx.AsyncClient, 
-        url: str, 
+        self,
+        client: httpx.AsyncClient,
+        url: str,
         max_size: int
     ) -> bytes | None:
         """Perform the actual full download."""
         from app.services.retry_utils import with_retries
-        
+
         async def _download() -> bytes | None:
             response = await client.get(url, follow_redirects=True)
-            
+
             if response.status_code != 200:
                 if 400 <= response.status_code < 500:
                     return None
@@ -357,20 +356,20 @@ class ContentVerifier:
                         response=response,
                     )
                 return None
-            
+
             # Check content length before accepting
             content_length = response.headers.get("content-length")
             if content_length and int(content_length) > max_size:
                 self.log.warning("file_too_large", url=url[:80], size=content_length)
                 return None
-            
+
             content = response.content
             if len(content) > max_size:
                 self.log.warning("file_too_large", url=url[:80], size=len(content))
                 return None
-                
+
             return content
-        
+
         try:
             return await with_retries(_download, max_attempts=3, backoff_base=1.0)
         except Exception as e:
@@ -451,7 +450,7 @@ class ContentVerifier:
             if re.search(pattern, text_lower):
                 structure_score += 2
                 structure_matches += 1
-        
+
         # Determine if it has data content (prices/windows)
         has_data_content = structure_matches > 0
 
@@ -477,7 +476,7 @@ class ContentVerifier:
         # Require required keywords for high confidence
         if not required_met:
             confidence = min(confidence, 0.3)
-            
+
         # Reduce confidence if we have keywords but no data content (likely a landing page)
         if required_met and not has_data_content:
             # Cap confidence at 0.5 - enough to be interesting, but maybe not enough to be final
@@ -625,7 +624,7 @@ class ContentVerifier:
 
     def _extract_pdf_text(self, content: bytes) -> str | None:
         """Extract text from PDF content with multiple fallbacks.
-        
+
         Strategy:
         1. Try pdfplumber (best for tables)
         2. Fallback to PyMuPDF (handles more edge cases, encrypted PDFs)

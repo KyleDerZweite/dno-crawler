@@ -22,19 +22,19 @@ def detect_encoding(
 ) -> str:
     """
     Detect content encoding with multiple fallback strategies.
-    
+
     Priority:
     1. Content-Type header charset
     2. BOM detection
     3. HTML meta charset tag
     4. charset_normalizer statistical detection
     5. Default fallback
-    
+
     Args:
         content: Raw bytes to detect encoding for
         content_type: Content-Type header value (optional)
         default: Default encoding if detection fails
-    
+
     Returns:
         Detected encoding name (normalized)
     """
@@ -66,7 +66,6 @@ def detect_encoding(
         # Only use first 10KB for detection (faster, usually sufficient)
         detected = from_bytes(content[:10240]).best()
         if detected and detected.encoding:
-            confidence = detected.encoding  # charset_normalizer doesn't give numeric confidence easily
             log.debug("Encoding from charset_normalizer", encoding=detected.encoding)
             return _normalize_encoding(detected.encoding)
     except ImportError:
@@ -87,13 +86,13 @@ def decode_content(
 ) -> tuple[str, str]:
     """
     Decode bytes to string with automatic encoding detection.
-    
+
     Args:
         content: Raw bytes to decode
         content_type: Content-Type header value (optional)
         default_encoding: Default encoding if detection fails
         errors: Error handling mode (replace, ignore, strict)
-    
+
     Returns:
         Tuple of (decoded_string, detected_encoding)
     """

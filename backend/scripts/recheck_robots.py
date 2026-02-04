@@ -98,7 +98,7 @@ EXCLUDE_LANGS = ["/es/", "/it/", "/fr/", "/nl/", "/pt/", "/ru/", "/cn/", "/zh/",
 def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
     """
     Filter sitemap URLs to prefer German, fallback to English, exclude others.
-    
+
     Priority:
     1. German (/de/) sitemaps
     2. English (/en/) sitemaps (if no German)

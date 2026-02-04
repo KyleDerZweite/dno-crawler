@@ -211,7 +211,7 @@ EXCLUDE_LANGS = ["/es/", "/it/", "/fr/", "/nl/", "/pt/", "/ru/", "/cn/", "/zh/",
 def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
     """
     Filter sitemap URLs to prefer German, fallback to English, exclude others.
-    
+
     Priority:
     1. German (/de/) sitemaps
     2. English (/en/) sitemaps (if no German)
@@ -382,8 +382,7 @@ async def discover_via_sitemap(
 
         log.info("Sitemap is an index, fetching nested sitemaps", count=len(nested_sitemaps))
         # Get the sitemap URL we're working with
-        parsed = urlparse(base_url)
-        site_base = f"{parsed.scheme}://{parsed.netloc}"
+        urlparse(base_url)
 
         for nested_url in nested_sitemaps:
             nested_urls = await fetch_and_parse_sitemap_recursive(client, nested_url, max_depth=2)

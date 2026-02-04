@@ -27,12 +27,12 @@ Output stored in job.context:
 
 import asyncio
 from pathlib import Path
+from urllib.parse import urljoin, urlparse
 
 import httpx
 import structlog
 from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
-from urllib.parse import urljoin, urlparse
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel, DNOModel
@@ -40,7 +40,7 @@ from app.jobs.steps.base import BaseStep, StepError
 from app.services.content_verifier import ContentVerifier
 from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
-from app.services.url_utils import UrlProber, DOCUMENT_EXTENSIONS, normalize_url
+from app.services.url_utils import DOCUMENT_EXTENSIONS, UrlProber
 from app.services.user_agent import build_user_agent, require_contact_for_bfs
 from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 
@@ -341,7 +341,7 @@ class DiscoverStep(BaseStep):
                     ),
                     timeout=BFS_CRAWL_TIMEOUT_SECONDS,
                 )
-            except asyncio.TimeoutError:
+            except TimeoutError:
                 log.error(
                     "BFS crawl timed out",
                     timeout_seconds=BFS_CRAWL_TIMEOUT_SECONDS,
@@ -365,7 +365,7 @@ class DiscoverStep(BaseStep):
                 raise StepError(
                     f"BFS crawl timed out after {BFS_CRAWL_TIMEOUT_SECONDS // 60} minutes. "
                     f"The website {dno_website} may be too slow or have too many pages to crawl."
-                )
+                ) from None
 
             ctx["pages_crawled"] = len(results)
 
@@ -445,7 +445,7 @@ class DiscoverStep(BaseStep):
                         doc_info = await self._check_landing_page_for_documents(
                             client, result.final_url, verifier, job, allowed_domains
                         )
-                        
+
                         if doc_info:
                             doc_url, doc_type, doc_conf, cached_path = doc_info
                             ctx["strategy"] = "bfs_crawl_landing_link"
@@ -556,35 +556,35 @@ class DiscoverStep(BaseStep):
         allowed_domains: set[str] | None,
     ) -> tuple[str, str, float, Path | None] | None:
         """Check if a landing page contains links to verified documents.
-        
+
         Downloads and caches document files for proper verification.
         Verified files go to downloads/, unverified to bulk-data/.
-        
+
         Returns:
             Tuple of (url, content_type, confidence, cached_file_path) if found, else None
         """
         from app.core.config import settings
-        
+
         try:
             # Fetch page content
             response = await client.get(url, timeout=10.0)
             if response.status_code != 200:
                 return None
-                
+
             soup = BeautifulSoup(response.text, "lxml")
             base_url = str(response.url)
-            
+
             # Get DNO info from job context
             ctx = job.context or {}
             dno_slug = ctx.get("dno_slug", f"dno_{job.dno_id}")
             base_data_dir = Path(settings.storage_path)
-            
+
             # Extract document links
             doc_links = []
             for tag in soup.find_all("a", href=True):
                 href = tag["href"]
                 full_url = urljoin(base_url, href)
-                
+
                 # Check if it's a document link
                 if any(full_url.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS):
                     # Check domain if restricted
@@ -597,39 +597,38 @@ class DiscoverStep(BaseStep):
                             domain = domain[4:]
                         if domain not in allowed_domains:
                             continue
-                    
+
                     # Get link text for scoring
                     link_text = tag.get_text(strip=True).lower()
                     doc_links.append((full_url, link_text))
-            
+
             # Score and sort links by relevance
             def score_link(link_info: tuple[str, str]) -> int:
                 url, text = link_info
                 score = 0
                 url_lower = url.lower()
-                
+
                 # Year in URL/text
                 if job.year and str(job.year) in url_lower:
                     score += 10
                 if job.year and str(job.year) in text:
                     score += 5
-                    
+
                 # Data type keywords
                 if job.data_type == "netzentgelte":
                     if any(kw in url_lower or kw in text for kw in ["netzentgelt", "preisblatt", "entgelt"]):
                         score += 10
-                elif job.data_type == "hlzf":
-                    if any(kw in url_lower or kw in text for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]):
-                        score += 10
-                
+                elif job.data_type == "hlzf" and any(kw in url_lower or kw in text for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]):
+                    score += 10
+
                 # Prefer PDFs for netzentgelte
                 if url_lower.endswith(".pdf"):
                     score += 3
-                    
+
                 return score
-            
+
             doc_links.sort(key=score_link, reverse=True)
-            
+
             # Download and verify top candidates
             for link_url, link_text in doc_links[:5]:
                 logger.info(
@@ -637,7 +636,7 @@ class DiscoverStep(BaseStep):
                     url=link_url[:80],
                     link_text=link_text[:50] if link_text else "",
                 )
-                
+
                 # Use full-file verification with caching
                 verification, cached_path = await verifier.verify_and_cache_document(
                     url=link_url,
@@ -646,7 +645,7 @@ class DiscoverStep(BaseStep):
                     dno_slug=dno_slug,
                     base_data_dir=base_data_dir,
                 )
-                
+
                 # Accept if verified with data content
                 if verification.is_verified and verification.has_data_content:
                     logger.info(
@@ -657,7 +656,7 @@ class DiscoverStep(BaseStep):
                     )
                     content_type = verifier._detect_content_type(link_url)
                     return link_url, content_type, verification.confidence, cached_path
-                    
+
                 # Log why it wasn't accepted
                 logger.debug(
                     "document_not_verified",
@@ -668,9 +667,9 @@ class DiscoverStep(BaseStep):
                     error=verification.error,
                     cached_path=str(cached_path) if cached_path else None,
                 )
-                    
+
             return None
-            
+
         except Exception as e:
             logger.warning("landing_page_check_failed", url=url, error=str(e))
             return None
