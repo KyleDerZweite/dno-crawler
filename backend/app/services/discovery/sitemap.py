@@ -11,6 +11,8 @@ import re
 from urllib.parse import urlparse
 from xml.etree import ElementTree
 
+import defusedxml.ElementTree as DefusedET
+
 import httpx
 import structlog
 
@@ -137,7 +139,7 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
             {},  # No namespace
         ]
 
-        root = ElementTree.fromstring(xml_content)
+        root = DefusedET.fromstring(xml_content)
 
         # Try each namespace variant
         for namespaces in namespace_variants:

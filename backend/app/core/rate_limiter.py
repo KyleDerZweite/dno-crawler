@@ -61,9 +61,11 @@ class RateLimiter:
         key = f"rate_limit:ip:{ip}"
 
         try:
-            count = await self.redis.incr(key)
-            if count == 1:
-                await self.redis.expire(key, self.ip_window)
+            async with self.redis.pipeline(transaction=True) as pipe:
+                await pipe.incr(key)
+                await pipe.expire(key, self.ip_window)
+                results = await pipe.execute()
+            count = results[0]
 
             if count > self.ip_rate:
                 self.log.warning("IP rate limit exceeded", ip=ip, count=count)
@@ -86,9 +88,11 @@ class RateLimiter:
             HTTPException: 503 if quota exhausted
         """
         try:
-            count = await self.redis.incr(self.VNB_GLOBAL_KEY)
-            if count == 1:
-                await self.redis.expire(self.VNB_GLOBAL_KEY, self.vnb_window)
+            async with self.redis.pipeline(transaction=True) as pipe:
+                await pipe.incr(self.VNB_GLOBAL_KEY)
+                await pipe.expire(self.VNB_GLOBAL_KEY, self.vnb_window)
+                results = await pipe.execute()
+            count = results[0]
 
             if count > self.vnb_global_rate:
                 self.log.warning("VNB global quota exhausted", count=count)
@@ -122,12 +126,24 @@ class RateLimiter:
 
 
 def get_client_ip(request: Request) -> str:
-    """Extract client IP from request, handling proxies."""
-    # Check X-Forwarded-For header (set by reverse proxy)
+    """Extract client IP from request, handling proxies.
+
+    Uses rightmost-N approach: take the Nth IP from the right of X-Forwarded-For,
+    where N = TRUSTED_PROXY_COUNT. This prevents spoofing because only trusted
+    proxies append to the right side of the header.
+    """
+    from app.core.config import settings
+
     forwarded = request.headers.get("X-Forwarded-For")
     if forwarded:
-        # First IP in the list is the original client
-        return forwarded.split(",")[0].strip()
+        ips = [ip.strip() for ip in forwarded.split(",") if ip.strip()]
+        # The rightmost `trusted_proxy_count` entries are from trusted proxies.
+        # The client IP is at index -(trusted_proxy_count + 1) from the end.
+        idx = len(ips) - settings.trusted_proxy_count
+        if 0 <= idx < len(ips):
+            return ips[idx]
+        # If fewer IPs than expected proxies, use the leftmost (direct client)
+        return ips[0]
 
     # Fallback to direct connection IP
     if request.client:

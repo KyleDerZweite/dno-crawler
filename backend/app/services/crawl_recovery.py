@@ -6,7 +6,7 @@ Also resets stale CrawlJobModel entries stuck in pending/running status.
 Should be called on application startup.
 """
 
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 import structlog
 from sqlalchemy import select
@@ -36,7 +36,7 @@ async def recover_stuck_crawl_jobs(
     log = logger.bind(timeout_hours=timeout_hours)
     log.info("Checking for stuck crawl jobs")
 
-    timeout_threshold = datetime.utcnow() - timedelta(hours=timeout_hours)
+    timeout_threshold = datetime.now(UTC) - timedelta(hours=timeout_hours)
     recovered_count = 0
 
     # 1. Recover stuck DNO statuses
@@ -70,6 +70,7 @@ async def recover_stuck_crawl_jobs(
     for job in stuck_jobs:
         job.status = "failed"
         job.error_message = "Timed out - recovered on startup"
+        job.completed_at = datetime.now(UTC)
         log.warning(
             "Recovered stuck crawl job",
             job_id=job.id,

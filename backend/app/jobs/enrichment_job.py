@@ -292,7 +292,7 @@ async def queue_enrichment_jobs(db: AsyncSession, limit: int = 100) -> int:
             "enrich_dno",
             dno_id,
             _job_id=f"enrich-{dno_id}",
-            _queue_name="arq:queue",
+            _queue_name="crawl",
         )
 
     await redis.close()
@@ -314,7 +314,7 @@ async def enqueue_enrichment_job(dno_id: int) -> bool:
             "enrich_dno",
             dno_id,
             _job_id=f"enrich-{dno_id}",
-            _queue_name="arq:queue",
+            _queue_name="crawl",
         )
         logger.info("Enqueued enrichment job", dno_id=dno_id)
         return True

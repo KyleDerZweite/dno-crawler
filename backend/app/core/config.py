@@ -44,10 +44,12 @@ class Settings(BaseSettings):
 
     # Authentication
     zitadel_domain: str = Field(default="auth.example.com", validation_alias="ZITADEL_DOMAIN")
+    zitadel_client_id: str | None = Field(default=None, validation_alias="ZITADEL_CLIENT_ID")
 
     # Rate Limiting
     rate_limit_public: int = 10  # requests per minute for unauthenticated
     rate_limit_authenticated: int = 100  # requests per minute for authenticated
+    trusted_proxy_count: int = Field(default=1, validation_alias="TRUSTED_PROXY_COUNT")
 
     # Note: AI configuration has been moved to database.
     # Configure AI providers via Admin UI → AI Configuration.
@@ -97,7 +99,12 @@ class Settings(BaseSettings):
     @property
     def is_auth_enabled(self) -> bool:
         """Determine if auth is enabled based on Zitadel domain."""
-        return self.zitadel_domain and self.zitadel_domain != "auth.example.com"
+        return bool(self.zitadel_domain) and self.zitadel_domain != "auth.example.com"
+
+    @property
+    def is_production(self) -> bool:
+        """Check if running in production or staging environment."""
+        return self.environment in ("production", "staging")
 
     @property
     def zitadel_jwks_url(self) -> str:

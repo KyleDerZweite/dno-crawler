@@ -750,7 +750,10 @@ function DNOCard({ dno }: { dno: DNO }) {
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  window.open(dno.website, '_blank');
+                  const url = dno.website;
+                  if (url && /^https?:\/\//i.test(url)) {
+                    window.open(url, '_blank', 'noopener,noreferrer');
+                  }
                 }}
               >
                 <ExternalLink className="h-4 w-4" />

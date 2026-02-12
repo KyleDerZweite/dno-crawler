@@ -51,6 +51,10 @@ dependencies = [
     "pyjwt[crypto]>=2.8.0",
     "passlib[bcrypt]>=1.7.4",
 
+    # Security
+    "defusedxml>=0.7.1",         # Safe XML parsing (XXE protection)
+    "cryptography>=42.0.0",      # Encryption (Fernet, HKDF)
+
     # Utilities
     "python-dotenv>=1.0.0",
     "structlog>=24.1.0",

@@ -372,11 +372,23 @@ async def test_config_preview(
     except Exception as e:
         elapsed_ms = int((time.time() - start_time) * 1000)
         logger.warning("ai_config_test_failed", error=str(e), provider=request.provider_type)
+        # Sanitize error message to avoid leaking API keys or URLs
+        safe_error = _sanitize_error(str(e))
         return APIResponse(
             success=False,
-            message=f"Connection failed: {e!s}",
-            data={"model": request.model, "elapsed_ms": elapsed_ms, "error": str(e)},
+            message=f"Connection failed: {safe_error}",
+            data={"model": request.model, "elapsed_ms": elapsed_ms, "error": safe_error},
         )
+
+
+def _sanitize_error(error: str) -> str:
+    """Strip potential API keys, tokens, and full URLs from error messages."""
+    import re
+    # Redact anything that looks like an API key (long alphanumeric strings)
+    error = re.sub(r'(sk-|key-|api-|bearer\s+)[A-Za-z0-9\-_]{16,}', r'\1[REDACTED]', error, flags=re.IGNORECASE)
+    # Redact URLs with query params that might contain keys
+    error = re.sub(r'https?://[^\s"\']+', '[URL REDACTED]', error)
+    return error
 
 
 # ============================================================================

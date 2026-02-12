@@ -93,6 +93,11 @@ async def trigger_crawl(
                     locked_at = locked_at.replace(tzinfo=UTC)
                 if locked_at < threshold:
                     logger.warning("Force-releasing stuck crawl", dno_id=dno_id)
+                else:
+                    raise HTTPException(
+                        status_code=status.HTTP_409_CONFLICT,
+                        detail=f"A crawl is already in progress for {dno.name}",
+                    )
             else:
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
@@ -116,7 +121,7 @@ async def trigger_crawl(
     # Update DNO status for crawl/full jobs
     if job_type in ("full", "crawl"):
         dno.status = "crawling"
-        dno.crawl_locked_at = datetime.utcnow()
+        dno.crawl_locked_at = datetime.now(UTC)
 
     # Build job context
     initiator_ip = get_client_ip(http_request)

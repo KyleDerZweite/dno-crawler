@@ -26,6 +26,7 @@ Output stored in job.context:
 import asyncio
 
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm.attributes import flag_modified
 
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
@@ -44,6 +45,7 @@ class ValidateStep(BaseStep):
         if not data:
             ctx["is_valid"] = False
             ctx["validation_issues"] = ["No data extracted"]
+            flag_modified(job, "context")
             await db.commit()
             return "FAILED: No data extracted"
 
@@ -68,6 +70,7 @@ class ValidateStep(BaseStep):
             ctx["auto_flagged"] = True
             ctx["auto_flag_reason"] = f"Validation warnings: {'; '.join(warnings[:2])}"
 
+        flag_modified(job, "context")
         await db.commit()
 
         if has_errors:

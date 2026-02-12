@@ -6,7 +6,7 @@ This module contains:
 - Pydantic schemas for API requests/responses
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 from enum import Enum
 from typing import Any
 
@@ -158,7 +158,7 @@ class PaginatedResponse(APIResponse):
 
 class TimestampMixin(BaseModel):
     """Mixin for created/updated timestamps."""
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
 

@@ -154,6 +154,19 @@ class ContentVerifier:
             VerificationResult with confidence score and details
         """
         try:
+            # SSRF protection: validate URL targets a public IP
+            from app.services.url_utils import validate_url_ssrf_safe
+
+            if not await validate_url_ssrf_safe(url):
+                self.log.warning("verify_url_ssrf_blocked", url=url[:80])
+                return VerificationResult(
+                    is_verified=False,
+                    confidence=0.0,
+                    detected_data_type=None,
+                    keywords_found=[],
+                    keywords_missing=[],
+                    error="URL blocked by SSRF protection",
+                )
             # Detect content type from URL
             content_type = self._detect_content_type(url)
 
@@ -224,6 +237,20 @@ class ContentVerifier:
         from urllib.parse import unquote, urlparse
 
         try:
+            # SSRF protection: validate URL targets a public IP
+            from app.services.url_utils import validate_url_ssrf_safe
+
+            if not await validate_url_ssrf_safe(url):
+                self.log.warning("verify_cache_ssrf_blocked", url=url[:80])
+                return VerificationResult(
+                    is_verified=False,
+                    confidence=0.0,
+                    detected_data_type=None,
+                    keywords_found=[],
+                    keywords_missing=[],
+                    error="URL blocked by SSRF protection",
+                ), None
+
             content_type = self._detect_content_type(url)
 
             # Download full file

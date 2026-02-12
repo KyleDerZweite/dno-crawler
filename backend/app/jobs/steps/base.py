@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,20 +45,20 @@ class BaseStep(ABC):
             job_id=job.id,
             step_name=self.label,
             status="running",
-            started_at=datetime.utcnow(),
+            started_at=datetime.now(UTC),
             details={"description": self.description}
         )
         db.add(step_record)
         await db.commit()
         await db.refresh(step_record)
 
-        start_time = datetime.utcnow()
+        start_time = datetime.now(UTC)
         try:
             # 3. Actually run the step
             result_msg = await self.run(db, job)
 
             # 4. Mark step as done
-            end_time = datetime.utcnow()
+            end_time = datetime.now(UTC)
             step_record.status = "done"
             step_record.completed_at = end_time
             step_record.duration_seconds = int((end_time - start_time).total_seconds())
@@ -81,20 +81,25 @@ class BaseStep(ABC):
             # (e.g. if the step failed due to a DB error like UndefinedColumn)
             await db.rollback()
 
-            # Update step record with error
-            # We need to set fields again because rollback reverted any pending changes
-            step_record.status = "failed"
-            step_record.completed_at = datetime.utcnow()
-            # Preserve existing details if possible, or reset
-            step_record.details = {
-                "description": self.description,
-                "error": str(e)
-            }
+            # After rollback, ORM objects may be detached/expired.
+            # Re-attach them via merge() so we can update failure state.
+            try:
+                step_record = await db.merge(step_record)
+                job = await db.merge(job)
 
-            # Update main job
-            job.status = "failed"
-            job.error_message = f"Step '{self.label}' failed: {e!s}"
+                step_record.status = "failed"
+                step_record.completed_at = datetime.now(UTC)
+                step_record.details = {
+                    "description": self.description,
+                    "error": str(e)
+                }
 
-            # Commit the failure state in a fresh transaction
-            await db.commit()
+                job.status = "failed"
+                job.completed_at = datetime.now(UTC)
+                job.error_message = f"Step '{self.label}' failed: {e!s}"
+
+                await db.commit()
+            except Exception as commit_err:
+                self.log.error("Failed to persist failure state", error=str(commit_err))
+                # Don't mask the original error
             raise e

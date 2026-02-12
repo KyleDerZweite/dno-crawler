@@ -44,8 +44,11 @@ class GatherContextStep(BaseStep):
         result = await db.execute(profile_query)
         profile = result.scalar_one_or_none()
 
-        # 3. Check for cached files
-        cache_dir = Path(settings.downloads_path) / dno.slug
+        # 3. Check for cached files (with path traversal protection)
+        base_dir = Path(settings.downloads_path)
+        cache_dir = base_dir / dno.slug
+        if not cache_dir.resolve().is_relative_to(base_dir.resolve()):
+            raise ValueError(f"Invalid slug for path construction: {dno.slug}")
         cached_file = None
         if cache_dir.exists():
             # Check canonical format: {slug}-{data_type}-{year}.{ext}

@@ -13,10 +13,13 @@ from dataclasses import dataclass
 
 import httpx
 import jwt
+import structlog
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .config import auth_settings
+
+_auth_logger = structlog.get_logger()
 
 # Security scheme for Swagger UI
 bearer_scheme = HTTPBearer(auto_error=False)
@@ -89,15 +92,12 @@ def get_signing_key(token: str, jwks: dict) -> str:
 
 def extract_roles(claims: dict) -> list[str]:
     """Extract role keys from Zitadel token claims."""
-    import structlog
-    logger = structlog.get_logger()
-
     roles_obj = claims.get("urn:zitadel:iam:org:project:roles", {})
-    logger.info("Role extraction", roles_obj=roles_obj, claim_keys=list(claims.keys()))
+    _auth_logger.debug("Role extraction", roles_obj=roles_obj, claim_keys=list(claims.keys()))
 
     if isinstance(roles_obj, dict):
         roles = list(roles_obj.keys())
-        logger.info("Extracted roles", roles=roles)
+        _auth_logger.debug("Extracted roles", roles=roles)
         return roles
     return []
 
@@ -117,6 +117,16 @@ async def get_current_user(
 
     # Handle Mock Admin if auth is disabled or pointing to example.com
     if not settings.is_auth_enabled:
+        if settings.is_production:
+            _auth_logger.critical(
+                "AUTH DISABLED IN PRODUCTION! "
+                "Set ZITADEL_DOMAIN to a valid domain. "
+                "Rejecting all requests until auth is configured."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Authentication is not configured. Service unavailable.",
+            )
         return User(
             id="mock-admin-id",
             email="admin@dno-crawler.local",
@@ -139,14 +149,18 @@ async def get_current_user(
         signing_key = get_signing_key(token, jwks)
 
         # Decode and verify token
-        claims = jwt.decode(
-            token,
-            signing_key,
-            algorithms=["RS256"],
-            issuer=auth_settings.issuer,
-            options={"verify_aud": False},  # Zitadel uses project-based audience
-            leeway=30,  # Allow 30 seconds clock skew
-        )
+        # Enable audience verification when ZITADEL_CLIENT_ID is configured
+        jwt_options = {"verify_aud": bool(settings.zitadel_client_id)}
+        decode_kwargs: dict = {
+            "algorithms": ["RS256"],
+            "issuer": auth_settings.issuer,
+            "options": jwt_options,
+            "leeway": 30,  # Allow 30 seconds clock skew
+        }
+        if settings.zitadel_client_id:
+            decode_kwargs["audience"] = settings.zitadel_client_id
+
+        claims = jwt.decode(token, signing_key, **decode_kwargs)
 
         # Extract roles from token claims
         roles = extract_roles(claims)
@@ -183,14 +197,16 @@ async def get_current_user(
             detail="Token has expired",
         ) from None
     except jwt.InvalidTokenError as e:
+        _auth_logger.warning("Invalid token", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Invalid token: {e!s}",
+            detail="Invalid token",
         ) from e
     except Exception as e:
+        _auth_logger.error("Authentication failed", error=str(e))
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Authentication failed: {e!s}",
+            detail="Authentication failed",
         ) from e
 
 
@@ -210,6 +226,12 @@ async def get_optional_user(
     from .config import settings
 
     if not settings.is_auth_enabled:
+        if settings.is_production:
+            _auth_logger.critical(
+                "AUTH DISABLED IN PRODUCTION! "
+                "Set ZITADEL_DOMAIN to a valid domain."
+            )
+            return None
         return User(
             id="mock-admin-id",
             email="admin@dno-crawler.local",
@@ -226,14 +248,17 @@ async def get_optional_user(
         jwks = await fetch_jwks()
         signing_key = get_signing_key(token, jwks)
 
-        claims = jwt.decode(
-            token,
-            signing_key,
-            algorithms=["RS256"],
-            issuer=auth_settings.issuer,
-            options={"verify_aud": False},
-            leeway=30,  # Allow 30 seconds clock skew
-        )
+        jwt_options = {"verify_aud": bool(settings.zitadel_client_id)}
+        decode_kwargs: dict = {
+            "algorithms": ["RS256"],
+            "issuer": auth_settings.issuer,
+            "options": jwt_options,
+            "leeway": 30,
+        }
+        if settings.zitadel_client_id:
+            decode_kwargs["audience"] = settings.zitadel_client_id
+
+        claims = jwt.decode(token, signing_key, **decode_kwargs)
 
         return User(
             id=claims.get("sub", ""),

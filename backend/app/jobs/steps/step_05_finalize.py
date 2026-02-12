@@ -24,7 +24,7 @@ Output:
 """
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import structlog
@@ -513,7 +513,7 @@ class FinalizeStep(BaseStep):
         profile.discovery_method = ctx.get("strategy")
         profile.discovered_via_pattern = ctx.get("discovered_via_pattern")
         profile.last_success_year = year
-        profile.last_success_at = datetime.utcnow()
+        profile.last_success_at = datetime.now(UTC)
         profile.consecutive_failures = 0
 
     def _extract_domain(self, url: str | None) -> str | None:

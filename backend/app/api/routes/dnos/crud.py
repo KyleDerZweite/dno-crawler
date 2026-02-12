@@ -349,7 +349,9 @@ async def list_dnos_detailed(
         similarity = func.similarity(DNOModel.name, q)
 
         # ILIKE pattern for contains matching (case-insensitive)
-        ilike_pattern = f"%{q}%"
+        # Escape ILIKE wildcards to prevent wildcard injection
+        q_escaped = q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+        ilike_pattern = f"%{q_escaped}%"
         contains_match = DNOModel.name.ilike(ilike_pattern)
         region_match = DNOModel.region.ilike(ilike_pattern)
 

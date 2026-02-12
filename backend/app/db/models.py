@@ -33,7 +33,7 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.sql import func
 
 from app.core.models import JobStatus, VerificationStatus
@@ -80,6 +80,14 @@ class DNOModel(Base, TimestampMixin):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     slug: Mapped[str] = mapped_column(String(255), unique=True, nullable=False, index=True)
+
+    @validates("slug")
+    def validate_slug(self, key: str, value: str) -> str:
+        """Reject slugs containing path traversal characters."""
+        import re
+        if not value or not re.fullmatch(r"[a-z0-9][a-z0-9\-]*", value):
+            raise ValueError(f"Invalid slug: must be lowercase alphanumeric with hyphens, got '{value}'")
+        return value
 
     __table_args__ = (
         # Trigram index for fuzzy search optimization

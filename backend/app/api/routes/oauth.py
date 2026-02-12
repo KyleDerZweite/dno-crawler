@@ -107,8 +107,19 @@ class GoogleOAuthCallbackRequest(BaseModel):
     state: str
 
 
-# In-memory state storage (for single-instance, use Redis for distributed)
+# In-memory state storage with TTL (for single-instance, use Redis for distributed)
 _oauth_pending_states: dict[str, dict] = {}
+_OAUTH_STATE_TTL = 600  # 10 minutes
+_OAUTH_MAX_PENDING = 50  # Max concurrent pending states
+
+
+def _cleanup_expired_states() -> None:
+    """Remove expired OAuth states to prevent memory leaks."""
+    import time
+    now = time.time()
+    expired = [k for k, v in _oauth_pending_states.items() if now - v.get("created_at", 0) > _OAUTH_STATE_TTL]
+    for k in expired:
+        del _oauth_pending_states[k]
 
 
 @router.post("/google/start")
@@ -139,11 +150,18 @@ async def start_google_oauth(
     flow = GoogleOAuthFlow(redirect_uri=redirect_uri)
     auth_url, state, code_verifier = flow.generate_authorization_url()
 
+    # Clean up expired states before adding new one
+    import time
+    _cleanup_expired_states()
+    if len(_oauth_pending_states) >= _OAUTH_MAX_PENDING:
+        return APIResponse(success=False, message="Too many pending OAuth flows. Please try again shortly.")
+
     # Store state for verification (with code_verifier for PKCE)
     _oauth_pending_states[state] = {
         "code_verifier": code_verifier,
         "redirect_uri": redirect_uri,
         "initiated_by": admin.email,
+        "created_at": time.time(),
     }
 
     logger.info(
@@ -173,12 +191,24 @@ async def google_oauth_callback_get(
     This endpoint exchanges the code for tokens and returns HTML
     that closes the popup window.
     """
+    import json as json_mod
+    from html import escape as html_escape
+
     from fastapi.responses import HTMLResponse
 
     result = await _handle_google_callback_internal(code, state)
 
+    # Determine the target origin for postMessage from settings
+    post_message_origin = settings.cors_origins[0] if settings.cors_origins else "null"
+
     # Return HTML that closes the popup and notifies parent
     if result["success"]:
+        safe_email = html_escape(str(result.get('email', '')), quote=True)
+        safe_name = html_escape(str(result.get('name', '')), quote=True)
+        # JSON-encode for safe embedding in JavaScript
+        js_email = json_mod.dumps(str(result.get('email', '')))
+        js_name = json_mod.dumps(str(result.get('name', '')))
+        js_origin = json_mod.dumps(post_message_origin)
         html = f"""
 <!DOCTYPE html>
 <html>
@@ -209,9 +239,9 @@ async def google_oauth_callback_get(
 </head>
 <body>
     <div class="container">
-        <div class="icon">✓</div>
+        <div class="icon">&#10003;</div>
         <h1>Authentication Successful!</h1>
-        <p>Signed in as {result['email']}</p>
+        <p>Signed in as {safe_email}</p>
         <p style="margin-top: 1rem; font-size: 0.875rem; opacity: 0.7;">This window will close automatically...</p>
     </div>
     <script>
@@ -220,9 +250,9 @@ async def google_oauth_callback_get(
             window.opener.postMessage({{
                 type: 'oauth_complete',
                 success: true,
-                email: '{result['email']}',
-                name: '{result.get('name', '')}'
-            }}, '*');
+                email: {js_email},
+                name: {js_name}
+            }}, {js_origin});
         }}
         // Close popup after brief delay
         setTimeout(() => window.close(), 1500);
@@ -231,6 +261,9 @@ async def google_oauth_callback_get(
 </html>
 """
     else:
+        safe_message = html_escape(str(result.get('message', 'Unknown error')), quote=True)
+        js_message = json_mod.dumps(str(result.get('message', 'Unknown error')))
+        js_origin = json_mod.dumps(post_message_origin)
         html = f"""
 <!DOCTYPE html>
 <html>
@@ -262,9 +295,9 @@ async def google_oauth_callback_get(
 </head>
 <body>
     <div class="container">
-        <div class="icon">✗</div>
+        <div class="icon">&#10007;</div>
         <h1>Authentication Failed</h1>
-        <p>{result['message']}</p>
+        <p>{safe_message}</p>
         <p style="margin-top: 1rem; font-size: 0.875rem; opacity: 0.7;">You can close this window and try again.</p>
     </div>
     <script>
@@ -273,8 +306,8 @@ async def google_oauth_callback_get(
             window.opener.postMessage({{
                 type: 'oauth_complete',
                 success: false,
-                error: '{result['message']}'
-            }}, '*');
+                error: {js_message}
+            }}, {js_origin});
         }}
     </script>
 </body>
@@ -315,13 +348,21 @@ async def _handle_google_callback_internal(code: str, state: str) -> dict:
     """Process OAuth callback and store credentials. Returns a dict."""
     from app.services.ai.oauth.google import GoogleOAuthFlow, get_credential_manager
 
-    # Verify state
+    # Verify state (with TTL check)
+    import time
+    _cleanup_expired_states()
     pending = _oauth_pending_states.get(state)
     if not pending:
         logger.warning("google_oauth_invalid_state", state=state[:8] + "...")
         return {
             "success": False,
             "message": "Invalid or expired OAuth state. Please try again.",
+        }
+    if time.time() - pending.get("created_at", 0) > _OAUTH_STATE_TTL:
+        del _oauth_pending_states[state]
+        return {
+            "success": False,
+            "message": "OAuth state expired. Please try again.",
         }
 
     # Exchange code for tokens

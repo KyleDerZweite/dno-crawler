@@ -353,5 +353,5 @@ async def import_dno_data(
         await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Import failed: {e!s}",
+            detail="Import failed due to an internal error. Please try again.",
         ) from e

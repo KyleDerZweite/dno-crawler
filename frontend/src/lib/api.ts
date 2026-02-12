@@ -44,10 +44,14 @@ apiClient.interceptors.request.use(
 );
 
 // Response interceptor to handle errors
+// Guard to prevent infinite 401 redirect loops
+let _isRedirecting = false;
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError) => {
-    if (error.response?.status === 401) {
+    if (error.response?.status === 401 && !_isRedirecting) {
+      _isRedirecting = true;
       // Token expired or invalid - clear OIDC storage and force full reload
       const authority = import.meta.env.VITE_ZITADEL_AUTHORITY;
       const clientId = import.meta.env.VITE_ZITADEL_CLIENT_ID;

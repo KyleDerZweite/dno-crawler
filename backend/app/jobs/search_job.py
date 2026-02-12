@@ -9,7 +9,7 @@ This simplified worker:
 Replace with actual implementation once queue mechanism is verified.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 
@@ -44,7 +44,7 @@ async def process_dno_crawl(
             return {"status": "error", "message": "Job not found"}
 
         job.status = "running"
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(UTC)
         await db.commit()
 
         total_steps = len(CRAWL_JOB_STEPS)
@@ -58,7 +58,7 @@ async def process_dno_crawl(
             job.status = "completed"
             job.progress = 100
             job.current_step = "Completed"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             log.info("✅ Job completed successfully")
@@ -66,7 +66,14 @@ async def process_dno_crawl(
 
         except Exception as e:
             log.error("❌ Job failed", error=str(e))
-            # Step base class handles job status update on failure
+            # BaseStep sets job.status/completed_at on step failures,
+            # but ensure completed_at is set even for non-step errors
+            if not job.completed_at:
+                job.completed_at = datetime.now(UTC)
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
             return {"status": "failed", "message": str(e)}
 
 # Note: _update_step is now handled by Step classes, but we keep it for now if needed elsewhere

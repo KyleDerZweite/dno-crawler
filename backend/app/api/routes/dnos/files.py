@@ -33,9 +33,12 @@ async def list_dno_files(
             detail="DNO not found",
         )
 
-    # Get storage path
+    # Get storage path (with path traversal protection)
     storage_path = os.environ.get("STORAGE_PATH", "/data")
-    downloads_dir = Path(storage_path) / "downloads" / dno.slug
+    base_dir = Path(storage_path) / "downloads"
+    downloads_dir = base_dir / dno.slug
+    if not downloads_dir.resolve().is_relative_to(base_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid DNO slug")
 
     files = []
     if downloads_dir.exists():
@@ -95,8 +98,20 @@ async def upload_file(
             detail="DNO not found",
         )
 
-    # Analyze filename
+    # Validate file extension
     original_filename = file.filename or "unknown.pdf"
+    ALLOWED_EXTENSIONS = {
+        ".pdf", ".xlsx", ".xls", ".csv", ".html", ".htm",
+        ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg",
+    }
+    file_ext = Path(original_filename).suffix.lower()
+    if file_ext not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"File type '{file_ext}' not allowed. Accepted: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+
+    # Analyze filename
     data_type, year = file_analyzer.analyze(original_filename)
 
     if not data_type or not year:
@@ -116,14 +131,29 @@ async def upload_file(
     target_filename = f"{dno.slug}-{data_type}-{year}{extension}"
 
     storage_path = os.environ.get("STORAGE_PATH", "/data")
-    target_dir = Path(storage_path) / "downloads" / dno.slug
+    base_dir = Path(storage_path) / "downloads"
+    target_dir = base_dir / dno.slug
+    if not target_dir.resolve().is_relative_to(base_dir.resolve()):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Invalid DNO slug")
     target_dir.mkdir(parents=True, exist_ok=True)
     target_path = target_dir / target_filename
 
-    # Save file (overwrites existing - user intent takes precedence)
+    # Save file with size limit (overwrites existing - user intent takes precedence)
+    # Current limit: 250MB. To increase, change the value below.
+    MAX_UPLOAD_SIZE = 250 * 1024 * 1024  # 250MB
+    total_size = 0
     async with aiofiles.open(target_path, "wb") as f:
-        content = await file.read()
-        await f.write(content)
+        while chunk := await file.read(1024 * 1024):  # 1MB chunks
+            total_size += len(chunk)
+            if total_size > MAX_UPLOAD_SIZE:
+                # Clean up partial file
+                await f.close()
+                target_path.unlink(missing_ok=True)
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB.",
+                )
+            await f.write(chunk)
 
     logger.info(
         "File uploaded",

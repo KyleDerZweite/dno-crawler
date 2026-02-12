@@ -48,7 +48,7 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 # Magic bytes for file format detection
 MAGIC_BYTES = {
     b'%PDF': 'pdf',
-    b'PK\x03\x04': 'xlsx',  # ZIP-based (XLSX, DOCX, PPTX)
+    # PK\x03\x04 (ZIP-based) handled separately below for XLSX/DOCX/PPTX disambiguation
     b'\xd0\xcf\x11\xe0': 'xls',  # OLE2 compound document (XLS, DOC)
 }
 
@@ -87,9 +87,12 @@ class DownloadStep(BaseStep):
         if not url:
             raise StepError("No URL to download - discovery step may have failed")
 
-        # Build save dir
+        # Build save dir (with path traversal protection)
         dno_slug = ctx.get("dno_slug", "unknown")
-        save_dir = Path(settings.downloads_path) / dno_slug
+        base_dir = Path(settings.downloads_path)
+        save_dir = base_dir / dno_slug
+        if not save_dir.resolve().is_relative_to(base_dir.resolve()):
+            raise StepError(f"Invalid slug for path construction: {dno_slug}")
         save_dir.mkdir(parents=True, exist_ok=True)
 
         log = logger.bind(dno=dno_slug, url=url[:60])

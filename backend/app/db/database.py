@@ -99,7 +99,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"An unexpected error occurred: {e!s}"
+            detail="An unexpected error occurred. Please try again later."
         ) from e
     finally:
         if session:

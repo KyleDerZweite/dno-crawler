@@ -60,6 +60,58 @@ STRIP_PARAMS = {
 
 
 # =============================================================================
+# SSRF-Safe URL Validation (standalone helper)
+# =============================================================================
+
+
+async def validate_url_ssrf_safe(url: str) -> bool:
+    """Validate that a URL is safe to fetch (not targeting internal resources).
+
+    Checks:
+    - Scheme is http or https
+    - No credentials in URL
+    - Port is 80 or 443
+    - Hostname resolves only to global (public) IPs
+
+    Returns True if the URL is safe to fetch.
+    """
+    try:
+        parsed = urlparse(url)
+
+        if parsed.scheme not in ("http", "https"):
+            return False
+        if parsed.username or parsed.password:
+            return False
+        if not parsed.netloc or not parsed.hostname:
+            return False
+
+        port = parsed.port or (443 if parsed.scheme == "https" else 80)
+        if port not in ALLOWED_PORTS:
+            return False
+
+        # Resolve hostname and check all IPs are global
+        def _check_ips():
+            try:
+                ips = socket.getaddrinfo(parsed.hostname, None, socket.AF_UNSPEC)
+                if not ips:
+                    return False
+                for _, _, _, _, addr in ips:
+                    try:
+                        ip = ipaddress.ip_address(addr[0])
+                        if not ip.is_global:
+                            return False
+                    except ValueError:
+                        return False
+                return True
+            except (socket.gaierror, Exception):
+                return False
+
+        return await asyncio.to_thread(_check_ips)
+    except Exception:
+        return False
+
+
+# =============================================================================
 # URL Normalization
 # =============================================================================
 

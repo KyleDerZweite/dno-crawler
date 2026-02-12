@@ -16,7 +16,7 @@ Only captures when both regex AND AI fail (or AI not configured).
 """
 
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Literal
 
@@ -83,13 +83,13 @@ class SampleCapture:
         sample_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"{year}_{data_type}_{timestamp}.json"
         sample_path = sample_dir / filename
 
         # Build sample data
         sample = {
-            "captured_at": datetime.utcnow().isoformat() + "Z",
+            "captured_at": datetime.now(UTC).isoformat() + "Z",
             "category": category,
             "type": "extraction",
             "dno_slug": dno_slug,
@@ -199,13 +199,13 @@ class SampleCapture:
         sample_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         filename = f"{error_type}_{timestamp}.json"
         sample_path = sample_dir / filename
 
         # Build sample data
         sample = {
-            "captured_at": datetime.utcnow().isoformat() + "Z",
+            "captured_at": datetime.now(UTC).isoformat() + "Z",
             "type": "crawl_error",
             "dno_slug": dno_slug,
             "job_id": job_id,
@@ -268,14 +268,14 @@ class SampleCapture:
         log_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename with timestamp
-        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
         status = "ok" if success else "fail"
         filename = f"{step}_{action}_{status}_{timestamp}.json"
         log_path = log_dir / filename
 
         # Build log data
         log_entry = {
-            "captured_at": datetime.utcnow().isoformat() + "Z",
+            "captured_at": datetime.now(UTC).isoformat() + "Z",
             "type": "crawl_log",
             "dno_slug": dno_slug,
             "job_id": job_id,

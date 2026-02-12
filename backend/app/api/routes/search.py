@@ -560,9 +560,11 @@ async def _search_by_dno(
     elif dno_input.dno_name:
         # Fuzzy search: match name, official_name, or slug
         search_term = dno_input.dno_name.strip()
+        # Escape ILIKE wildcards to prevent wildcard injection
+        safe_term = search_term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         query = select(DNOModel).where(
-            (DNOModel.name.ilike(f"%{search_term}%")) |
-            (DNOModel.official_name.ilike(f"%{search_term}%")) |
+            (DNOModel.name.ilike(f"%{safe_term}%")) |
+            (DNOModel.official_name.ilike(f"%{safe_term}%")) |
             (DNOModel.slug == search_term.lower().replace(" ", "-"))
         )
     else:

@@ -40,6 +40,25 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
     """Application lifespan handler."""
     # Startup
     logger.info("Starting DNO Crawler API", version=settings.app_version)
+
+    # --- Auth configuration safety check ---
+    if not settings.is_auth_enabled:
+        if settings.is_production:
+            logger.critical(
+                "FATAL: Authentication is disabled in a production/staging environment! "
+                "Set ZITADEL_DOMAIN to your Zitadel instance domain. "
+                "The application will reject all authenticated requests until this is fixed.",
+                environment=settings.environment,
+            )
+        else:
+            logger.warning(
+                "Authentication is DISABLED (mock admin mode). "
+                "All requests will be treated as admin. "
+                "This is expected in development only.",
+                environment=settings.environment,
+                zitadel_domain=settings.zitadel_domain,
+            )
+
     await init_db()
     logger.info("Database initialized")
 

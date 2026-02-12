@@ -13,7 +13,7 @@ Designed to run on a single dedicated worker to ensure polite crawling
 (no parallel requests to the same domain).
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -74,7 +74,7 @@ async def process_crawl(
 
         # Mark job as running
         job.status = "running"
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(UTC)
         await db.commit()
 
         steps = get_crawl_steps()
@@ -88,7 +88,7 @@ async def process_crawl(
             job.status = "completed"
             job.progress = 100
             job.current_step = "Crawl Completed - Queuing Extract"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             # Now enqueue the extract job (unless skip_extract is set)
@@ -118,7 +118,14 @@ async def process_crawl(
 
         except Exception as e:
             log.error("❌ Crawl job failed", error=str(e))
-            # Step base class handles job status update on failure
+            # BaseStep sets job.status/completed_at on step failures,
+            # but ensure completed_at is set even for non-step errors
+            if not job.completed_at:
+                job.completed_at = datetime.now(UTC)
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
             return {"status": "failed", "message": str(e)}
 
 

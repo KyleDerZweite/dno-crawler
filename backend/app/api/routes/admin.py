@@ -7,7 +7,7 @@ This module only contains job management and data normalization routes.
 
 import os
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated, Literal
 
@@ -829,7 +829,7 @@ async def cancel_bulk_extract(
     for job in pending_jobs:
         job.status = "cancelled"
         job.error_message = f"Cancelled by admin: {admin.email}"
-        job.completed_at = datetime.utcnow()
+        job.completed_at = datetime.now(UTC)
         cancelled_count += 1
 
     await db.commit()

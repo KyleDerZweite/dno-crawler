@@ -13,7 +13,7 @@ Can run on dedicated worker(s) - safe to parallelize since no external
 crawling is performed.
 """
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
@@ -83,7 +83,7 @@ async def process_extract(
 
         # Mark job as running
         job.status = "running"
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(UTC)
         await db.commit()
 
         steps = get_extract_steps()
@@ -97,7 +97,7 @@ async def process_extract(
             job.status = "completed"
             job.progress = 100
             job.current_step = "Extraction Complete"
-            job.completed_at = datetime.utcnow()
+            job.completed_at = datetime.now(UTC)
             await db.commit()
 
             # Release DNO lock
@@ -111,7 +111,14 @@ async def process_extract(
 
         except Exception as e:
             log.error("❌ Extract job failed", error=str(e))
-            # Step base class handles job status update on failure
+            # BaseStep sets job.status/completed_at on step failures,
+            # but ensure completed_at is set even for non-step errors
+            if not job.completed_at:
+                job.completed_at = datetime.now(UTC)
+                try:
+                    await db.commit()
+                except Exception:
+                    pass
 
             # Release DNO lock even on failure
             await _release_dno_lock(db, job.dno_id, log)
@@ -120,19 +127,25 @@ async def process_extract(
 
 
 async def _release_dno_lock(db, dno_id: int, log):
-    """Release the crawl lock on the DNO."""
+    """Release the crawl lock on the DNO.
+
+    Uses a fresh DB session to ensure lock release even if the
+    original session is in a broken state (e.g. after a rollback).
+    """
     from app.db.models import DNOModel
 
     try:
-        result = await db.execute(
-            select(DNOModel).where(DNOModel.id == dno_id)
-        )
-        dno = result.scalar_one_or_none()
+        # Use a fresh session so a broken parent session doesn't block us
+        async with get_db_session() as fresh_db:
+            result = await fresh_db.execute(
+                select(DNOModel).where(DNOModel.id == dno_id)
+            )
+            dno = result.scalar_one_or_none()
 
-        if dno and dno.status == "crawling":
-            dno.status = "crawled"
-            dno.crawl_locked_at = None
-            await db.commit()
-            log.debug("Released DNO crawl lock", dno_id=dno_id)
+            if dno and dno.status == "crawling":
+                dno.status = "crawled"
+                dno.crawl_locked_at = None
+                await fresh_db.commit()
+                log.debug("Released DNO crawl lock", dno_id=dno_id)
     except Exception as e:
-        log.warning("Failed to release DNO lock", dno_id=dno_id, error=str(e))
+        log.error("Failed to release DNO lock", dno_id=dno_id, error=str(e))

@@ -11,7 +11,7 @@ Key features:
 """
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import structlog
@@ -181,7 +181,7 @@ class PatternLearner:
             if existing:
                 # Update existing pattern
                 existing.success_count += 1
-                existing.last_success_at = datetime.utcnow()
+                existing.last_success_at = datetime.now(UTC)
 
                 # Add DNO to successful list
                 dno_list = existing.successful_dno_slugs or {"slugs": []}
@@ -199,7 +199,7 @@ class PatternLearner:
                     data_type=data_type,
                     success_count=1,
                     fail_count=0,
-                    last_success_at=datetime.utcnow(),
+                    last_success_at=datetime.now(UTC),
                     successful_dno_slugs={"slugs": [dno_slug]},
                 )
                 db.add(new_pattern)
