@@ -13,6 +13,7 @@ Designed to run on a single dedicated worker to ensure polite crawling
 (no parallel requests to the same domain).
 """
 
+import contextlib
 from datetime import UTC, datetime
 
 import structlog
@@ -63,9 +64,7 @@ async def process_crawl(
     log.info("🚀 Crawl job received, starting execution")
 
     async with get_db_session() as db:
-        result = await db.execute(
-            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-        )
+        result = await db.execute(select(CrawlJobModel).where(CrawlJobModel.id == job_id))
         job = result.scalar_one_or_none()
 
         if not job:
@@ -102,8 +101,9 @@ async def process_crawl(
                 job.current_step = f"Completed - Extract job #{extract_job_id} queued"
                 await db.commit()
 
-                log.info("✅ Crawl job completed, extract job enqueued",
-                        extract_job_id=extract_job_id)
+                log.info(
+                    "✅ Crawl job completed, extract job enqueued", extract_job_id=extract_job_id
+                )
                 return {
                     "status": "completed",
                     "message": "Crawl completed, extract job queued",
@@ -122,10 +122,8 @@ async def process_crawl(
             # but ensure completed_at is set even for non-step errors
             if not job.completed_at:
                 job.completed_at = datetime.now(UTC)
-                try:
+                with contextlib.suppress(Exception):
                     await db.commit()
-                except Exception:
-                    pass
             return {"status": "failed", "message": str(e)}
 
 
@@ -170,9 +168,7 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
     # Enqueue to the extract queue
     redis_pool = None
     try:
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
-        )
+        redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
         await redis_pool.enqueue_job(
             "process_extract",
             extract_job.id,
@@ -184,8 +180,7 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
         return extract_job.id
 
     except Exception as e:
-        log.error("Failed to enqueue extract job",
-                 extract_job_id=extract_job.id, error=str(e))
+        log.error("Failed to enqueue extract job", extract_job_id=extract_job.id, error=str(e))
         # Mark the extract job as failed since we couldn't queue it
         extract_job.status = "failed"
         extract_job.error_message = f"Failed to enqueue: {e!s}"

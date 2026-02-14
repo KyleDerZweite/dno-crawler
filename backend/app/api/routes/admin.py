@@ -66,7 +66,9 @@ async def admin_dashboard(
 
     # Count flagged records
     flagged_netzentgelte = await db.scalar(
-        select(func.count(NetzentgelteModel.id)).where(NetzentgelteModel.verification_status == "flagged")
+        select(func.count(NetzentgelteModel.id)).where(
+            NetzentgelteModel.verification_status == "flagged"
+        )
     )
     flagged_hlzf = await db.scalar(
         select(func.count(HLZFModel.id)).where(HLZFModel.verification_status == "flagged")
@@ -352,6 +354,7 @@ async def list_cached_files(
 
 class BulkExtractRequest(BaseModel):
     """Request model for bulk extraction."""
+
     mode: Literal["flagged_only", "default", "force_override", "no_data_and_failed"]
     data_types: list[str] = ["netzentgelte", "hlzf"]
     years: list[int] | None = None
@@ -362,6 +365,7 @@ class BulkExtractRequest(BaseModel):
 
 class BulkExtractPreview(BaseModel):
     """Preview of bulk extraction."""
+
     total_files: int
     will_extract: int
     protected_verified: int  # Files with verified data that WON'T be touched (unless force)
@@ -415,7 +419,9 @@ async def preview_bulk_extract(
 
     # Batch-load verification statuses upfront (eliminates N+1)
     netz_st = await db.execute(
-        select(NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status)
+        select(
+            NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status
+        )
     )
     hlzf_st = await db.execute(
         select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
@@ -428,9 +434,9 @@ async def preview_bulk_extract(
 
     # Batch-load failed job markers
     failed_jobs_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
-            CrawlJobModel.status == "failed"
-        ).distinct()
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
+        .where(CrawlJobModel.status == "failed")
+        .distinct()
     )
     failed_job_set = {(row[0], row[1], row[2]) for row in failed_jobs_result.all()}
 
@@ -483,7 +489,11 @@ async def preview_bulk_extract(
             has_verified = any(s == "verified" for s in statuses)
             has_flagged = any(s == "flagged" for s in statuses)
             has_data = len(statuses) > 0
-            has_failed_job = (dno_info["id"], file_info["year"], file_info["data_type"]) in failed_job_set
+            has_failed_job = (
+                dno_info["id"],
+                file_info["year"],
+                file_info["data_type"],
+            ) in failed_job_set
 
             # Determine if this file should be extracted based on mode
             should_extract = False
@@ -579,11 +589,16 @@ async def trigger_bulk_extract(
     if request.dno_ids:
         dno_query = dno_query.where(DNOModel.id.in_(request.dno_ids))
     dno_result = await db.execute(dno_query)
-    dnos = {row.slug: {"id": row.id, "name": row.name, "website": row.website} for row in dno_result.all()}
+    dnos = {
+        row.slug: {"id": row.id, "name": row.name, "website": row.website}
+        for row in dno_result.all()
+    }
 
     # Batch-load verification statuses upfront (eliminates N+1)
     bulk_netz_st = await db.execute(
-        select(NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status)
+        select(
+            NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status
+        )
     )
     bulk_hlzf_st = await db.execute(
         select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
@@ -596,17 +611,17 @@ async def trigger_bulk_extract(
 
     # Batch-load failed job markers
     bulk_failed_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
-            CrawlJobModel.status == "failed"
-        ).distinct()
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
+        .where(CrawlJobModel.status == "failed")
+        .distinct()
     )
     bulk_failed_set = {(row[0], row[1], row[2]) for row in bulk_failed_result.all()}
 
     # Batch-load existing pending/running jobs
     active_jobs_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
-            CrawlJobModel.status.in_(["pending", "running"])
-        ).distinct()
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
+        .where(CrawlJobModel.status.in_(["pending", "running"]))
+        .distinct()
     )
     active_jobs_set = {(row[0], row[1], row[2]) for row in active_jobs_result.all()}
 
@@ -654,7 +669,11 @@ async def trigger_bulk_extract(
                 has_verified = any(s == "verified" for s in statuses)
                 has_flagged = any(s == "flagged" for s in statuses)
                 has_data = len(statuses) > 0
-                has_failed_job = (dno_info["id"], file_info["year"], file_info["data_type"]) in bulk_failed_set
+                has_failed_job = (
+                    dno_info["id"],
+                    file_info["year"],
+                    file_info["data_type"],
+                ) in bulk_failed_set
 
                 # Determine if this file should be extracted based on mode
                 should_extract = False
@@ -673,7 +692,9 @@ async def trigger_bulk_extract(
 
                 # Check if there's already a pending/running job (from batch-loaded set)
                 if (dno_info["id"], file_info["year"], file_info["data_type"]) in active_jobs_set:
-                    logger.debug("job_already_exists", dno_id=dno_info["id"], year=file_info["year"])
+                    logger.debug(
+                        "job_already_exists", dno_id=dno_info["id"], year=file_info["year"]
+                    )
                     continue
 
                 # Create job context
@@ -704,13 +725,15 @@ async def trigger_bulk_extract(
                 await db.flush()  # Get the job ID
 
                 # Collect job for enqueueing after commit
-                jobs_to_enqueue.append({
-                    "id": job.id,
-                    "job_id": f"bulk_extract_{job.id}",
-                    "dno_slug": dno_slug,
-                    "year": file_info["year"],
-                    "data_type": file_info["data_type"]
-                })
+                jobs_to_enqueue.append(
+                    {
+                        "id": job.id,
+                        "job_id": f"bulk_extract_{job.id}",
+                        "dno_slug": dno_slug,
+                        "year": file_info["year"],
+                        "data_type": file_info["data_type"],
+                    }
+                )
 
         # Commit all jobs to DB first
         await db.commit()
@@ -859,9 +882,7 @@ async def delete_bulk_extract_jobs(
     It deletes jobs with BULK_EXTRACT_PRIORITY (2).
     """
     # Delete all jobs with bulk priority
-    query = select(CrawlJobModel).where(
-        CrawlJobModel.priority == BULK_EXTRACT_PRIORITY
-    )
+    query = select(CrawlJobModel).where(CrawlJobModel.priority == BULK_EXTRACT_PRIORITY)
     result = await db.execute(query)
     jobs = result.scalars().all()
 

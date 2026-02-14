@@ -41,6 +41,7 @@ TEXT_EXTENSIONS = {".html", ".htm", ".txt", ".csv", ".xml"}
 
 class NoProviderAvailableError(Exception):
     """Raised when no AI provider is available."""
+
     pass
 
 
@@ -113,9 +114,9 @@ class AIGateway:
         return sorted(
             filtered,
             key=lambda c: (
-                c.priority,                      # By user priority
-                0 if c.is_healthy else 1,        # Healthy first
-            )
+                c.priority,  # By user priority
+                0 if c.is_healthy else 1,  # Healthy first
+            ),
         )
 
     async def extract(

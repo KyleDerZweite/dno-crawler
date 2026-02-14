@@ -32,16 +32,21 @@ router = APIRouter()
 
 class FlagRequest(BaseModel):
     """Request to flag data as incorrect."""
-    reason: str = Field(..., min_length=10, max_length=500, description="Reason why the data is incorrect")
+
+    reason: str = Field(
+        ..., min_length=10, max_length=500, description="Reason why the data is incorrect"
+    )
 
 
 class VerifyRequest(BaseModel):
     """Optional notes when verifying data."""
+
     notes: str | None = Field(None, max_length=500, description="Optional verification notes")
 
 
 class VerificationResponse(BaseModel):
     """Response after verification action."""
+
     id: int
     verification_status: str
     verified_by: str | None = None
@@ -71,15 +76,13 @@ async def verify_netzentgelte(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Mark a Netzentgelte record as verified."""
-    result = await db.execute(
-        select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
-    )
+    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found"
+            detail=f"Netzentgelte record {record_id} not found",
         )
 
     # Update verification status
@@ -128,15 +131,13 @@ async def flag_netzentgelte(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Flag a Netzentgelte record as potentially incorrect."""
-    result = await db.execute(
-        select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
-    )
+    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found"
+            detail=f"Netzentgelte record {record_id} not found",
         )
 
     # Update status to flagged
@@ -180,22 +181,17 @@ async def unflag_netzentgelte(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Remove a flag from a Netzentgelte record (Maintainer/Admin only)."""
-    result = await db.execute(
-        select(NetzentgelteModel).where(NetzentgelteModel.id == record_id)
-    )
+    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found"
+            detail=f"Netzentgelte record {record_id} not found",
         )
 
     if record.verification_status != VerificationStatus.FLAGGED.value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Record is not flagged"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Record is not flagged")
 
     # Reset to unverified status
     record.verification_status = VerificationStatus.UNVERIFIED.value
@@ -243,15 +239,12 @@ async def verify_hlzf(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Mark an HLZF record as verified."""
-    result = await db.execute(
-        select(HLZFModel).where(HLZFModel.id == record_id)
-    )
+    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"HLZF record {record_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
         )
 
     # Update verification status
@@ -300,15 +293,12 @@ async def flag_hlzf(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Flag an HLZF record as potentially incorrect."""
-    result = await db.execute(
-        select(HLZFModel).where(HLZFModel.id == record_id)
-    )
+    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"HLZF record {record_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
         )
 
     # Update status to flagged
@@ -352,22 +342,16 @@ async def unflag_hlzf(
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
     """Remove a flag from an HLZF record (Maintainer/Admin only)."""
-    result = await db.execute(
-        select(HLZFModel).where(HLZFModel.id == record_id)
-    )
+    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
     record = result.scalar_one_or_none()
 
     if not record:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"HLZF record {record_id} not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
         )
 
     if record.verification_status != VerificationStatus.FLAGGED.value:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Record is not flagged"
-        )
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Record is not flagged")
 
     # Reset to unverified status
     record.verification_status = VerificationStatus.UNVERIFIED.value

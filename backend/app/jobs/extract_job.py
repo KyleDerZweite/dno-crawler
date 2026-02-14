@@ -13,6 +13,7 @@ Can run on dedicated worker(s) - safe to parallelize since no external
 crawling is performed.
 """
 
+import contextlib
 from datetime import UTC, datetime
 
 import structlog
@@ -61,9 +62,7 @@ async def process_extract(
     log.info("🔬 Extract job received, starting execution")
 
     async with get_db_session() as db:
-        result = await db.execute(
-            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-        )
+        result = await db.execute(select(CrawlJobModel).where(CrawlJobModel.id == job_id))
         job = result.scalar_one_or_none()
 
         if not job:
@@ -115,10 +114,8 @@ async def process_extract(
             # but ensure completed_at is set even for non-step errors
             if not job.completed_at:
                 job.completed_at = datetime.now(UTC)
-                try:
+                with contextlib.suppress(Exception):
                     await db.commit()
-                except Exception:
-                    pass
 
             # Release DNO lock even on failure
             await _release_dno_lock(db, job.dno_id, log)
@@ -137,9 +134,7 @@ async def _release_dno_lock(db, dno_id: int, log):
     try:
         # Use a fresh session so a broken parent session doesn't block us
         async with get_db_session() as fresh_db:
-            result = await fresh_db.execute(
-                select(DNOModel).where(DNOModel.id == dno_id)
-            )
+            result = await fresh_db.execute(select(DNOModel).where(DNOModel.id == dno_id))
             dno = result.scalar_one_or_none()
 
             if dno and dno.status == "crawling":

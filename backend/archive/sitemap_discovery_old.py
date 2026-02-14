@@ -35,6 +35,7 @@ SITEMAP_PATHS = [
 @dataclass
 class SitemapUrl:
     """A URL from a sitemap with scoring info."""
+
     url: str
     lastmod: str | None = None
     priority: float = 0.5
@@ -103,7 +104,11 @@ async def fetch_sitemap(
             # Check if it's valid XML (not a Cloudflare challenge)
             if response.status_code == 200:
                 content = response.text
-                if content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<loc>" in content[:1000]:
+                if (
+                    content.strip().startswith("<?xml")
+                    or "<urlset" in content[:500]
+                    or "<loc>" in content[:1000]
+                ):
                     log.info("Found sitemap", url=url)
                     return content
 
@@ -131,9 +136,7 @@ def parse_sitemap(xml_content: str) -> list[str]:
 
     try:
         # Handle namespace
-        namespaces = {
-            "sm": "http://www.sitemaps.org/schemas/sitemap/0.9"
-        }
+        namespaces = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
 
         root = ElementTree.fromstring(xml_content)
 
@@ -158,7 +161,7 @@ def parse_sitemap(xml_content: str) -> list[str]:
 
     except ElementTree.ParseError:
         # Try regex fallback for malformed XML
-        pattern = r'<loc>([^<]+)</loc>'
+        pattern = r"<loc>([^<]+)</loc>"
         urls = re.findall(pattern, xml_content)
 
     return urls
@@ -225,13 +228,15 @@ def score_sitemap_urls(
         if score <= 0 and not file_type:
             continue
 
-        results.append(SitemapUrl(
-            url=url,
-            score=score,
-            keywords_found=keywords_found,
-            has_year=has_year,
-            file_type=file_type,
-        ))
+        results.append(
+            SitemapUrl(
+                url=url,
+                score=score,
+                keywords_found=keywords_found,
+                has_year=has_year,
+                file_type=file_type,
+            )
+        )
 
     # Sort by score
     results.sort(key=lambda x: x.score, reverse=True)
@@ -279,8 +284,6 @@ async def discover_via_sitemap(
 
     # Score URLs
     scored = score_sitemap_urls(urls, data_type, target_year)
-    log.info("Scored URLs",
-             total=len(scored),
-             high_score=len([u for u in scored if u.score > 50]))
+    log.info("Scored URLs", total=len(scored), high_score=len([u for u in scored if u.score > 50]))
 
     return scored[:max_candidates], True

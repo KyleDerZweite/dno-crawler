@@ -16,6 +16,7 @@ router = APIRouter()
 
 class UserInfoResponse(BaseModel):
     """User info response from Zitadel token."""
+
     id: str
     email: str
     name: str

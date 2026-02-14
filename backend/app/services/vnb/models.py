@@ -10,6 +10,7 @@ from dataclasses import dataclass
 @dataclass
 class VNBResult:
     """Result from VNB Digital API lookup."""
+
     name: str
     vnb_id: str
     types: list[str]  # e.g., ["STROM", "GAS"]
@@ -26,6 +27,7 @@ class VNBResult:
 @dataclass
 class LocationResult:
     """Result from address search."""
+
     title: str
     coordinates: str  # "lat,lon" format
     url: str
@@ -37,6 +39,7 @@ class DNODetails:
 
     Contains homepage URL and contact information for BFS crawl seeding.
     """
+
     vnb_id: str
     name: str
     homepage_url: str | None = None
@@ -48,6 +51,7 @@ class DNODetails:
 @dataclass
 class VNBSearchResult:
     """Result from VNB name search for autocomplete."""
+
     vnb_id: str
     name: str
     subtitle: str | None = None  # Often contains official legal name (e.g., "GmbH")

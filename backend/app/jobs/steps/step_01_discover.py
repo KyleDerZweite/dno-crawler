@@ -102,6 +102,7 @@ class DiscoverStep(BaseStep):
         cached_sitemap_urls = None
         if dno and dno.sitemap_parsed_urls and dno.sitemap_fetched_at:
             from datetime import UTC, datetime, timedelta
+
             sitemap_ttl_days = 120
             cache_age = datetime.now(UTC) - dno.sitemap_fetched_at.replace(tzinfo=UTC)
 
@@ -118,8 +119,6 @@ class DiscoverStep(BaseStep):
                     age_days=cache_age.days,
                     ttl_days=sitemap_ttl_days,
                 )
-
-
 
         # Build User-Agent for non-BFS strategies (sitemap, pattern match)
         initiator_ip = ctx.get("initiator_ip")
@@ -160,9 +159,7 @@ class DiscoverStep(BaseStep):
 
                 if is_valid and final_url:
                     # Verify content matches expected data type
-                    verification = await verifier.verify_url(
-                        final_url, job.data_type, job.year
-                    )
+                    verification = await verifier.verify_url(final_url, job.data_type, job.year)
 
                     if verification.is_verified:
                         ctx["strategy"] = "exact_url"
@@ -180,12 +177,14 @@ class DiscoverStep(BaseStep):
                             expected=job.data_type,
                             confidence=verification.confidence,
                         )
-                        ctx["rejected_candidates"].append({
-                            "url": final_url,
-                            "reason": "content_verification_failed",
-                            "detected": verification.detected_data_type,
-                            "confidence": verification.confidence,
-                        })
+                        ctx["rejected_candidates"].append(
+                            {
+                                "url": final_url,
+                                "reason": "content_verification_failed",
+                                "detected": verification.detected_data_type,
+                                "confidence": verification.confidence,
+                            }
+                        )
                 else:
                     log.info("Exact URL failed, trying sitemap")
 
@@ -214,7 +213,6 @@ class DiscoverStep(BaseStep):
                     max_candidates=10,
                 )
 
-
                 if discovery_result.documents:
                     log.info(
                         "Sitemap discovered candidates",
@@ -224,26 +222,28 @@ class DiscoverStep(BaseStep):
 
                     # Try top candidates with verification
                     for doc in discovery_result.documents[:MAX_CANDIDATES_TO_TRY]:
-                        verification = await verifier.verify_url(
-                            doc.url, job.data_type, job.year
-                        )
+                        verification = await verifier.verify_url(doc.url, job.data_type, job.year)
 
                         if verification.is_verified:
                             ctx["strategy"] = f"sitemap_{discovery_result.strategy.value}"
                             ctx["found_url"] = doc.url
-                            ctx["found_content_type"] = doc.file_type.value if doc.file_type else None
+                            ctx["found_content_type"] = (
+                                doc.file_type.value if doc.file_type else None
+                            )
                             ctx["verification_confidence"] = verification.confidence
                             ctx["sitemap_urls_checked"] = discovery_result.sitemap_urls_checked
                             job.context = ctx
                             await db.commit()
                             return f"Strategy: SITEMAP → {doc.url} (verified: {verification.confidence:.0%})"
                         else:
-                            ctx["rejected_candidates"].append({
-                                "url": doc.url,
-                                "reason": "content_verification_failed",
-                                "source": "sitemap",
-                                "detected": verification.detected_data_type,
-                            })
+                            ctx["rejected_candidates"].append(
+                                {
+                                    "url": doc.url,
+                                    "reason": "content_verification_failed",
+                                    "source": "sitemap",
+                                    "detected": verification.detected_data_type,
+                                }
+                            )
 
                     log.info("Sitemap candidates failed verification, trying patterns")
                 else:
@@ -269,9 +269,7 @@ class DiscoverStep(BaseStep):
 
                     if is_valid and final_url:
                         # Verify content
-                        verification = await verifier.verify_url(
-                            final_url, job.data_type, job.year
-                        )
+                        verification = await verifier.verify_url(final_url, job.data_type, job.year)
 
                         if verification.is_verified:
                             ctx["strategy"] = "pattern_match"
@@ -294,12 +292,14 @@ class DiscoverStep(BaseStep):
                                 pattern=pattern,
                                 detected=verification.detected_data_type,
                             )
-                            ctx["rejected_candidates"].append({
-                                "url": final_url,
-                                "reason": "content_verification_failed",
-                                "pattern": pattern,
-                                "detected": verification.detected_data_type,
-                            })
+                            ctx["rejected_candidates"].append(
+                                {
+                                    "url": final_url,
+                                    "reason": "content_verification_failed",
+                                    "pattern": pattern,
+                                    "detected": verification.detected_data_type,
+                                }
+                            )
                             # Record pattern failure
                             await learner.record_failure(db, pattern)
                     else:
@@ -349,6 +349,7 @@ class DiscoverStep(BaseStep):
                 )
                 # Capture timeout for debugging
                 from app.services.sample_capture import SampleCapture
+
                 sample_capture = SampleCapture()
                 await sample_capture.capture_crawl_error(
                     dno_slug=ctx.get("dno_slug", "unknown"),
@@ -383,9 +384,7 @@ class DiscoverStep(BaseStep):
                 candidates_tried += 1
 
                 # Verify content before accepting
-                verification = await verifier.verify_url(
-                    result.final_url, job.data_type, job.year
-                )
+                verification = await verifier.verify_url(result.final_url, job.data_type, job.year)
 
                 log.debug(
                     "Candidate verification",
@@ -420,28 +419,31 @@ class DiscoverStep(BaseStep):
                         f"tried: {candidates_tried}/{len(document_results)})"
                     )
                 else:
-                    ctx["rejected_candidates"].append({
-                        "url": result.final_url,
-                        "reason": "content_verification_failed",
-                        "score": result.score,
-                        "detected": verification.detected_data_type,
-                        "confidence": verification.confidence,
-                    })
+                    ctx["rejected_candidates"].append(
+                        {
+                            "url": result.final_url,
+                            "reason": "content_verification_failed",
+                            "score": result.score,
+                            "detected": verification.detected_data_type,
+                            "confidence": verification.confidence,
+                        }
+                    )
 
             # If no verified documents, try high-scoring pages as fallback
             # (might contain tables or embedded content)
             page_results = [r for r in results if not r.is_document and r.score > 20]
 
             for result in page_results[:3]:
-                verification = await verifier.verify_url(
-                    result.final_url, job.data_type, job.year
-                )
+                verification = await verifier.verify_url(result.final_url, job.data_type, job.year)
 
                 if verification.is_verified:
                     # Case 1: Landing Page (Verified keywords but no data tables)
                     # Try to find PDF links on this page
                     if not verification.has_data_content:
-                        log.info("Potential landing page found, checking for document links", url=result.final_url)
+                        log.info(
+                            "Potential landing page found, checking for document links",
+                            url=result.final_url,
+                        )
                         doc_info = await self._check_landing_page_for_documents(
                             client, result.final_url, verifier, job, allowed_domains
                         )
@@ -485,7 +487,7 @@ class DiscoverStep(BaseStep):
                             url=result.final_url[:80],
                             score=round(result.score, 2),
                             confidence=verification.confidence,
-                            has_data=verification.has_data_content
+                            has_data=verification.has_data_content,
                         )
                         return (
                             f"Strategy: BFS_CRAWL → {result.final_url} "
@@ -508,11 +510,14 @@ class DiscoverStep(BaseStep):
                 log.warning(
                     "All candidates failed verification",
                     rejected_count=rejected_count,
-                    first_rejected=ctx["rejected_candidates"][0] if ctx["rejected_candidates"] else None,
+                    first_rejected=ctx["rejected_candidates"][0]
+                    if ctx["rejected_candidates"]
+                    else None,
                 )
 
                 # Capture crawl error sample for debugging
                 from app.services.sample_capture import SampleCapture
+
                 sample_capture = SampleCapture()
                 await sample_capture.capture_crawl_error(
                     dno_slug=ctx.get("dno_slug", "unknown"),
@@ -616,9 +621,15 @@ class DiscoverStep(BaseStep):
 
                 # Data type keywords
                 if job.data_type == "netzentgelte":
-                    if any(kw in url_lower or kw in text for kw in ["netzentgelt", "preisblatt", "entgelt"]):
+                    if any(
+                        kw in url_lower or kw in text
+                        for kw in ["netzentgelt", "preisblatt", "entgelt"]
+                    ):
                         score += 10
-                elif job.data_type == "hlzf" and any(kw in url_lower or kw in text for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]):
+                elif job.data_type == "hlzf" and any(
+                    kw in url_lower or kw in text
+                    for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]
+                ):
                     score += 10
 
                 # Prefer PDFs for netzentgelte
@@ -682,6 +693,7 @@ class DiscoverStep(BaseStep):
 
         try:
             from urllib.parse import urlparse
+
             parsed = urlparse(website)
             if parsed.hostname:
                 domain = parsed.hostname.lower()

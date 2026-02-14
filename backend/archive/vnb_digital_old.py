@@ -26,9 +26,11 @@ logger = structlog.get_logger()
 # Data Classes
 # =============================================================================
 
+
 @dataclass
 class VNBResult:
     """Result from VNB Digital API lookup."""
+
     name: str
     vnb_id: str
     types: list[str]  # e.g., ["STROM", "GAS"]
@@ -45,6 +47,7 @@ class VNBResult:
 @dataclass
 class LocationResult:
     """Result from address search."""
+
     title: str
     coordinates: str  # "lat,lon" format
     url: str
@@ -56,6 +59,7 @@ class DNODetails:
 
     Contains homepage URL and contact information for BFS crawl seeding.
     """
+
     vnb_id: str
     name: str
     homepage_url: str | None = None
@@ -67,6 +71,7 @@ class DNODetails:
 @dataclass
 class VNBSearchResult:
     """Result from VNB name search for autocomplete."""
+
     vnb_id: str
     name: str
     subtitle: str | None = None  # Often contains official legal name (e.g., "GmbH")
@@ -161,6 +166,7 @@ query ($id: ID!) {
 # Async Client
 # =============================================================================
 
+
 class VNBDigitalClient:
     """
     Async client for VNB Digital GraphQL API.
@@ -231,10 +237,7 @@ class VNBDigitalClient:
         log = self.log.bind(address=address[:50])
         log.info("Searching address")
 
-        payload = {
-            "query": SEARCH_QUERY,
-            "variables": {"searchTerm": address}
-        }
+        payload = {"query": SEARCH_QUERY, "variables": {"searchTerm": address}}
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -310,7 +313,7 @@ class VNBDigitalClient:
                 },
                 "coordinates": coordinates,
                 "withCoordinates": True,
-            }
+            },
         }
 
         try:
@@ -445,10 +448,7 @@ class VNBDigitalClient:
         log = self.log.bind(vnb_id=vnb_id)
         log.info("Fetching VNB details via GraphQL")
 
-        payload = {
-            "query": VNB_DETAILS_QUERY,
-            "variables": {"id": vnb_id}
-        }
+        payload = {"query": VNB_DETAILS_QUERY, "variables": {"id": vnb_id}}
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -514,10 +514,7 @@ class VNBDigitalClient:
         log = self.log.bind(search_term=name[:50])
         log.info("Searching VNBs by name")
 
-        payload = {
-            "query": SEARCH_QUERY,
-            "variables": {"searchTerm": name}
-        }
+        payload = {"query": SEARCH_QUERY, "variables": {"searchTerm": name}}
 
         try:
             async with httpx.AsyncClient(timeout=self.timeout) as client:
@@ -540,12 +537,14 @@ class VNBDigitalClient:
             for item in results:
                 if item.get("type") == "VNB":
                     logo = item.get("logo", {})
-                    vnb_results.append(VNBSearchResult(
-                        vnb_id=item.get("_id", ""),
-                        name=item.get("title", ""),
-                        subtitle=item.get("subtitle"),
-                        logo_url=logo.get("url") if logo else None,
-                    ))
+                    vnb_results.append(
+                        VNBSearchResult(
+                            vnb_id=item.get("_id", ""),
+                            name=item.get("title", ""),
+                            subtitle=item.get("subtitle"),
+                            logo_url=logo.get("url") if logo else None,
+                        )
+                    )
 
             log.info("VNB search completed", total=len(results), vnbs=len(vnb_results))
             return vnb_results

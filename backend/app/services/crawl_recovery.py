@@ -86,4 +86,3 @@ async def recover_stuck_crawl_jobs(
         log.debug("No stuck crawl jobs found")
 
     return recovered_count
-

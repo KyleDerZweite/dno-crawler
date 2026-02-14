@@ -40,7 +40,7 @@ class Settings(BaseSettings):
     use_alembic_migrations: bool = Field(
         default=False,
         validation_alias="USE_ALEMBIC_MIGRATIONS",
-        description="If True, skip create_all() and rely on Alembic migrations"
+        description="If True, skip create_all() and rely on Alembic migrations",
     )
 
     # Redis
@@ -84,16 +84,16 @@ class Settings(BaseSettings):
 
     # Rate Limiting for DDGS Search
     ddgs_request_delay_seconds: int = 5  # Hard cap: wait 5s between searches
-    ddgs_batch_delay_seconds: int = 8    # Delay between DNOs in batch mode
-    ddgs_rate_limit_cooldown: int = 60   # Cooldown if we hit rate limit (429/418)
-    ddgs_timeout: int = 20               # Timeout for DDGS requests
-
+    ddgs_batch_delay_seconds: int = 8  # Delay between DNOs in batch mode
+    ddgs_rate_limit_cooldown: int = 60  # Cooldown if we hit rate limit (429/418)
+    ddgs_timeout: int = 20  # Timeout for DDGS requests
 
     # Computed storage paths
     @property
     def downloads_path(self) -> str:
         """Path to downloaded files, derived from storage_path."""
         from pathlib import Path
+
         return str(Path(self.storage_path) / "downloads")
 
     # Zitadel auth helper properties
@@ -115,7 +115,7 @@ class Settings(BaseSettings):
     def zitadel_jwks_url(self) -> str:
         return f"https://{self.zitadel_domain}/oauth/v2/keys"
 
-    @field_validator('cors_origins', mode='before')
+    @field_validator("cors_origins", mode="before")
     @classmethod
     def parse_cors_origins(cls, v: Any) -> list[str]:
         """Parse CORS origins from JSON string if needed."""
@@ -124,10 +124,10 @@ class Settings(BaseSettings):
                 return json.loads(v)
             except json.JSONDecodeError:
                 # If not valid JSON, treat as comma-separated
-                return [s.strip() for s in v.split(',')]
+                return [s.strip() for s in v.split(",")]
         return v
 
-    @field_validator('database_url')
+    @field_validator("database_url")
     @classmethod
     def validate_database_url(cls, v: PostgresDsn) -> PostgresDsn:
         """Validate database URL"""

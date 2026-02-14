@@ -47,9 +47,9 @@ MAX_FILE_SIZE = 100 * 1024 * 1024
 
 # Magic bytes for file format detection
 MAGIC_BYTES = {
-    b'%PDF': 'pdf',
+    b"%PDF": "pdf",
     # PK\x03\x04 (ZIP-based) handled separately below for XLSX/DOCX/PPTX disambiguation
-    b'\xd0\xcf\x11\xe0': 'xls',  # OLE2 compound document (XLS, DOC)
+    b"\xd0\xcf\x11\xe0": "xls",  # OLE2 compound document (XLS, DOC)
 }
 
 
@@ -65,7 +65,9 @@ class DownloadStep(BaseStep):
         if strategy == "use_cache":
             cached_file = ctx.get("file_to_process")
             ctx["downloaded_file"] = cached_file
-            ctx["file_format"] = self._detect_format_from_url(cached_file) if cached_file else "unknown"
+            ctx["file_format"] = (
+                self._detect_format_from_url(cached_file) if cached_file else "unknown"
+            )
             job.context = ctx
             return "Skipped → Using cached file"
 
@@ -103,9 +105,7 @@ class DownloadStep(BaseStep):
             follow_redirects=True,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         ) as client:
-            content, content_type, file_size = await self._stream_download(
-                client, url, log
-            )
+            content, content_type, file_size = await self._stream_download(client, url, log)
 
             # Detect format from multiple sources
             file_format = self._detect_format(content, content_type, url)
@@ -129,7 +129,7 @@ class DownloadStep(BaseStep):
                     save_dir=save_dir,
                     dno_slug=dno_slug,
                     data_type=job.data_type,
-                    target_year=job.year
+                    target_year=job.year,
                 )
 
                 if result:
@@ -151,7 +151,9 @@ class DownloadStep(BaseStep):
                     ctx["file_format"] = "html"
                     ctx["html_processing_failed"] = True
                     job.context = ctx
-                    return f"Downloaded HTML (unprocessed): {save_path.name} ({file_size // 1024} KB)"
+                    return (
+                        f"Downloaded HTML (unprocessed): {save_path.name} ({file_size // 1024} KB)"
+                    )
 
             # Binary file: save directly
             await asyncio.to_thread(save_path.write_bytes, content)
@@ -209,7 +211,7 @@ class DownloadStep(BaseStep):
                         declared_size = int(content_length)
                         if declared_size > MAX_FILE_SIZE:
                             raise StepError(
-                                f"File too large: {declared_size // (1024*1024)}MB exceeds {MAX_FILE_SIZE // (1024*1024)}MB limit"
+                                f"File too large: {declared_size // (1024 * 1024)}MB exceeds {MAX_FILE_SIZE // (1024 * 1024)}MB limit"
                             )
 
                     # Stream content with size tracking
@@ -221,7 +223,7 @@ class DownloadStep(BaseStep):
 
                         if total_size > MAX_FILE_SIZE:
                             raise StepError(
-                                f"Download exceeded size limit ({MAX_FILE_SIZE // (1024*1024)}MB)"
+                                f"Download exceeded size limit ({MAX_FILE_SIZE // (1024 * 1024)}MB)"
                             )
 
                         chunks.append(chunk)
@@ -264,9 +266,10 @@ class DownloadStep(BaseStep):
 
         # All retries exhausted
         if last_error:
-            raise StepError(f"Download failed after {max_retries} attempts: {last_error}") from last_error
+            raise StepError(
+                f"Download failed after {max_retries} attempts: {last_error}"
+            ) from last_error
         raise StepError(f"Download failed after {max_retries} attempts")
-
 
     def _detect_format(
         self,
@@ -288,16 +291,16 @@ class DownloadStep(BaseStep):
                 return fmt
 
         # Check for XLSX vs DOCX (both are ZIP-based)
-        if header.startswith(b'PK\x03\x04'):
+        if header.startswith(b"PK\x03\x04"):
             # Could be xlsx, docx, or pptx - check for specific signatures
-            if b'[Content_Types].xml' in content[:2048]:
-                if b'workbook.xml' in content[:10000]:
-                    return 'xlsx'
-                elif b'word/' in content[:10000]:
-                    return 'docx'
-                elif b'ppt/' in content[:10000]:
-                    return 'pptx'
-            return 'xlsx'  # Default for Office Open XML
+            if b"[Content_Types].xml" in content[:2048]:
+                if b"workbook.xml" in content[:10000]:
+                    return "xlsx"
+                elif b"word/" in content[:10000]:
+                    return "docx"
+                elif b"ppt/" in content[:10000]:
+                    return "pptx"
+            return "xlsx"  # Default for Office Open XML
 
         # 2. Content-Type header
         ct_lower = content_type.lower()
@@ -355,12 +358,7 @@ class DownloadStep(BaseStep):
         return self._detect_format_from_url(str(file_path))
 
     async def _process_html(
-        self,
-        html_content: str,
-        save_dir: Path,
-        dno_slug: str,
-        data_type: str,
-        target_year: int
+        self, html_content: str, save_dir: Path, dno_slug: str, data_type: str, target_year: int
     ) -> dict | None:
         """Process HTML: strip unnecessary content and split by year."""
         from app.services.extraction.html_stripper import HtmlStripper
@@ -374,7 +372,7 @@ class DownloadStep(BaseStep):
                 html_content=html_content,
                 output_dir=save_dir,
                 slug=dno_slug,
-                data_type=data_type
+                data_type=data_type,
             )
 
             if not created_files:
@@ -402,13 +400,10 @@ class DownloadStep(BaseStep):
                     "target_year_not_found",
                     target_year=target_year,
                     available_years=years_found,
-                    using=target_file
+                    using=target_file,
                 )
 
-            return {
-                "file_path": target_file,
-                "years_found": years_found
-            }
+            return {"file_path": target_file, "years_found": years_found}
 
         except Exception as e:
             logger.warning(

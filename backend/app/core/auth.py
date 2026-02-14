@@ -60,7 +60,6 @@ class User:
         return self.is_admin or self.is_maintainer
 
 
-
 async def fetch_jwks() -> dict:
     """Fetch JWKS from Zitadel (cached, with lock to prevent thundering herd)."""
     global _jwks_cache, _jwks_cache_time
@@ -180,8 +179,7 @@ async def get_current_user(
             userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
             async with httpx.AsyncClient() as client:
                 response = await client.get(
-                    userinfo_url,
-                    headers={"Authorization": f"Bearer {token}"}
+                    userinfo_url, headers={"Authorization": f"Bearer {token}"}
                 )
                 if response.status_code == 200:
                     userinfo = response.json()
@@ -236,8 +234,7 @@ async def get_optional_user(
     if not settings.is_auth_enabled:
         if settings.is_production:
             _auth_logger.critical(
-                "AUTH DISABLED IN PRODUCTION! "
-                "Set ZITADEL_DOMAIN to a valid domain."
+                "AUTH DISABLED IN PRODUCTION! Set ZITADEL_DOMAIN to a valid domain."
             )
             return None
         return User(
@@ -329,7 +326,6 @@ async def require_maintainer_or_admin(user: User = Depends(get_current_user)) ->
             detail="Maintainer or Admin access required",
         )
     return user
-
 
 
 def require_role(role: str):

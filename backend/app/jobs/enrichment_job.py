@@ -58,9 +58,7 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
         try:
             # Mark as processing
             await db.execute(
-                update(DNOModel)
-                .where(DNOModel.id == dno_id)
-                .values(enrichment_status="processing")
+                update(DNOModel).where(DNOModel.id == dno_id).values(enrichment_status="processing")
             )
             await db.commit()
 
@@ -126,9 +124,7 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
             # Mark as failed
             try:
                 await db.execute(
-                    update(DNOModel)
-                    .where(DNOModel.id == dno_id)
-                    .values(enrichment_status="failed")
+                    update(DNOModel).where(DNOModel.id == dno_id).values(enrichment_status="failed")
                 )
                 await db.commit()
             except Exception:
@@ -271,9 +267,7 @@ async def queue_enrichment_jobs(db: AsyncSession, limit: int = 100) -> int:
     from app.core.config import settings
 
     # Get DNOs needing enrichment
-    stmt = select(DNOModel.id).where(
-        DNOModel.enrichment_status == "pending"
-    ).limit(limit)
+    stmt = select(DNOModel.id).where(DNOModel.enrichment_status == "pending").limit(limit)
 
     result = await db.execute(stmt)
     dno_ids = list(result.scalars().all())

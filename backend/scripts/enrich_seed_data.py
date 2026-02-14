@@ -63,6 +63,7 @@ async def politeness_delay(base_delay: float, min_jitter: float = 0.5, max_jitte
 # VNB Digital Enrichment
 # =============================================================================
 
+
 async def enrich_with_vnb_digital(client, record: dict, log) -> dict:
     """
     Enrich a single record with VNB Digital data.
@@ -115,6 +116,7 @@ async def enrich_with_vnb_digital(client, record: dict, log) -> dict:
 # BDEW Enrichment
 # =============================================================================
 
+
 async def enrich_with_bdew(client, record: dict, log) -> dict:
     """
     Enrich a single record with BDEW data.
@@ -155,6 +157,7 @@ async def enrich_with_bdew(client, record: dict, log) -> dict:
 # JSON Mode - Enrich and output to JSON file
 # =============================================================================
 
+
 async def enrich_all_records_json(
     records: list[dict],
     limit: int | None = None,
@@ -183,8 +186,14 @@ async def enrich_all_records_json(
     enriched_records = []
     records_to_process = records[:limit] if limit else records
 
-    stats = {"total": len(records_to_process), "vnb_enriched": 0, "bdew_enriched": 0,
-             "both_enriched": 0, "none_enriched": 0, "errors": 0}
+    stats = {
+        "total": len(records_to_process),
+        "vnb_enriched": 0,
+        "bdew_enriched": 0,
+        "both_enriched": 0,
+        "none_enriched": 0,
+        "errors": 0,
+    }
 
     for i, record in enumerate(records_to_process):
         record_log = log.bind(index=i + 1, name=record.get("name", "")[:40])
@@ -232,8 +241,13 @@ async def enrich_all_records_json(
         enriched_records.append(enriched)
 
         if (i + 1) % 25 == 0:
-            log.info("Progress", processed=i + 1, vnb=stats["vnb_enriched"] + stats["both_enriched"],
-                     bdew=stats["bdew_enriched"] + stats["both_enriched"], errors=stats["errors"])
+            log.info(
+                "Progress",
+                processed=i + 1,
+                vnb=stats["vnb_enriched"] + stats["both_enriched"],
+                bdew=stats["bdew_enriched"] + stats["both_enriched"],
+                errors=stats["errors"],
+            )
 
     log.info("Enrichment complete", **stats)
     return enriched_records
@@ -242,6 +256,7 @@ async def enrich_all_records_json(
 # =============================================================================
 # Database Mode - Enrich and write to source tables
 # =============================================================================
+
 
 async def enrich_dnos_database(
     limit: int | None = None,
@@ -345,9 +360,7 @@ async def enrich_dnos_database(
                 try:
                     await politeness_delay(bdew_delay)
 
-                    bdew_data = await enrich_with_bdew(
-                        bdew_client, {"name": dno.name}, dno_log
-                    )
+                    bdew_data = await enrich_with_bdew(bdew_client, {"name": dno.name}, dno_log)
 
                     if bdew_data.get("bdew_code"):
                         # Create BDEW source record
@@ -367,7 +380,9 @@ async def enrich_dnos_database(
                         dno.primary_bdew_code = bdew_data["bdew_code"]
 
                         stats["bdew_enriched"] += 1
-                        dno_log.debug("Created BDEW source record", bdew_code=bdew_data["bdew_code"])
+                        dno_log.debug(
+                            "Created BDEW source record", bdew_code=bdew_data["bdew_code"]
+                        )
 
                 except Exception as e:
                     dno_log.error("BDEW enrichment error", error=str(e))
@@ -376,8 +391,13 @@ async def enrich_dnos_database(
             # Commit every 25 records
             if (i + 1) % 25 == 0:
                 await db.commit()
-                log.info("Progress", processed=i + 1, vnb=stats["vnb_enriched"],
-                         bdew=stats["bdew_enriched"], errors=stats["errors"])
+                log.info(
+                    "Progress",
+                    processed=i + 1,
+                    vnb=stats["vnb_enriched"],
+                    bdew=stats["bdew_enriched"],
+                    errors=stats["errors"],
+                )
 
         # Final commit
         await db.commit()
@@ -390,54 +410,50 @@ async def enrich_dnos_database(
 # Main
 # =============================================================================
 
+
 async def main():
     parser = argparse.ArgumentParser(
         description="Enrich DNO seed data with VNB Digital and BDEW data"
     )
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         type=Path,
         default=Path(__file__).parent.parent.parent / "data" / "seed-data" / "dnos_seed.json",
-        help="Input JSON file path (JSON mode only)"
+        help="Input JSON file path (JSON mode only)",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         default=Path(__file__).parent.parent.parent / "data" / "seed-data" / "dnos_enriched.json",
-        help="Output JSON file path (JSON mode only)"
+        help="Output JSON file path (JSON mode only)",
     )
     parser.add_argument(
-        "--limit", "-l",
+        "--limit",
+        "-l",
         type=int,
         default=None,
-        help="Limit number of records to process (for testing)"
+        help="Limit number of records to process (for testing)",
     )
     parser.add_argument(
         "--db",
         action="store_true",
-        help="Database mode: write directly to source tables instead of JSON"
+        help="Database mode: write directly to source tables instead of JSON",
     )
-    parser.add_argument(
-        "--skip-vnb",
-        action="store_true",
-        help="Skip VNB Digital enrichment"
-    )
-    parser.add_argument(
-        "--skip-bdew",
-        action="store_true",
-        help="Skip BDEW enrichment"
-    )
+    parser.add_argument("--skip-vnb", action="store_true", help="Skip VNB Digital enrichment")
+    parser.add_argument("--skip-bdew", action="store_true", help="Skip BDEW enrichment")
     parser.add_argument(
         "--vnb-delay",
         type=float,
         default=1.0,
-        help="Base delay between VNB requests in seconds (default: 1.0)"
+        help="Base delay between VNB requests in seconds (default: 1.0)",
     )
     parser.add_argument(
         "--bdew-delay",
         type=float,
         default=0.3,
-        help="Base delay between BDEW requests in seconds (default: 0.3)"
+        help="Base delay between BDEW requests in seconds (default: 0.3)",
     )
 
     args = parser.parse_args()

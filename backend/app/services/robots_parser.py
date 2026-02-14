@@ -25,6 +25,7 @@ HTTP_INTERNAL_SERVER_ERROR = 500
 @dataclass
 class RobotsResult:
     """Result of robots.txt fetch and parse."""
+
     raw_content: str | None = None
     sitemap_urls: list[str] = field(default_factory=list)
     disallow_paths: list[str] = field(default_factory=list)
@@ -79,7 +80,7 @@ def parse_robots_txt(content: str, user_agent: str = "*") -> tuple[list[str], li
         # Parse User-agent directive
         if line.lower().startswith("user-agent:"):
             ua = line.split(":", 1)[1].strip().lower()
-            applies_to_us = (ua == "*" or user_agent.lower() in ua)
+            applies_to_us = ua == "*" or user_agent.lower() in ua
             continue
 
         # Parse Disallow directive
@@ -397,7 +398,11 @@ async def fetch_and_verify_robots(
                 # GET is safer for detection
                 log.debug("Checking default sitemap location", url=url)
                 resp = await client.get(url, timeout=timeout, follow_redirects=True)
-                if resp.status_code == HTTP_OK and ("xml" in resp.headers.get("content-type", "") or "<urlset" in resp.text[:500] or "<sitemapindex" in resp.text[:500]):
+                if resp.status_code == HTTP_OK and (
+                    "xml" in resp.headers.get("content-type", "")
+                    or "<urlset" in resp.text[:500]
+                    or "<sitemapindex" in resp.text[:500]
+                ):
                     log.info("Found sitemap at default location", url=url)
                     result.sitemap_urls.append(url)
                     break
@@ -413,9 +418,7 @@ async def fetch_and_verify_robots(
         sitemap_url = result.sitemap_urls[0]
         log.info("Verifying sitemap accessibility", sitemap_url=sitemap_url)
 
-        is_accessible, blocked_reason = await verify_sitemap_access(
-            client, sitemap_url, timeout
-        )
+        is_accessible, blocked_reason = await verify_sitemap_access(client, sitemap_url, timeout)
 
         if is_accessible:
             result.sitemap_verified = True
@@ -449,6 +452,7 @@ def detect_tech_stack(content: str, headers: dict) -> dict:
 
     try:
         from bs4 import BeautifulSoup
+
         soup = BeautifulSoup(content, "html.parser")
 
         # Meta generator
@@ -477,12 +481,14 @@ def detect_tech_stack(content: str, headers: dict) -> dict:
         # Additional CMS checks if not found via generator
         if not stack["cms"]:
             # TYPO3 checks
-            if soup.find("link", href=lambda x: x and "typo3" in x) or \
-               soup.find("script", src=lambda x: x and "typo3" in x):
+            if soup.find("link", href=lambda x: x and "typo3" in x) or soup.find(
+                "script", src=lambda x: x and "typo3" in x
+            ):
                 stack["cms"] = "TYPO3"
             # WordPress checks
-            elif soup.find("link", href=lambda x: x and "wp-content" in x) or \
-                 soup.find("script", src=lambda x: x and "wp-includes" in x):
+            elif soup.find("link", href=lambda x: x and "wp-content" in x) or soup.find(
+                "script", src=lambda x: x and "wp-includes" in x
+            ):
                 stack["cms"] = "WordPress"
 
     except Exception:
@@ -507,7 +513,7 @@ async def fetch_site_tech_info(
             website,
             timeout=timeout,
             follow_redirects=True,
-            headers={"User-Agent": "DNO-Crawler/1.0"}
+            headers={"User-Agent": "DNO-Crawler/1.0"},
         )
         if response.status_code == HTTP_OK:
             return detect_tech_stack(response.text, response.headers)

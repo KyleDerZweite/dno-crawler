@@ -62,12 +62,14 @@ class OpenRouterProvider(BaseProvider):
 
                 # Filter: must support image input AND text output
                 if "image" in input_mods and "text" in output_mods:
-                    models.append({
-                        "id": m["id"],
-                        "name": m.get("name", m["id"]),
-                        "supports_vision": True,
-                        "supports_files": "file" in input_mods,
-                    })
+                    models.append(
+                        {
+                            "id": m["id"],
+                            "name": m.get("name", m["id"]),
+                            "supports_vision": True,
+                            "supports_files": "file" in input_mods,
+                        }
+                    )
 
             logger.info("openrouter_models_fetched", count=len(models))
             return models
@@ -222,16 +224,18 @@ class OpenRouterProvider(BaseProvider):
 
         request_kwargs: dict[str, Any] = {
             "model": self.config.model,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{image_data}"}
-                    }
-                ]
-            }],
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
             "response_format": {"type": "json_object"},
         }
 

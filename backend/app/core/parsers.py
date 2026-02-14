@@ -8,7 +8,7 @@ PDF, HTML, and other document formats.
 import re
 from typing import TypeVar
 
-T = TypeVar('T')
+T = TypeVar("T")
 
 
 def parse_german_number(value: str | None) -> float | None:
@@ -109,15 +109,15 @@ def parse_time_window(value: str | None) -> str | None:
         return "\n".join(parts) if parts else "-"
 
     # Remove "Uhr" suffix (e.g., "16:30 Uhr bis 19:30 Uhr" -> "16:30 bis 19:30")
-    s = re.sub(r'\s*[Uu]hr\s*', ' ', s, flags=re.IGNORECASE).strip()
+    s = re.sub(r"\s*[Uu]hr\s*", " ", s, flags=re.IGNORECASE).strip()
 
     # Replace "bis" with dash (e.g., "16:30 bis 19:30" -> "16:30-19:30")
-    s = re.sub(r'\s*bis\s*', '-', s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*bis\s*", "-", s, flags=re.IGNORECASE)
 
     # Remove spaces around dashes (e.g., "16:30 - 19:30" -> "16:30-19:30")
-    s = re.sub(r'\s*-\s*', '-', s)
-    s = re.sub(r'\s*–\s*', '-', s)  # en-dash
-    s = re.sub(r'\s*—\s*', '-', s)  # em-dash
+    s = re.sub(r"\s*-\s*", "-", s)
+    s = re.sub(r"\s*–\s*", "-", s)  # en-dash
+    s = re.sub(r"\s*—\s*", "-", s)  # em-dash
 
     # Try to extract time patterns
     # Match patterns like "7:30", "07:30", "7.30", "07.30"
@@ -130,7 +130,7 @@ def parse_time_window(value: str | None) -> str | None:
         windows = []
         for i in range(0, len(times), 2):
             start = f"{int(times[i][0]):02d}:{times[i][1]}"
-            end = f"{int(times[i+1][0]):02d}:{times[i+1][1]}"
+            end = f"{int(times[i + 1][0]):02d}:{times[i + 1][1]}"
             windows.append(f"{start}-{end}")
         return "\n".join(windows)
 
@@ -160,7 +160,7 @@ def clean_string(value: str | None, max_length: int | None = None) -> str | None
 
     # Truncate if needed
     if max_length and len(s) > max_length:
-        s = s[:max_length - 3] + "..."
+        s = s[: max_length - 3] + "..."
 
     return s
 
@@ -231,6 +231,7 @@ def normalize_voltage_level(value: str | None) -> str | None:
         Normalized voltage level or None
     """
     from app.core.constants import normalize_voltage_level as _normalize
+
     return _normalize(value) if value else None
 
 

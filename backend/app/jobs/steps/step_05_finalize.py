@@ -28,7 +28,7 @@ from datetime import UTC, datetime
 from urllib.parse import urlparse
 
 import structlog
-from sqlalchemy import and_, select
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -74,9 +74,27 @@ class FinalizeStep(BaseStep):
         force_override = ctx.get("force_override", False)
 
         if job.data_type == "hlzf":
-            saved_count = await self._save_hlzf(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason, force_override)
+            saved_count = await self._save_hlzf(
+                db,
+                job.dno_id,
+                job.year,
+                data,
+                source_meta,
+                auto_flagged,
+                auto_flag_reason,
+                force_override,
+            )
         elif job.data_type == "netzentgelte":
-            saved_count = await self._save_netzentgelte(db, job.dno_id, job.year, data, source_meta, auto_flagged, auto_flag_reason, force_override)
+            saved_count = await self._save_netzentgelte(
+                db,
+                job.dno_id,
+                job.year,
+                data,
+                source_meta,
+                auto_flagged,
+                auto_flag_reason,
+                force_override,
+            )
         else:
             logger.warning("unknown_data_type", data_type=job.data_type)
 
@@ -116,6 +134,7 @@ class FinalizeStep(BaseStep):
             downloaded_file = ctx.get("downloaded_file", "")
             if downloaded_file:
                 from pathlib import Path
+
                 source = Path(downloaded_file).name
         if not source:
             source = "cache"
@@ -151,11 +170,11 @@ class FinalizeStep(BaseStep):
         # In English: 1,234.56 means 1234.56 (comma for thousands, dot for decimal)
 
         # Check if it's German format (contains comma as decimal separator)
-        if ',' in value:
+        if "," in value:
             # Remove any dots (thousands separators in German)
-            value = value.replace('.', '')
+            value = value.replace(".", "")
             # Replace comma with dot for decimal
-            value = value.replace(',', '.')
+            value = value.replace(",", ".")
 
         try:
             return float(value)
@@ -177,8 +196,8 @@ class FinalizeStep(BaseStep):
         """
         raw = raw.strip()
         # Normalize newlines to spaces (pdfplumber sometimes splits across lines)
-        raw = raw.replace('\n', ' ').replace('\r', ' ')
-        raw = ' '.join(raw.split())  # Normalize whitespace
+        raw = raw.replace("\n", " ").replace("\r", " ")
+        raw = " ".join(raw.split())  # Normalize whitespace
         raw_lower = raw.lower()
 
         # Already abbreviated - clean up spaces
@@ -246,7 +265,7 @@ class FinalizeStep(BaseStep):
             """Normalize a single time like '7:15' to '07:15:00'."""
             t = t.strip()
             # Match time with optional seconds: H:MM or HH:MM or H:MM:SS or HH:MM:SS
-            match = re.match(r'^(\d{1,2}):(\d{2})(?::(\d{2}))?$', t)
+            match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", t)
             if match:
                 hour = match.group(1).zfill(2)
                 minute = match.group(2)
@@ -259,14 +278,14 @@ class FinalizeStep(BaseStep):
             r = r.strip()
 
             # First, try to match range with any dash type: hyphen (-), en-dash (–), em-dash (—)
-            match = re.match(r'^(.+?)\s*[-–—]\s*(.+)$', r)
+            match = re.match(r"^(.+?)\s*[-–—]\s*(.+)$", r)
             if match:
                 start = normalize_single_time(match.group(1))
                 end = normalize_single_time(match.group(2))
                 return f"{start}-{end}"
 
             # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
-            space_match = re.match(r'^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$', r)
+            space_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$", r)
             if space_match:
                 start = normalize_single_time(space_match.group(1))
                 end = normalize_single_time(space_match.group(2))
@@ -275,9 +294,9 @@ class FinalizeStep(BaseStep):
             return normalize_single_time(r)  # Single time, not a range
 
         # Split by newlines (multiple ranges) and normalize each
-        lines = value.split('\n')
+        lines = value.split("\n")
         normalized_lines = [normalize_range(line) for line in lines if line.strip()]
-        return '\n'.join(normalized_lines) if normalized_lines else None
+        return "\n".join(normalized_lines) if normalized_lines else None
 
     async def _save_hlzf(
         self,
@@ -304,20 +323,22 @@ class FinalizeStep(BaseStep):
                 continue
 
             voltage_level = self._normalize_voltage_level(raw_voltage)
-            rows_to_upsert.append({
-                "dno_id": dno_id,
-                "year": year,
-                "voltage_level": voltage_level,
-                "winter": self._normalize_hlzf_time(record.get("winter")),
-                "fruehling": self._normalize_hlzf_time(record.get("fruehling")),
-                "sommer": self._normalize_hlzf_time(record.get("sommer")),
-                "herbst": self._normalize_hlzf_time(record.get("herbst")),
-                "extraction_source": source_meta.get("source"),
-                "extraction_model": source_meta.get("model"),
-                "extraction_source_format": source_meta.get("source_format"),
-                "verification_status": "flagged" if auto_flagged else "pending",
-                "flag_reason": auto_flag_reason if auto_flagged else None,
-            })
+            rows_to_upsert.append(
+                {
+                    "dno_id": dno_id,
+                    "year": year,
+                    "voltage_level": voltage_level,
+                    "winter": self._normalize_hlzf_time(record.get("winter")),
+                    "fruehling": self._normalize_hlzf_time(record.get("fruehling")),
+                    "sommer": self._normalize_hlzf_time(record.get("sommer")),
+                    "herbst": self._normalize_hlzf_time(record.get("herbst")),
+                    "extraction_source": source_meta.get("source"),
+                    "extraction_model": source_meta.get("model"),
+                    "extraction_source_format": source_meta.get("source_format"),
+                    "verification_status": "flagged" if auto_flagged else "pending",
+                    "flag_reason": auto_flag_reason if auto_flagged else None,
+                }
+            )
 
         if not rows_to_upsert:
             return 0
@@ -338,9 +359,7 @@ class FinalizeStep(BaseStep):
         }
 
         # Skip verified records unless force_override is set
-        where_clause = None if force_override else (
-            HLZFModel.verification_status != "verified"
-        )
+        where_clause = None if force_override else (HLZFModel.verification_status != "verified")
 
         stmt = stmt.on_conflict_do_update(
             index_elements=["dno_id", "year", "voltage_level"],
@@ -385,20 +404,22 @@ class FinalizeStep(BaseStep):
             arbeit_u2500 = record.get("arbeit_unter_2500h")
             leistung_u2500 = record.get("leistung_unter_2500h")
 
-            rows_to_upsert.append({
-                "dno_id": dno_id,
-                "year": year,
-                "voltage_level": voltage_level,
-                "arbeit": self._parse_german_float(arbeit),
-                "leistung": self._parse_german_float(leistung),
-                "arbeit_unter_2500h": self._parse_german_float(arbeit_u2500),
-                "leistung_unter_2500h": self._parse_german_float(leistung_u2500),
-                "extraction_source": source_meta.get("source"),
-                "extraction_model": source_meta.get("model"),
-                "extraction_source_format": source_meta.get("source_format"),
-                "verification_status": "flagged" if auto_flagged else "pending",
-                "flag_reason": auto_flag_reason if auto_flagged else None,
-            })
+            rows_to_upsert.append(
+                {
+                    "dno_id": dno_id,
+                    "year": year,
+                    "voltage_level": voltage_level,
+                    "arbeit": self._parse_german_float(arbeit),
+                    "leistung": self._parse_german_float(leistung),
+                    "arbeit_unter_2500h": self._parse_german_float(arbeit_u2500),
+                    "leistung_unter_2500h": self._parse_german_float(leistung_u2500),
+                    "extraction_source": source_meta.get("source"),
+                    "extraction_model": source_meta.get("model"),
+                    "extraction_source_format": source_meta.get("source_format"),
+                    "verification_status": "flagged" if auto_flagged else "pending",
+                    "flag_reason": auto_flag_reason if auto_flagged else None,
+                }
+            )
 
         if not rows_to_upsert:
             return 0
@@ -419,8 +440,8 @@ class FinalizeStep(BaseStep):
         }
 
         # Skip verified records unless force_override is set
-        where_clause = None if force_override else (
-            NetzentgelteModel.verification_status != "verified"
+        where_clause = (
+            None if force_override else (NetzentgelteModel.verification_status != "verified")
         )
 
         stmt = stmt.on_conflict_do_update(
@@ -493,4 +514,3 @@ class FinalizeStep(BaseStep):
         if year_str in url:
             return url.replace(year_str, "{year}")
         return None
-

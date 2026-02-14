@@ -67,9 +67,7 @@ class VNBDigitalClient:
     async def _get_client(self) -> httpx.AsyncClient:
         """Get or create the shared httpx client."""
         if self._client is None or self._client.is_closed:
-            self._client = httpx.AsyncClient(
-                timeout=self.timeout, headers=self.HEADERS
-            )
+            self._client = httpx.AsyncClient(timeout=self.timeout, headers=self.HEADERS)
         return self._client
 
     async def close(self) -> None:
@@ -111,19 +109,16 @@ class VNBDigitalClient:
         log = self.log.bind(address=address[:50])
         log.info("Searching address")
 
-        payload = {
-            "query": SEARCH_QUERY,
-            "variables": {"searchTerm": address}
-        }
+        payload = {"query": SEARCH_QUERY, "variables": {"searchTerm": address}}
 
         try:
             client = await self._get_client()
             response = await client.post(
-                    self.API_URL,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
+                self.API_URL,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
 
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
@@ -189,17 +184,17 @@ class VNBDigitalClient:
                 },
                 "coordinates": coordinates,
                 "withCoordinates": True,
-            }
+            },
         }
 
         try:
             client = await self._get_client()
             response = await client.post(
-                    self.API_URL,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
+                self.API_URL,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
 
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
@@ -296,19 +291,16 @@ class VNBDigitalClient:
         log = self.log.bind(vnb_id=vnb_id)
         log.info("Fetching VNB details via GraphQL")
 
-        payload = {
-            "query": VNB_DETAILS_QUERY,
-            "variables": {"id": vnb_id}
-        }
+        payload = {"query": VNB_DETAILS_QUERY, "variables": {"id": vnb_id}}
 
         try:
             client = await self._get_client()
             response = await client.post(
-                    self.API_URL,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
+                self.API_URL,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
 
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
@@ -351,19 +343,16 @@ class VNBDigitalClient:
         log = self.log.bind(search_term=name[:50])
         log.info("Searching VNBs by name")
 
-        payload = {
-            "query": SEARCH_QUERY,
-            "variables": {"searchTerm": name}
-        }
+        payload = {"query": SEARCH_QUERY, "variables": {"searchTerm": name}}
 
         try:
             client = await self._get_client()
             response = await client.post(
-                    self.API_URL,
-                    json=payload,
-                )
-                response.raise_for_status()
-                data = response.json()
+                self.API_URL,
+                json=payload,
+            )
+            response.raise_for_status()
+            data = response.json()
 
             if "errors" in data:
                 log.error("GraphQL errors", errors=data["errors"])
@@ -376,12 +365,14 @@ class VNBDigitalClient:
             for item in results:
                 if item.get("type") == "VNB":
                     logo = item.get("logo", {})
-                    vnb_results.append(VNBSearchResult(
-                        vnb_id=item.get("_id", ""),
-                        name=item.get("title", ""),
-                        subtitle=item.get("subtitle"),
-                        logo_url=logo.get("url") if logo else None,
-                    ))
+                    vnb_results.append(
+                        VNBSearchResult(
+                            vnb_id=item.get("_id", ""),
+                            name=item.get("title", ""),
+                            subtitle=item.get("subtitle"),
+                            logo_url=logo.get("url") if logo else None,
+                        )
+                    )
 
             log.info("VNB search completed", total=len(results), vnbs=len(vnb_results))
             return vnb_results

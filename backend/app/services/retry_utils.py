@@ -94,10 +94,7 @@ async def with_retries(
                             retry_after = float(retry_after_header)
 
                 if attempt < max_attempts:
-                    delay = retry_after or min(
-                        backoff_base * (2 ** (attempt - 1)),
-                        backoff_max
-                    )
+                    delay = retry_after or min(backoff_base * (2 ** (attempt - 1)), backoff_max)
                     delay *= 1 + random.uniform(-jitter, jitter)
                     log.warning(
                         "Retrying due to HTTP status",
@@ -158,6 +155,7 @@ async def fetch_with_retries(
     Returns:
         httpx.Response
     """
+
     async def _do_request() -> httpx.Response:
         return await client.request(method, url, **kwargs)
 

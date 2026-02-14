@@ -108,7 +108,7 @@ class ExtractStep(BaseStep):
             }
 
             job.context = ctx
-            flag_modified(job, 'context')
+            flag_modified(job, "context")
             await db.commit()
 
             return f"Extracted {len(records)} records using {method} (regex-first)"
@@ -129,6 +129,7 @@ class ExtractStep(BaseStep):
         prompt = None
 
         from app.services.ai.gateway import AIGateway
+
         gateway = AIGateway(db)
 
         # Determine needs based on file extension
@@ -139,8 +140,7 @@ class ExtractStep(BaseStep):
         needs_files = suffix == ".pdf"
 
         configs = await gateway.get_sorted_configs(
-            needs_vision=needs_vision,
-            needs_files=needs_files
+            needs_vision=needs_vision, needs_files=needs_files
         )
         is_ai_enabled = len(configs) > 0
         primary_model = configs[0].model if configs else "unknown"
@@ -153,7 +153,7 @@ class ExtractStep(BaseStep):
             needs_files=needs_files,
             configs_found=len(configs),
             primary_model=primary_model,
-            is_ai_enabled=is_ai_enabled
+            is_ai_enabled=is_ai_enabled,
         )
 
         if is_ai_enabled:
@@ -166,7 +166,9 @@ class ExtractStep(BaseStep):
             )
 
             prompt = self._build_prompt(dno_name, job.year, job.data_type)
-            ai_result = await self._extract_with_ai(path, dno_name, job.year, job.data_type, prompt, db)
+            ai_result = await self._extract_with_ai(
+                path, dno_name, job.year, job.data_type, prompt, db
+            )
 
             if ai_result:
                 extracted_data = ai_result.get("data", [])
@@ -176,6 +178,7 @@ class ExtractStep(BaseStep):
                 # ===== POST-PROCESS AI RESULTS =====
                 # Clean up common formatting issues (k.A., Uhr, German decimals, spaces)
                 from app.core.parsers import clean_ai_extraction_result
+
                 extracted_data = clean_ai_extraction_result(extracted_data, job.data_type)
 
                 # ===== VALIDATE AI RESULT (same sanity check as regex) =====
@@ -222,7 +225,7 @@ class ExtractStep(BaseStep):
                     }
 
                     job.context = ctx
-                    flag_modified(job, 'context')
+                    flag_modified(job, "context")
                     await db.commit()
 
                     # Capture debug sample: regex failed, AI also failed
@@ -243,7 +246,9 @@ class ExtractStep(BaseStep):
                         ai_fail_reason=ai_reason,
                     )
 
-                    return f"Extracted {len(extracted_data)} records using AI - FLAGGED: {ai_reason}"
+                    return (
+                        f"Extracted {len(extracted_data)} records using AI - FLAGGED: {ai_reason}"
+                    )
 
                 # AI passed sanity check - use it!
                 logger.info(
@@ -279,7 +284,7 @@ class ExtractStep(BaseStep):
                 }
 
                 job.context = ctx
-                flag_modified(job, 'context')
+                flag_modified(job, "context")
                 await db.commit()
 
                 # Note: No sample capture here - AI succeeded, no debugging needed
@@ -363,7 +368,7 @@ class ExtractStep(BaseStep):
         }
 
         job.context = ctx
-        flag_modified(job, 'context')
+        flag_modified(job, "context")
         await db.commit()
 
         return f"Extracted {len(records)} records using {method} - FLAGGED: {reason}"
@@ -424,10 +429,12 @@ class ExtractStep(BaseStep):
         # - Empty windows are allowed if explicitly extracted as "-"
         """
         if len(records) < 2:
-            return False, f"Missing voltage levels: only {len(records)} extracted (minimum 2 required)"
+            return (
+                False,
+                f"Missing voltage levels: only {len(records)} extracted (minimum 2 required)",
+            )
 
         return True, "OK"
-
 
     async def _extract_with_ai(
         self,
@@ -436,7 +443,7 @@ class ExtractStep(BaseStep):
         year: int,
         data_type: str,
         prompt: str,
-        db: AsyncSession
+        db: AsyncSession,
     ) -> dict | None:
         """Extract data using AI (auto-routes to text or vision mode)."""
         try:
@@ -466,6 +473,7 @@ class ExtractStep(BaseStep):
         if file_path.suffix.lower() == ".pdf":
             try:
                 import fitz
+
                 doc = fitz.open(file_path)
                 try:
                     metadata["pages"] = len(doc)
@@ -477,11 +485,7 @@ class ExtractStep(BaseStep):
         return metadata
 
     async def _extract_fallback(
-        self,
-        file_path: Path,
-        file_format: str,
-        data_type: str,
-        year: int
+        self, file_path: Path, file_format: str, data_type: str, year: int
     ) -> tuple[list, str]:
         """Extract using regex/HTML parser (primary extraction method)."""
 

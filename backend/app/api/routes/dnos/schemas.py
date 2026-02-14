@@ -10,8 +10,9 @@ from pydantic import BaseModel, Field, field_validator
 
 class JobType(str, Enum):
     """Job types for crawl triggering."""
-    FULL = "full"        # Full pipeline (crawl + extract)
-    CRAWL = "crawl"      # Crawl only (discover + download)
+
+    FULL = "full"  # Full pipeline (crawl + extract)
+    CRAWL = "crawl"  # Crawl only (discover + download)
     EXTRACT = "extract"  # Extract only (from existing file)
 
 
@@ -21,6 +22,7 @@ from app.core.models import DataType  # noqa: E402
 
 class TriggerCrawlRequest(BaseModel):
     """Request model for triggering a crawl job."""
+
     year: int
     data_type: DataType = DataType.ALL
     priority: int = 5
@@ -29,6 +31,7 @@ class TriggerCrawlRequest(BaseModel):
 
 class CreateDNORequest(BaseModel):
     """Request model for creating a new DNO."""
+
     name: str
     slug: str | None = None  # Auto-generate if not provided
     official_name: str | None = None
@@ -43,6 +46,7 @@ class CreateDNORequest(BaseModel):
 
 class UpdateDNORequest(BaseModel):
     """Request model for updating DNO metadata."""
+
     name: str | None = None
     official_name: str | None = None
     description: str | None = None
@@ -55,6 +59,7 @@ class UpdateDNORequest(BaseModel):
 
 class UpdateNetzentgelteRequest(BaseModel):
     """Request model for updating Netzentgelte."""
+
     leistung: float | None = None
     arbeit: float | None = None
     leistung_unter_2500h: float | None = None
@@ -63,6 +68,7 @@ class UpdateNetzentgelteRequest(BaseModel):
 
 class UpdateHLZFRequest(BaseModel):
     """Request model for updating HLZF."""
+
     winter: str | None = None
     fruehling: str | None = None
     sommer: str | None = None
@@ -80,6 +86,7 @@ VALID_VOLTAGE_LEVELS = list(VOLTAGE_LEVELS)
 
 class NetzentgelteImport(BaseModel):
     """Pydantic model for importing Netzentgelte data with strict validation."""
+
     year: int = Field(..., ge=2000, le=2100)
     voltage_level: str = Field(...)
     leistung: float | None = Field(None, ge=0, le=1000000)
@@ -106,6 +113,7 @@ class NetzentgelteImport(BaseModel):
 
 class HLZFImport(BaseModel):
     """Pydantic model for importing HLZF data with strict validation."""
+
     year: int = Field(..., ge=2000, le=2100)
     voltage_level: str = Field(...)
     winter: str | None = Field(None, max_length=100)
@@ -132,8 +140,11 @@ class HLZFImport(BaseModel):
 
 class ImportRequest(BaseModel):
     """Request model for importing DNO data."""
+
     mode: Literal["merge", "replace"] = "merge"
-    netzentgelte: list[NetzentgelteImport] = Field(default_factory=list, max_length=MAX_IMPORT_RECORDS)
+    netzentgelte: list[NetzentgelteImport] = Field(
+        default_factory=list, max_length=MAX_IMPORT_RECORDS
+    )
     hlzf: list[HLZFImport] = Field(default_factory=list, max_length=MAX_IMPORT_RECORDS)
 
     @field_validator("netzentgelte", "hlzf")

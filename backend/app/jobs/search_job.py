@@ -9,6 +9,7 @@ This simplified worker:
 Replace with actual implementation once queue mechanism is verified.
 """
 
+import contextlib
 from datetime import UTC, datetime
 
 import structlog
@@ -34,9 +35,7 @@ async def process_dno_crawl(
     log.info("🚀 Job received, starting execution")
 
     async with get_db_session() as db:
-        result = await db.execute(
-            select(CrawlJobModel).where(CrawlJobModel.id == job_id)
-        )
+        result = await db.execute(select(CrawlJobModel).where(CrawlJobModel.id == job_id))
         job = result.scalar_one_or_none()
 
         if not job:
@@ -70,11 +69,10 @@ async def process_dno_crawl(
             # but ensure completed_at is set even for non-step errors
             if not job.completed_at:
                 job.completed_at = datetime.now(UTC)
-                try:
+                with contextlib.suppress(Exception):
                     await db.commit()
-                except Exception:
-                    pass
             return {"status": "failed", "message": str(e)}
+
 
 # Note: _update_step is now handled by Step classes, but we keep it for now if needed elsewhere
 async def _update_step(

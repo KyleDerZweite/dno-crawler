@@ -42,16 +42,13 @@ def slugify(name: str) -> str:
     # Lowercase
     slug = name.lower()
     # Replace German umlauts and ß
-    replacements = {
-        'ä': 'ae', 'ö': 'oe', 'ü': 'ue', 'ß': 'ss',
-        'Ä': 'ae', 'Ö': 'oe', 'Ü': 'ue'
-    }
+    replacements = {"ä": "ae", "ö": "oe", "ü": "ue", "ß": "ss", "Ä": "ae", "Ö": "oe", "Ü": "ue"}
     for old, new in replacements.items():
         slug = slug.replace(old, new)
     # Replace spaces and special chars with hyphens
-    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
     # Remove leading/trailing hyphens and collapse multiple hyphens
-    slug = re.sub(r'-+', '-', slug).strip('-')
+    slug = re.sub(r"-+", "-", slug).strip("-")
     return slug
 
 
@@ -78,40 +75,40 @@ def parse_market_roles(roles_str: str) -> list[str]:
     """Parse comma-separated market roles into a list."""
     if not roles_str or not roles_str.strip():
         return []
-    return [role.strip() for role in roles_str.split(',') if role.strip()]
+    return [role.strip() for role in roles_str.split(",") if role.strip()]
 
 
 def parse_boolean(value: str) -> bool:
     """Parse Ja/Nein to boolean."""
-    return value.strip().lower() == 'ja'
+    return value.strip().lower() == "ja"
 
 
 def transform_row(row: dict) -> dict:
     """Transform a single CSV row to the output JSON format."""
     # Extract and clean fields
-    mastr_nr = row.get('MaStR-Nr.', '').strip()
-    name = row.get('Name des Marktakteurs', '').strip()
+    mastr_nr = row.get("MaStR-Nr.", "").strip()
+    name = row.get("Name des Marktakteurs", "").strip()
 
     # Address components
-    street = row.get('Straße', '').strip()
-    house_number = row.get('Hausnummer', '').strip()
-    zip_code = row.get('Postleitzahl', '').strip()
-    city = row.get('Ort', '').strip()
-    region = row.get('Bundesland', '').strip()
-    country = row.get('Land', '').strip()
+    street = row.get("Straße", "").strip()
+    house_number = row.get("Hausnummer", "").strip()
+    zip_code = row.get("Postleitzahl", "").strip()
+    city = row.get("Ort", "").strip()
+    region = row.get("Bundesland", "").strip()
+    country = row.get("Land", "").strip()
 
     # Build address_components dict
     address_components = {}
     if street:
-        address_components['street'] = street
+        address_components["street"] = street
     if house_number:
-        address_components['house_number'] = house_number
+        address_components["house_number"] = house_number
     if zip_code:
-        address_components['zip_code'] = zip_code
+        address_components["zip_code"] = zip_code
     if city:
-        address_components['city'] = city
+        address_components["city"] = city
     if country:
-        address_components['country'] = country
+        address_components["country"] = country
 
     # Build formatted contact_address for display
     parts = []
@@ -126,39 +123,39 @@ def transform_row(row: dict) -> dict:
     contact_address = ", ".join(parts) if parts else None
 
     # ACER code (can be empty)
-    acer_code = row.get('ACER-Code', '').strip() or None
+    acer_code = row.get("ACER-Code", "").strip() or None
 
     # Market roles
-    marktrollen = parse_market_roles(row.get('Marktrollen', ''))
+    marktrollen = parse_market_roles(row.get("Marktrollen", ""))
 
     # Dates
-    registration_date = parse_date(row.get('Registrierungsdatum', ''))
-    last_updated = parse_date(row.get('Datum der letzten Aktualisierung', ''))
-    activity_start = parse_date(row.get('Tätigkeitsbeginn', ''))
-    activity_end = parse_date(row.get('Tätigkeitsende', ''))
+    registration_date = parse_date(row.get("Registrierungsdatum", ""))
+    last_updated = parse_date(row.get("Datum der letzten Aktualisierung", ""))
+    activity_start = parse_date(row.get("Tätigkeitsbeginn", ""))
+    activity_end = parse_date(row.get("Tätigkeitsende", ""))
 
     # Boolean flags
-    closed_network = parse_boolean(row.get('Geschlossenes Verteilernetz', 'Nein'))
+    closed_network = parse_boolean(row.get("Geschlossenes Verteilernetz", "Nein"))
 
     # Activity status
-    activity_status = row.get('Tätigkeitsstatus', '').strip()
-    is_active = activity_status.lower() == 'aktiv'
+    activity_status = row.get("Tätigkeitsstatus", "").strip()
+    is_active = activity_status.lower() == "aktiv"
 
     return {
-        'mastr_nr': mastr_nr,
-        'name': name,
-        'slug': slugify(name),
-        'region': region or None,
-        'acer_code': acer_code,
-        'address_components': address_components if address_components else None,
-        'contact_address': contact_address,
-        'marktrollen': marktrollen if marktrollen else None,
-        'registration_date': registration_date,
-        'last_updated': last_updated,
-        'activity_start': activity_start,
-        'activity_end': activity_end,
-        'closed_network': closed_network,
-        'is_active': is_active,
+        "mastr_nr": mastr_nr,
+        "name": name,
+        "slug": slugify(name),
+        "region": region or None,
+        "acer_code": acer_code,
+        "address_components": address_components if address_components else None,
+        "contact_address": contact_address,
+        "marktrollen": marktrollen if marktrollen else None,
+        "registration_date": registration_date,
+        "last_updated": last_updated,
+        "activity_start": activity_start,
+        "activity_end": activity_end,
+        "closed_network": closed_network,
+        "is_active": is_active,
     }
 
 
@@ -171,23 +168,23 @@ def transform_csv_to_json(input_path: Path, output_path: Path) -> int:
     records = []
 
     # Use utf-8-sig to handle BOM (Byte Order Mark)
-    with open(input_path, encoding='utf-8-sig') as f:
+    with open(input_path, encoding="utf-8-sig") as f:
         # CSV is semicolon-delimited
-        reader = csv.DictReader(f, delimiter=';')
+        reader = csv.DictReader(f, delimiter=";")
 
         for row in reader:
             # Skip empty rows
-            if not row.get('MaStR-Nr.', '').strip():
+            if not row.get("MaStR-Nr.", "").strip():
                 continue
 
             record = transform_row(row)
             records.append(record)
 
     # Sort by name for consistent output
-    records.sort(key=lambda x: x['name'].lower())
+    records.sort(key=lambda x: x["name"].lower())
 
     # Write JSON output
-    with open(output_path, 'w', encoding='utf-8') as f:
+    with open(output_path, "w", encoding="utf-8") as f:
         json.dump(records, f, ensure_ascii=False, indent=2)
 
     return len(records)
@@ -195,19 +192,24 @@ def transform_csv_to_json(input_path: Path, output_path: Path) -> int:
 
 def main():
     parser = argparse.ArgumentParser(
-        description='Transform OeffentlicheMarktakteure.csv to dnos_seed.json'
+        description="Transform OeffentlicheMarktakteure.csv to dnos_seed.json"
     )
     parser.add_argument(
-        '--input', '-i',
+        "--input",
+        "-i",
         type=Path,
-        default=Path(__file__).parent.parent.parent / 'data' / 'seed-data' / 'OeffentlicheMarktakteure.csv',
-        help='Input CSV file path'
+        default=Path(__file__).parent.parent.parent
+        / "data"
+        / "seed-data"
+        / "OeffentlicheMarktakteure.csv",
+        help="Input CSV file path",
     )
     parser.add_argument(
-        '--output', '-o',
+        "--output",
+        "-o",
         type=Path,
-        default=Path(__file__).parent.parent.parent / 'data' / 'seed-data' / 'dnos_seed.json',
-        help='Output JSON file path'
+        default=Path(__file__).parent.parent.parent / "data" / "seed-data" / "dnos_seed.json",
+        help="Output JSON file path",
     )
 
     args = parser.parse_args()
@@ -225,5 +227,5 @@ def main():
     return 0
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     sys.exit(main())

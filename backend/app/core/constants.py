@@ -45,7 +45,6 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "hochspannungsnetz": "HS",
     "inhs": "HS",
     "hs": "HS",
-
     "mittelspannung": "MS",
     "mittelspannungsnetz": "MS",
     "inms": "MS",
@@ -53,7 +52,6 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard (some municipal utilities use MSP)
     "msp": "MS",
     "mittelspannung (msp)": "MS",
-
     "niederspannung": "NS",
     "niederspannungsnetz": "NS",
     "inns": "NS",
@@ -61,7 +59,6 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard (some municipal utilities use NSP)
     "nsp": "NS",
     "niederspannung (nsp)": "NS",
-
     # Umspannung levels
     "umspannung hoch-/mittelspannung": "HS/MS",
     "umspannung hoch -/mittelspannung": "HS/MS",
@@ -69,13 +66,11 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "umspannung zur mittelspannung": "HS/MS",
     "aushs": "HS/MS",
     "hs/ms": "HS/MS",
-
     "höchstspannung mit umspannung auf hochspannung": "HöS/HS",
     "hochspannung mit umspannung auf mittelspannung": "HS/MS",
     "hochspannung mit umspannung auf ms": "HS/MS",
     "mittelspannung mit umspannung auf niederspannung": "MS/NS",
     "mittelspannung mit umspannung auf ns": "MS/NS",
-
     "umspannung mittel-/niederspannung": "MS/NS",
     "umspannung mittel -/niederspannung": "MS/NS",
     "umspannung ms/ns": "MS/NS",
@@ -85,7 +80,6 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     # Non-standard municipal naming
     "msp/nsp": "MS/NS",
     "umspannung msp/nsp": "MS/NS",
-
     # Höchstspannung (TSO level - rare but possible)
     "höchstspannung": "HöS",
     "höchstspannungsnetz": "HöS",
@@ -102,9 +96,9 @@ SMALL_DNO_LEVELS = ["MS", "MS/NS", "NS"]  # 3 levels (no high voltage)
 TSO_LEVELS = ["HöS", "HöS/HS", "HS", "HS/MS", "MS"]  # 5 levels (no low voltage)
 
 
-_RE_WHITESPACE = re.compile(r'\s+')
-_RE_SEPARATOR = re.compile(r'\s*([-/])\s*')
-_RE_PARENS = re.compile(r'[()]')
+_RE_WHITESPACE = re.compile(r"\s+")
+_RE_SEPARATOR = re.compile(r"\s*([-/])\s*")
+_RE_PARENS = re.compile(r"[()]")
 
 
 def normalize_voltage_level(level: str) -> str | None:
@@ -124,13 +118,13 @@ def normalize_voltage_level(level: str) -> str | None:
 
     # Clean and lowercase for matching
     cleaned = level.strip().lower()
-    cleaned = _RE_WHITESPACE.sub(' ', cleaned)  # Normalize whitespace
+    cleaned = _RE_WHITESPACE.sub(" ", cleaned)  # Normalize whitespace
 
     # Normalize separators: remove spaces around hyphens and slashes
     # e.g. "Hoch - / Mittelspannung" -> "hoch-/mittelspannung"
-    cleaned = _RE_SEPARATOR.sub(r'\1', cleaned)
+    cleaned = _RE_SEPARATOR.sub(r"\1", cleaned)
 
-    cleaned = _RE_PARENS.sub('', cleaned)  # Remove parentheses
+    cleaned = _RE_PARENS.sub("", cleaned)  # Remove parentheses
     cleaned = cleaned.strip()
 
     # Direct match
@@ -147,7 +141,7 @@ def normalize_voltage_level(level: str) -> str | None:
 
     for alias in sorted_aliases:
         # Also clean the alias for comparison (though aliases should be clean in constant)
-        clean_alias = _RE_SEPARATOR.sub(r'\1', alias)
+        clean_alias = _RE_SEPARATOR.sub(r"\1", alias)
         if clean_alias in cleaned:
             return VOLTAGE_LEVEL_ALIASES[alias]
 

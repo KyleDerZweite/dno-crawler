@@ -50,5 +50,6 @@ async def main():
             print(f"Error fixing schema: {e}")
             await session.rollback()
 
+
 if __name__ == "__main__":
     asyncio.run(main())

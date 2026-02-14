@@ -38,8 +38,10 @@ router = APIRouter()
 # Request Models
 # ============================================================================
 
+
 class ConfigCreate(BaseModel):
     """Request to create a new AI provider configuration."""
+
     name: str
     provider_type: str
     auth_type: str = "api_key"
@@ -54,6 +56,7 @@ class ConfigCreate(BaseModel):
 
 class ConfigUpdate(BaseModel):
     """Request to update an AI provider configuration."""
+
     name: str | None = None
     model: str | None = None
     api_key: str | None = None
@@ -67,11 +70,13 @@ class ConfigUpdate(BaseModel):
 
 class ConfigReorder(BaseModel):
     """Request to reorder configurations."""
+
     config_ids: list[int]
 
 
 class ConfigTestRequest(BaseModel):
     """Request to test a configuration before saving."""
+
     provider_type: str
     auth_type: str = "api_key"
     model: str
@@ -83,6 +88,7 @@ class ConfigTestRequest(BaseModel):
 # ============================================================================
 # Provider Endpoints (static info from provider files)
 # ============================================================================
+
 
 @router.get("/providers")
 async def list_providers(
@@ -131,6 +137,7 @@ async def get_provider(
 # Configuration CRUD Endpoints
 # ============================================================================
 
+
 @router.get("/configs")
 async def list_configs(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -144,30 +151,34 @@ async def list_configs(
 
     items = []
     for config in configs:
-        items.append({
-            "id": config.id,
-            "name": config.name,
-            "provider_type": config.provider_type,
-            "auth_type": config.auth_type,
-            "model": config.model,
-            "api_url": config.api_url,
-            "has_api_key": bool(config.api_key_encrypted),
-            "supports_text": config.supports_text,
-            "supports_vision": config.supports_vision,
-            "supports_files": config.supports_files,
-            "is_enabled": config.is_enabled,
-            "priority": config.priority,
-            "status": config.status_display,
-            "is_subscription": config.is_subscription,
-            "model_parameters": config.model_parameters,
-            "last_success_at": config.last_success_at.isoformat() if config.last_success_at else None,
-            "last_error_at": config.last_error_at.isoformat() if config.last_error_at else None,
-            "last_error_message": config.last_error_message,
-            "consecutive_failures": config.consecutive_failures,
-            "total_requests": config.total_requests,
-            "total_tokens_used": config.total_tokens_used,
-            "created_at": config.created_at.isoformat() if config.created_at else None,
-        })
+        items.append(
+            {
+                "id": config.id,
+                "name": config.name,
+                "provider_type": config.provider_type,
+                "auth_type": config.auth_type,
+                "model": config.model,
+                "api_url": config.api_url,
+                "has_api_key": bool(config.api_key_encrypted),
+                "supports_text": config.supports_text,
+                "supports_vision": config.supports_vision,
+                "supports_files": config.supports_files,
+                "is_enabled": config.is_enabled,
+                "priority": config.priority,
+                "status": config.status_display,
+                "is_subscription": config.is_subscription,
+                "model_parameters": config.model_parameters,
+                "last_success_at": config.last_success_at.isoformat()
+                if config.last_success_at
+                else None,
+                "last_error_at": config.last_error_at.isoformat() if config.last_error_at else None,
+                "last_error_message": config.last_error_message,
+                "consecutive_failures": config.consecutive_failures,
+                "total_requests": config.total_requests,
+                "total_tokens_used": config.total_tokens_used,
+                "created_at": config.created_at.isoformat() if config.created_at else None,
+            }
+        )
 
     return APIResponse(
         success=True,
@@ -292,6 +303,7 @@ async def reorder_configs(
 # Test Endpoints
 # ============================================================================
 
+
 @router.post("/configs/{config_id}/test")
 async def test_saved_config(
     config_id: int,
@@ -390,16 +402,20 @@ async def test_config_preview(
 def _sanitize_error(error: str) -> str:
     """Strip potential API keys, tokens, and full URLs from error messages."""
     import re
+
     # Redact anything that looks like an API key (long alphanumeric strings)
-    error = re.sub(r'(sk-|key-|api-|bearer\s+)[A-Za-z0-9\-_]{16,}', r'\1[REDACTED]', error, flags=re.IGNORECASE)
+    error = re.sub(
+        r"(sk-|key-|api-|bearer\s+)[A-Za-z0-9\-_]{16,}", r"\1[REDACTED]", error, flags=re.IGNORECASE
+    )
     # Redact URLs with query params that might contain keys
-    error = re.sub(r'https?://[^\s"\']+', '[URL REDACTED]', error)
+    error = re.sub(r'https?://[^\s"\']+', "[URL REDACTED]", error)
     return error
 
 
 # ============================================================================
 # Status Endpoint
 # ============================================================================
+
 
 @router.get("/status")
 async def get_status(
@@ -425,6 +441,8 @@ async def get_status(
                 "name": active_config.name,
                 "provider_type": active_config.provider_type,
                 "model": active_config.model,
-            } if active_config else None,
+            }
+            if active_config
+            else None,
         },
     )

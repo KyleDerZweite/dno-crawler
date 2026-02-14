@@ -10,14 +10,16 @@ from enum import Enum
 
 class DiscoveryStrategy(str, Enum):
     """How the data was discovered."""
-    SITEMAP = "sitemap"      # Found via sitemap.xml
-    BFS = "bfs"              # Found via BFS crawl
-    HINT_URL = "hint_url"    # Found via previous year URL pattern
-    MANUAL = "manual"        # Manually provided URL
+
+    SITEMAP = "sitemap"  # Found via sitemap.xml
+    BFS = "bfs"  # Found via BFS crawl
+    HINT_URL = "hint_url"  # Found via previous year URL pattern
+    MANUAL = "manual"  # Manually provided URL
 
 
 class FileType(str, Enum):
     """Detected file types."""
+
     PDF = "pdf"
     XLSX = "xlsx"
     XLS = "xls"
@@ -33,13 +35,14 @@ class DiscoveredDocument:
 
     Represents a candidate data source found during discovery.
     """
+
     url: str
     score: float = 0.0
     file_type: FileType = FileType.UNKNOWN
 
     # Discovery context
     found_on_page: str = ""  # URL where this was found, or "(sitemap)"
-    link_text: str = ""      # Anchor text if from a link
+    link_text: str = ""  # Anchor text if from a link
 
     # Scoring details
     keywords_found: list[str] = field(default_factory=list)
@@ -60,6 +63,7 @@ class DiscoveryResult:
 
     Contains all candidates found, sorted by relevance.
     """
+
     start_url: str
     data_type: str
     target_year: int | None

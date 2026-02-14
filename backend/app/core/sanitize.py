@@ -15,28 +15,26 @@ logger = structlog.get_logger()
 
 class SanitizationError(Exception):
     """Raised when content fails sanitization checks."""
+
     pass
 
 
 # Patterns that indicate potential injection attempts
 DANGEROUS_PATTERNS = [
-    r"<script",                    # Script tags
-    r"javascript:",                # JavaScript protocol
-    r"vbscript:",                  # VBScript protocol
-    r"on\w+\s*=",                  # Event handlers (onclick=, onerror=, etc.)
-    r"data:text/html",             # Data URI with HTML
-    r"data:application/",          # Data URI with applications
-    r"expression\s*\(",            # CSS expression()
-    r"url\s*\(\s*['\"]?javascript", # CSS url(javascript:)
-    r"\x00",                       # Null bytes
-    r"&#",                         # HTML entity encoding (potential bypass)
+    r"<script",  # Script tags
+    r"javascript:",  # JavaScript protocol
+    r"vbscript:",  # VBScript protocol
+    r"on\w+\s*=",  # Event handlers (onclick=, onerror=, etc.)
+    r"data:text/html",  # Data URI with HTML
+    r"data:application/",  # Data URI with applications
+    r"expression\s*\(",  # CSS expression()
+    r"url\s*\(\s*['\"]?javascript",  # CSS url(javascript:)
+    r"\x00",  # Null bytes
+    r"&#",  # HTML entity encoding (potential bypass)
 ]
 
 # Compiled regex for performance
-DANGEROUS_REGEX = re.compile(
-    "|".join(DANGEROUS_PATTERNS),
-    re.IGNORECASE
-)
+DANGEROUS_REGEX = re.compile("|".join(DANGEROUS_PATTERNS), re.IGNORECASE)
 
 
 def sanitize_string(
@@ -65,15 +63,10 @@ def sanitize_string(
 
     # Check length
     if len(value) > max_length:
-        raise SanitizationError(
-            f"{field_name}: Exceeds maximum length of {max_length} characters"
-        )
+        raise SanitizationError(f"{field_name}: Exceeds maximum length of {max_length} characters")
 
     # Strip control characters (except newline, tab)
-    cleaned = "".join(
-        char for char in value
-        if char >= " " or char in "\n\t"
-    )
+    cleaned = "".join(char for char in value if char >= " " or char in "\n\t")
 
     # Check for dangerous patterns
     if DANGEROUS_REGEX.search(cleaned):
@@ -82,15 +75,11 @@ def sanitize_string(
             field=field_name,
             value_preview=cleaned[:50],
         )
-        raise SanitizationError(
-            f"{field_name}: Contains potentially dangerous content"
-        )
+        raise SanitizationError(f"{field_name}: Contains potentially dangerous content")
 
     # Check for HTML entities if not allowed
     if not allow_html_entities and re.search(r"&#\d+;|&#x[0-9a-fA-F]+;", cleaned):
-        raise SanitizationError(
-            f"{field_name}: HTML entity encoding is not allowed"
-        )
+        raise SanitizationError(f"{field_name}: HTML entity encoding is not allowed")
 
     # HTML escape special characters
     return html.escape(cleaned)
@@ -111,9 +100,7 @@ def sanitize_time_string(value: str, field_name: str = "field") -> str:
     # Strict pattern for time windows
     pattern = r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$"
     if not re.match(pattern, value):
-        raise SanitizationError(
-            f"{field_name}: Invalid time format. Expected 'HH:MM-HH:MM' or '-'"
-        )
+        raise SanitizationError(f"{field_name}: Invalid time format. Expected 'HH:MM-HH:MM' or '-'")
 
     return value
 

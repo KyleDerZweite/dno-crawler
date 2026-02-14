@@ -32,9 +32,7 @@ async def main():
     print(f"\nConfigured Headers: {headers}")
 
     client = AsyncOpenAI(
-        base_url=settings.ai_api_url,
-        api_key=settings.ai_api_key,
-        default_headers=headers
+        base_url=settings.ai_api_url, api_key=settings.ai_api_key, default_headers=headers
     )
 
     print(f"\nSending test request to {settings.ai_model}...")
@@ -42,24 +40,29 @@ async def main():
     try:
         response = await client.chat.completions.create(
             model=settings.ai_model,
-            messages=[{
-                "role": "user",
-                "content": "Hello! Please reply with 'Headers received' if you can read this."
-            }],
-            max_tokens=20
+            messages=[
+                {
+                    "role": "user",
+                    "content": "Hello! Please reply with 'Headers received' if you can read this.",
+                }
+            ],
+            max_tokens=20,
         )
 
         print("\nSuccess! Response:")
         print(response.choices[0].message.content)
         print("\nThe request was successful, which means headers are likely accepted.")
-        print("If headers were invalid, OpenRouter would usually ignore them or return a specific error.")
+        print(
+            "If headers were invalid, OpenRouter would usually ignore them or return a specific error."
+        )
 
     except Exception as e:
         print(f"\nError occurred: {e}")
         # If it's an API status error, it might have more details
-        if hasattr(e, 'response'):
+        if hasattr(e, "response"):
             print(f"Response status: {e.response.status_code}")
             print(f"Response body: {e.response.text}")
+
 
 if __name__ == "__main__":
     asyncio.run(main())

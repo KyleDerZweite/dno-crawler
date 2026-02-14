@@ -92,15 +92,13 @@ query (
 }
 """
 
+
 async def find_provider(address: str):
     print(f"🔎 Searching for: '{address}'")
 
     async with httpx.AsyncClient() as client:
         # --- STEP 1: Search Address ---
-        payload_search = {
-            "query": SEARCH_QUERY,
-            "variables": {"searchTerm": address}
-        }
+        payload_search = {"query": SEARCH_QUERY, "variables": {"searchTerm": address}}
 
         try:
             resp_search = await client.post(URL, json=payload_search, headers=HEADERS, timeout=10.0)
@@ -122,7 +120,7 @@ async def find_provider(address: str):
 
             # Extract coordinates from URL parameter
             # URL format: /overview?coordinates=50.94834,6.82052&searchType=LOCATION
-            parsed_url = urllib.parse.urlparse(location['url'])
+            parsed_url = urllib.parse.urlparse(location["url"])
             query_params = urllib.parse.parse_qs(parsed_url.query)
             coordinates = query_params.get("coordinates", [None])[0]
 
@@ -143,11 +141,11 @@ async def find_provider(address: str):
                 "filter": {
                     "onlyNap": False,
                     "voltageTypes": ["Niederspannung", "Mittelspannung"],
-                    "withRegions": True
+                    "withRegions": True,
                 },
                 "coordinates": coordinates,
-                "withCoordinates": True
-            }
+                "withCoordinates": True,
+            },
         }
 
         try:
@@ -175,6 +173,7 @@ async def find_provider(address: str):
 
         except Exception as e:
             print(f"❌ Provider Query Exception: {e}")
+
 
 if __name__ == "__main__":
     TEST_ADDRESS = "An der Ronne 160, 50859 Köln"

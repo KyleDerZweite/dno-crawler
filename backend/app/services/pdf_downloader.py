@@ -29,11 +29,7 @@ class PDFDownloader:
         self.log = logger.bind(component="PDFDownloader")
 
     def download(
-        self,
-        url: str,
-        dno_name: str,
-        year: int,
-        pdf_type: str = "netzentgelte"
+        self, url: str, dno_name: str, year: int, pdf_type: str = "netzentgelte"
     ) -> Path | None:
         """
         Download PDF to local storage.
@@ -50,7 +46,7 @@ class PDFDownloader:
         log = self.log.bind(url=url)
 
         # Create safe filename
-        safe_name = re.sub(r'[^a-zA-Z0-9]', '-', dno_name.lower())
+        safe_name = re.sub(r"[^a-zA-Z0-9]", "-", dno_name.lower())
         downloads_dir = Path(settings.downloads_path) / safe_name
         downloads_dir.mkdir(parents=True, exist_ok=True)
 
@@ -62,7 +58,7 @@ class PDFDownloader:
                 response.raise_for_status()
 
                 # Verify it's actually a PDF
-                if not response.content.startswith(b'%PDF'):
+                if not response.content.startswith(b"%PDF"):
                     log.warning("Downloaded file is not a valid PDF")
                     return None
 
@@ -113,4 +109,3 @@ class PDFDownloader:
         except Exception as e:
             self.log.error("PDF validation error", error=str(e))
             return False
-

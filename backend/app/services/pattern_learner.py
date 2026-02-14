@@ -27,7 +27,7 @@ class PatternLearner:
     """Learns year-normalized URL patterns across DNOs."""
 
     # Regex to match 4-digit years in paths
-    YEAR_PATTERN = re.compile(r'/(\d{4})/')
+    YEAR_PATTERN = re.compile(r"/(\d{4})/")
 
     # Path segments that are too generic to learn
     IGNORE_SEGMENTS = {"/", ""}
@@ -54,20 +54,20 @@ class PatternLearner:
             List of path patterns sorted by success rate (highest first)
         """
         # Query patterns that match data_type or "both"
-        query = select(CrawlPathPatternModel).where(
-            CrawlPathPatternModel.data_type.in_([data_type, "both"])
-        ).order_by(
-            desc(CrawlPathPatternModel.success_count)  # Most successful first
-        ).limit(limit * 2)  # Get more than needed for filtering
+        query = (
+            select(CrawlPathPatternModel)
+            .where(CrawlPathPatternModel.data_type.in_([data_type, "both"]))
+            .order_by(
+                desc(CrawlPathPatternModel.success_count)  # Most successful first
+            )
+            .limit(limit * 2)
+        )  # Get more than needed for filtering
 
         result = await db.execute(query)
         patterns = result.scalars().all()
 
         # Filter by success rate and return patterns
-        filtered = [
-            p.path_pattern for p in patterns
-            if p.success_rate >= min_success_rate
-        ]
+        filtered = [p.path_pattern for p in patterns if p.success_rate >= min_success_rate]
 
         self.log.debug(
             "Retrieved priority paths",
@@ -228,9 +228,7 @@ class PatternLearner:
             db: Database session
             pattern: Pattern that was tried and failed
         """
-        query = select(CrawlPathPatternModel).where(
-            CrawlPathPatternModel.path_pattern == pattern
-        )
+        query = select(CrawlPathPatternModel).where(CrawlPathPatternModel.path_pattern == pattern)
         result = await db.execute(query)
         existing = result.scalar_one_or_none()
 
@@ -263,17 +261,17 @@ async def seed_initial_patterns(db: AsyncSession):
 
     for path_pattern, data_type, success_count in patterns:
         existing = await db.execute(
-            select(CrawlPathPatternModel).where(
-                CrawlPathPatternModel.path_pattern == path_pattern
-            )
+            select(CrawlPathPatternModel).where(CrawlPathPatternModel.path_pattern == path_pattern)
         )
         if not existing.scalar_one_or_none():
-            db.add(CrawlPathPatternModel(
-                path_pattern=path_pattern,
-                data_type=data_type,
-                success_count=success_count,
-                fail_count=0,
-            ))
+            db.add(
+                CrawlPathPatternModel(
+                    path_pattern=path_pattern,
+                    data_type=data_type,
+                    success_count=success_count,
+                    fail_count=0,
+                )
+            )
 
     await db.flush()
     logger.info("Seeded initial path patterns")

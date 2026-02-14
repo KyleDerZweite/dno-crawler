@@ -156,16 +156,18 @@ class CustomProvider(BaseProvider):
 
         response = await client.chat.completions.create(
             model=self.config.model,
-            messages=[{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{image_data}"}
-                    }
-                ]
-            }],
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
             response_format={"type": "json_object"},
             max_tokens=self.MAX_OUTPUT_TOKENS,
         )

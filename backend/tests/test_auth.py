@@ -5,7 +5,6 @@ Smoke tests for authentication.
 import pytest
 from httpx import AsyncClient
 
-
 pytestmark = pytest.mark.asyncio
 
 

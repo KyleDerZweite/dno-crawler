@@ -48,9 +48,12 @@ async def list_jobs(
     total = await db.scalar(count_query) or 0
 
     # Get pending count for queue length
-    pending_count = await db.scalar(
-        select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
-    ) or 0
+    pending_count = (
+        await db.scalar(
+            select(func.count(CrawlJobModel.id)).where(CrawlJobModel.status == "pending")
+        )
+        or 0
+    )
 
     # Order by created_at desc, paginate
     query = query.order_by(CrawlJobModel.created_at.desc())
@@ -96,15 +99,21 @@ async def list_jobs(
                     "dno_name": dnos.get(job.dno_id).name if dnos.get(job.dno_id) else None,
                     "year": job.year,
                     "data_type": job.data_type,
-                    "job_type": getattr(job, 'job_type', 'full'),
+                    "job_type": getattr(job, "job_type", "full"),
                     "status": job.status,
                     "progress": job.progress,
                     "current_step": job.current_step,
                     "error_message": job.error_message,
                     "triggered_by": job.triggered_by,
-                    "queue_position": pending_order.get(job.id) if job.status == "pending" else None,
-                    "parent_job_id": str(job.parent_job_id) if getattr(job, 'parent_job_id', None) else None,
-                    "child_job_id": str(job.child_job_id) if getattr(job, 'child_job_id', None) else None,
+                    "queue_position": pending_order.get(job.id)
+                    if job.status == "pending"
+                    else None,
+                    "parent_job_id": str(job.parent_job_id)
+                    if getattr(job, "parent_job_id", None)
+                    else None,
+                    "child_job_id": str(job.child_job_id)
+                    if getattr(job, "child_job_id", None)
+                    else None,
                     "started_at": job.started_at.isoformat() if job.started_at else None,
                     "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                     "created_at": job.created_at.isoformat() if job.created_at else None,
@@ -129,8 +138,10 @@ async def get_job(
     current_user: Annotated[AuthUser, Depends(get_current_user)],
 ) -> APIResponse:
     """Get detailed information about a specific job including steps."""
-    query = select(CrawlJobModel).where(CrawlJobModel.id == job_id).options(
-        selectinload(CrawlJobModel.steps)
+    query = (
+        select(CrawlJobModel)
+        .where(CrawlJobModel.id == job_id)
+        .options(selectinload(CrawlJobModel.steps))
     )
     result = await db.execute(query)
     job = result.scalar_one_or_none()
@@ -148,21 +159,21 @@ async def get_job(
     parent_job_info = None
     child_job_info = None
 
-    if getattr(job, 'parent_job_id', None):
+    if getattr(job, "parent_job_id", None):
         parent = await db.get(CrawlJobModel, job.parent_job_id)
         if parent:
             parent_job_info = {
                 "id": str(parent.id),
-                "job_type": getattr(parent, 'job_type', 'full'),
+                "job_type": getattr(parent, "job_type", "full"),
                 "status": parent.status,
             }
 
-    if getattr(job, 'child_job_id', None):
+    if getattr(job, "child_job_id", None):
         child = await db.get(CrawlJobModel, job.child_job_id)
         if child:
             child_job_info = {
                 "id": str(child.id),
-                "job_type": getattr(child, 'job_type', 'full'),
+                "job_type": getattr(child, "job_type", "full"),
                 "status": child.status,
             }
 
@@ -175,7 +186,7 @@ async def get_job(
             "dno_slug": dno.slug if dno else None,
             "year": job.year,
             "data_type": job.data_type,
-            "job_type": getattr(job, 'job_type', 'full'),
+            "job_type": getattr(job, "job_type", "full"),
             "status": job.status,
             "progress": job.progress,
             "current_step": job.current_step,
@@ -242,5 +253,3 @@ async def delete_job(
         message="Job deleted",
         data={"job_id": str(job_id)},
     )
-
-

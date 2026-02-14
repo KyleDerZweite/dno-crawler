@@ -19,6 +19,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 class JobStatus(str, Enum):
     """Status of a crawl job."""
+
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -28,6 +29,7 @@ class JobStatus(str, Enum):
 
 class DataType(str, Enum):
     """Types of data to extract."""
+
     NETZENTGELTE = "netzentgelte"
     HLZF = "hlzf"
     ALL = "all"  # Both netzentgelte and hlzf
@@ -35,6 +37,7 @@ class DataType(str, Enum):
 
 class UserRole(str, Enum):
     """User roles (for Zitadel integration)."""
+
     PENDING = "pending"
     USER = "user"
     MAINTAINER = "maintainer"  # Can manage data verification flags
@@ -43,6 +46,7 @@ class UserRole(str, Enum):
 
 class Season(str, Enum):
     """Seasons for HLZF data."""
+
     WINTER = "winter"
     SPRING = "fruehling"
     SUMMER = "sommer"
@@ -51,6 +55,7 @@ class Season(str, Enum):
 
 class ContentFormat(str, Enum):
     """Content format types."""
+
     HTML = "html"
     PDF = "pdf"
     IMAGE = "image"
@@ -60,6 +65,7 @@ class ContentFormat(str, Enum):
 
 class DNOStatus(str, Enum):
     """DNO crawl status."""
+
     UNCRAWLED = "uncrawled"
     CRAWLING = "crawling"
     CRAWLED = "crawled"
@@ -68,6 +74,7 @@ class DNOStatus(str, Enum):
 
 class EnrichmentStatus(str, Enum):
     """DNO enrichment status (for background data enrichment)."""
+
     PENDING = "pending"
     PROCESSING = "processing"
     COMPLETED = "completed"
@@ -76,12 +83,14 @@ class EnrichmentStatus(str, Enum):
 
 class DNOSource(str, Enum):
     """How the DNO record was created."""
-    SEED = "seed"              # From MaStR seed data
+
+    SEED = "seed"  # From MaStR seed data
     USER_DISCOVERY = "user_discovery"  # Created via user search/skeleton service
 
 
 class SourceFormat(str, Enum):
     """Source document formats."""
+
     PDF = "pdf"
     XLSX = "xlsx"
     XLS = "xls"
@@ -94,6 +103,7 @@ class SourceFormat(str, Enum):
 
 class VerificationStatus(str, Enum):
     """Verification status of extracted data."""
+
     UNVERIFIED = "unverified"
     VERIFIED = "verified"
     REJECTED = "rejected"
@@ -102,18 +112,20 @@ class VerificationStatus(str, Enum):
 
 class CrawlStrategy(str, Enum):
     """Strategy for finding data."""
-    USE_CACHE = "use_cache"         # File already downloaded locally
-    EXACT_URL = "exact_url"         # Known URL from previous crawl
-    PATTERN_MATCH = "pattern_match" # Learned path pattern worked
-    BFS_CRAWL = "bfs_crawl"         # Full BFS website crawl
+
+    USE_CACHE = "use_cache"  # File already downloaded locally
+    EXACT_URL = "exact_url"  # Known URL from previous crawl
+    PATTERN_MATCH = "pattern_match"  # Learned path pattern worked
+    BFS_CRAWL = "bfs_crawl"  # Full BFS website crawl
 
 
 class AIProvider(str, Enum):
     """Supported AI providers for extraction."""
-    GEMINI = "gemini"       # Google Gemini (gemini-2.0-flash, gemini-1.5-pro)
-    OPENAI = "openai"       # OpenAI GPT-4 Vision (gpt-4o, gpt-4-turbo)
-    ANTHROPIC = "anthropic" # Anthropic Claude (claude-3-5-sonnet)
-    OLLAMA = "ollama"       # Local Ollama (llava, bakllava)
+
+    GEMINI = "gemini"  # Google Gemini (gemini-2.0-flash, gemini-1.5-pro)
+    OPENAI = "openai"  # OpenAI GPT-4 Vision (gpt-4o, gpt-4-turbo)
+    ANTHROPIC = "anthropic"  # Anthropic Claude (claude-3-5-sonnet)
+    OLLAMA = "ollama"  # Local Ollama (llava, bakllava)
 
 
 # ==============================================================================
@@ -123,6 +135,7 @@ class AIProvider(str, Enum):
 
 class BaseSchema(BaseModel):
     """Base schema with ORM compatibility."""
+
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -133,6 +146,7 @@ class BaseSchema(BaseModel):
 
 class APIResponse(BaseSchema):
     """Standard API response wrapper."""
+
     success: bool = True
     message: str | None = None
     data: Any = None
@@ -141,6 +155,7 @@ class APIResponse(BaseSchema):
 
 class PaginatedResponse(APIResponse):
     """Paginated API response."""
+
     meta: dict[str, Any] = Field(
         default_factory=lambda: {
             "total": 0,
@@ -158,12 +173,14 @@ class PaginatedResponse(APIResponse):
 
 class TimestampMixin(BaseModel):
     """Mixin for created/updated timestamps."""
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime | None = None
 
 
 class CrawlJobBase(BaseSchema):
     """Base schema for crawl jobs."""
+
     dno_id: int
     year: int
     data_type: DataType
@@ -171,11 +188,13 @@ class CrawlJobBase(BaseSchema):
 
 class CrawlJobCreate(CrawlJobBase):
     """Schema for creating a crawl job."""
+
     priority: int = Field(5, ge=1, le=10)
 
 
 class CrawlJob(CrawlJobBase, TimestampMixin):
     """Full crawl job schema."""
+
     id: int
     status: JobStatus = JobStatus.PENDING
     progress: int = Field(0, ge=0, le=100)
@@ -197,6 +216,7 @@ class JobContext(BaseSchema):
 
     Stored in CrawlJobModel.context as JSON.
     """
+
     # DNO info (loaded in step_00)
     dno_id: int
     dno_slug: str
@@ -242,6 +262,7 @@ class JobContext(BaseSchema):
 
 class ExtractionResult(BaseSchema):
     """Result from Gemini extraction."""
+
     success: bool
     data_type: str
     source_page: int | None = None
@@ -252,6 +273,7 @@ class ExtractionResult(BaseSchema):
 
 class NetzentgelteRecord(BaseSchema):
     """Single Netzentgelte record from extraction."""
+
     voltage_level: str
     arbeitspreis: float | None = None
     leistungspreis: float | None = None
@@ -259,6 +281,7 @@ class NetzentgelteRecord(BaseSchema):
 
 class HLZFRecord(BaseSchema):
     """Single HLZF record from extraction."""
+
     voltage_level: str
     winter: str | None = None
     fruehling: str | None = None

@@ -101,7 +101,6 @@ class DiscoveryManager:
             max_candidates=max_candidates,
         )
 
-
         result.documents.extend(sitemap_result.documents)
         result.sitemap_urls_checked = sitemap_result.sitemap_urls_checked
         result.errors.extend(sitemap_result.errors)
@@ -159,23 +158,23 @@ class DiscoveryManager:
                     continue
 
                 # Check for embedded data tables
-                html_score, years_found = score_html_for_data(
-                    response.text, "hlzf", target_year
-                )
+                html_score, years_found = score_html_for_data(response.text, "hlzf", target_year)
 
                 if html_score > 30:
                     has_target_year = target_year in years_found if target_year else False
 
-                    result.documents.append(DiscoveredDocument(
-                        url=url,
-                        score=html_score + 50,  # Bonus for confirmed data
-                        file_type=FileType.HTML,
-                        found_on_page="(html scan)",
-                        keywords_found=["hlzf", "strom"],
-                        has_target_year=has_target_year,
-                        is_html_data=True,
-                        years_in_page=years_found,
-                    ))
+                    result.documents.append(
+                        DiscoveredDocument(
+                            url=url,
+                            score=html_score + 50,  # Bonus for confirmed data
+                            file_type=FileType.HTML,
+                            found_on_page="(html scan)",
+                            keywords_found=["hlzf", "strom"],
+                            has_target_year=has_target_year,
+                            is_html_data=True,
+                            years_in_page=years_found,
+                        )
+                    )
 
                     self.log.info(
                         "Found HLZF HTML data",

@@ -27,8 +27,7 @@ async def seed_ai_config(db: AsyncSession) -> None:
 
     # Check if OpenRouter config already exists
     result = await db.execute(
-        select(AIProviderConfigModel)
-        .where(AIProviderConfigModel.provider_type == "openrouter")
+        select(AIProviderConfigModel).where(AIProviderConfigModel.provider_type == "openrouter")
     )
     existing_config = result.scalars().first()
 

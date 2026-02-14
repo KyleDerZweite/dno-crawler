@@ -33,6 +33,7 @@ def _get_fernet() -> Fernet:
 
     if not key_source:
         import structlog
+
         logger = structlog.get_logger()
 
         environment = os.environ.get("ENVIRONMENT", "development").lower()
@@ -40,7 +41,7 @@ def _get_fernet() -> Fernet:
             logger.critical(
                 "ai_encryption_no_key",
                 msg="AI_ENCRYPTION_KEY or SESSION_SECRET must be set in production/staging. "
-                    "Refusing to use fallback key.",
+                "Refusing to use fallback key.",
             )
             raise RuntimeError(
                 "AI_ENCRYPTION_KEY or SESSION_SECRET must be set in production/staging environments."
@@ -49,7 +50,7 @@ def _get_fernet() -> Fernet:
         logger.warning(
             "ai_encryption_no_key",
             msg="No AI_ENCRYPTION_KEY or SESSION_SECRET set. Using fallback key. "
-                "This is insecure for production!"
+            "This is insecure for production!",
         )
         key_source = "dno-crawler-development-fallback-key-do-not-use-in-production"
 

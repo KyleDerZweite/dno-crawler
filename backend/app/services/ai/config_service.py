@@ -32,8 +32,7 @@ class AIConfigService:
     async def list_all(self) -> Sequence[AIProviderConfigModel]:
         """List all AI provider configs, ordered by priority."""
         result = await self.db.execute(
-            select(AIProviderConfigModel)
-            .order_by(AIProviderConfigModel.priority)
+            select(AIProviderConfigModel).order_by(AIProviderConfigModel.priority)
         )
         return result.scalars().all()
 
@@ -49,8 +48,7 @@ class AIConfigService:
     async def get_by_id(self, config_id: int) -> AIProviderConfigModel | None:
         """Get a config by ID."""
         result = await self.db.execute(
-            select(AIProviderConfigModel)
-            .where(AIProviderConfigModel.id == config_id)
+            select(AIProviderConfigModel).where(AIProviderConfigModel.id == config_id)
         )
         return result.scalar_one_or_none()
 

@@ -38,6 +38,7 @@ class DataType(str, Enum):
 @dataclass
 class VerificationResult:
     """Result of content verification."""
+
     is_verified: bool
     confidence: float  # 0.0 to 1.0
     detected_data_type: str | None
@@ -63,16 +64,41 @@ REQUIRED_KEYWORDS = {
 # Keywords that strongly indicate a specific data type (boosters)
 POSITIVE_KEYWORDS = {
     "netzentgelte": [
-        "leistungspreis", "arbeitspreis", "ct/kwh", "€/kw", "eur/kw",
-        "netznutzung", "netzentgelt", "entgelt", "preisblatt",
-        "netzzugang", "preise", "tarifblatt", "entgeltblatt",
-        "jahresleistungspreis", "leistungsentgelt", "arbeitsentgelt",
+        "leistungspreis",
+        "arbeitspreis",
+        "ct/kwh",
+        "€/kw",
+        "eur/kw",
+        "netznutzung",
+        "netzentgelt",
+        "entgelt",
+        "preisblatt",
+        "netzzugang",
+        "preise",
+        "tarifblatt",
+        "entgeltblatt",
+        "jahresleistungspreis",
+        "leistungsentgelt",
+        "arbeitsentgelt",
     ],
     "hlzf": [
-        "hochlastzeitfenster", "hochlast", "zeitfenster", "hlzf",
-        "§19", "stromnev", "spitzenlast", "peak", "hochlastzeit",
-        "winter", "sommer", "herbst", "frühling", "fruehling",
-        "entfällt", "entfaellt", "uhr",
+        "hochlastzeitfenster",
+        "hochlast",
+        "zeitfenster",
+        "hlzf",
+        "§19",
+        "stromnev",
+        "spitzenlast",
+        "peak",
+        "hochlastzeit",
+        "winter",
+        "sommer",
+        "herbst",
+        "frühling",
+        "fruehling",
+        "entfällt",
+        "entfaellt",
+        "uhr",
     ],
 }
 
@@ -80,24 +106,49 @@ POSITIVE_KEYWORDS = {
 NEGATIVE_KEYWORDS = {
     "netzentgelte": [
         # If looking for netzentgelte, these suggest wrong document
-        "hochlastzeitfenster", "hlzf", "zeitfenster",
+        "hochlastzeitfenster",
+        "hlzf",
+        "zeitfenster",
         # Common non-pricing pages that share grid terminology
-        "hausanschluss", "netzanschluss", "anschlussantrag",
-        "einspeiser", "einspeisevergütung", "photovoltaik",
-        "stromzähler", "zählerstand", "ablesekarte",
-        "störungsmeldung", "störung melden",
-        "stellenangebot", "karriere", "job",
-        "kontaktformular", "anfahrt", "impressum",
-        "datenschutz", "cookie", "agb",
-        "elektromobilität", "ladesäule", "wallbox",
-        "bauherren", "neubau", "baustrom",
+        "hausanschluss",
+        "netzanschluss",
+        "anschlussantrag",
+        "einspeiser",
+        "einspeisevergütung",
+        "photovoltaik",
+        "stromzähler",
+        "zählerstand",
+        "ablesekarte",
+        "störungsmeldung",
+        "störung melden",
+        "stellenangebot",
+        "karriere",
+        "job",
+        "kontaktformular",
+        "anfahrt",
+        "impressum",
+        "datenschutz",
+        "cookie",
+        "agb",
+        "elektromobilität",
+        "ladesäule",
+        "wallbox",
+        "bauherren",
+        "neubau",
+        "baustrom",
     ],
     "hlzf": [
         # If looking for HLZF, these suggest wrong document (but not as strong)
         # Keep light penalties since HLZF docs might mention prices
-        "hausanschluss", "netzanschluss", "anschlussantrag",
-        "stellenangebot", "karriere", "job",
-        "kontaktformular", "impressum", "datenschutz",
+        "hausanschluss",
+        "netzanschluss",
+        "anschlussantrag",
+        "stellenangebot",
+        "karriere",
+        "job",
+        "kontaktformular",
+        "impressum",
+        "datenschutz",
     ],
 }
 
@@ -105,10 +156,10 @@ NEGATIVE_KEYWORDS = {
 STRUCTURE_PATTERNS = {
     "netzentgelte": [
         r"\d+[,\.]\d{2}\s*ct",  # Price pattern like "5,67 ct"
-        r"\d+[,\.]\d{2}\s*€",   # Price pattern like "5,67 €"
-        r"\d+[,\.]\d{2}\s*Euro", # Price pattern "5,67 Euro"
+        r"\d+[,\.]\d{2}\s*€",  # Price pattern like "5,67 €"
+        r"\d+[,\.]\d{2}\s*Euro",  # Price pattern "5,67 Euro"
         r"\d+[,\.]\d+\s*€/k[wW]",  # €/kW pattern
-        r"\d+[,\.]\d+\s*ct/k[wW]h", # ct/kWh pattern
+        r"\d+[,\.]\d+\s*ct/k[wW]h",  # ct/kWh pattern
         r"(niederspannung|mittelspannung|hochspannung)",  # Voltage levels
     ],
     "hlzf": [
@@ -192,7 +243,9 @@ class ContentVerifier:
                     keywords_found=[],
                     keywords_missing=[],
                     error="Could not extract text from content",
-                    content_sample=content[:500].decode("utf-8", errors="replace") if content else None,
+                    content_sample=content[:500].decode("utf-8", errors="replace")
+                    if content
+                    else None,
                 )
 
             # Verify content against expected data type
@@ -305,7 +358,9 @@ class ContentVerifier:
             dest_dir.mkdir(parents=True, exist_ok=True)
 
             # Build destination path (add data type and year to filename)
-            ext = Path(original_filename).suffix or self._get_extension_for_content_type(content_type)
+            ext = Path(original_filename).suffix or self._get_extension_for_content_type(
+                content_type
+            )
             year_str = str(expected_year) if expected_year else "unknown"
             dest_filename = f"{dno_slug}-{expected_data_type}-{year_str}{ext}"
             dest_path = dest_dir / dest_filename
@@ -365,10 +420,7 @@ class ContentVerifier:
             return None
 
     async def _do_download_full(
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        max_size: int
+        self, client: httpx.AsyncClient, url: str, max_size: int
     ) -> bytes | None:
         """Perform the actual full download with streaming size check."""
         from app.services.retry_utils import with_retries
@@ -522,9 +574,9 @@ class ContentVerifier:
 
         # Final verification decision
         is_verified = (
-            required_met and
-            confidence >= 0.4 and
-            (detected == expected_data_type or detected is None)
+            required_met
+            and confidence >= 0.4
+            and (detected == expected_data_type or detected is None)
         )
 
         self.log.debug(
@@ -596,7 +648,7 @@ class ContentVerifier:
             )
 
             if response.status_code in (200, 206):
-                return response.content[:self.SNIFF_SIZE]
+                return response.content[: self.SNIFF_SIZE]
 
             # Don't retry on client errors (4xx)
             if 400 <= response.status_code < 500:
@@ -618,7 +670,6 @@ class ContentVerifier:
         except Exception as e:
             self.log.debug("fetch_partial_failed", url=url[:80], error=str(e))
             return None
-
 
     def _detect_content_type(self, url: str) -> str:
         """Detect content type from URL."""
@@ -665,7 +716,7 @@ class ContentVerifier:
         3. Return None if both fail (might need OCR)
         """
         # Check for encryption marker early
-        is_encrypted = b'/Encrypt' in content[:2048]
+        is_encrypted = b"/Encrypt" in content[:2048]
         if is_encrypted:
             self.log.debug("PDF appears encrypted - extraction may be limited")
 
@@ -728,7 +779,6 @@ class ContentVerifier:
             self.log.debug("pymupdf_failed", error=str(e))
             return None
 
-
     def _extract_excel_text(self, content: bytes) -> str | None:
         """Extract text from Excel content (XLSX and XLS formats)."""
         # Try XLSX first (most common)
@@ -788,7 +838,6 @@ class ContentVerifier:
             self.log.debug("xls_extract_failed", error=str(e))
             return None
 
-
     def _extract_html_text(self, content: bytes) -> str | None:
         """Extract text from HTML content."""
         try:
@@ -804,7 +853,7 @@ class ContentVerifier:
             text = soup.get_text(separator=" ", strip=True)
 
             # Clean up whitespace
-            text = re.sub(r'\s+', ' ', text)
+            text = re.sub(r"\s+", " ", text)
 
             return text if text else None
         except Exception as e:

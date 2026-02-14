@@ -24,6 +24,7 @@ class Base(DeclarativeBase):
 
 class DatabaseError(Exception):
     """Custom database error for better error handling"""
+
     def __init__(self, message: str, original_error: Exception | None = None):
         self.message = message
         self.original_error = original_error
@@ -44,9 +45,9 @@ try:
             "command_timeout": 60,
             "server_settings": {
                 "application_name": settings.app_name.lower().replace(" ", "_"),
-                "jit": "off"
-            }
-        }
+                "jit": "off",
+            },
+        },
     )
     logger.info("Database engine created successfully")
 except Exception as e:
@@ -73,15 +74,14 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail="Database connection failed. Please try again later."
+            detail="Database connection failed. Please try again later.",
         ) from e
     except SQLAlchemyError as e:
         logger.error("Database error", error=str(e))
         if session:
             await session.rollback()
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Database operation failed"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Database operation failed"
         ) from e
     except Exception as e:
         # Don't catch application-level exceptions that should be handled by global handlers
@@ -99,7 +99,7 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="An unexpected error occurred. Please try again later."
+            detail="An unexpected error occurred. Please try again later.",
         ) from e
     finally:
         if session:
@@ -152,7 +152,9 @@ async def init_db() -> None:
     try:
         async with engine.begin() as conn:
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
-            await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
+            await conn.run_sync(
+                lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True)
+            )
         logger.info("Database tables initialized")
     except Exception as e:
         error_str = str(e)

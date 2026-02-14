@@ -159,7 +159,9 @@ class ValidateStep(BaseStep):
             # Normalize voltage level names
             if "hochspannung" in vl or vl == "hs":
                 found_levels.add("hs")
-            elif ("mittelspannung" in vl and "nieder" not in vl and "umspann" not in vl) or vl == "ms":
+            elif (
+                "mittelspannung" in vl and "nieder" not in vl and "umspann" not in vl
+            ) or vl == "ms":
                 found_levels.add("ms")
             elif "niederspannung" in vl or vl == "ns":
                 found_levels.add("ns")
@@ -206,4 +208,3 @@ class ValidateStep(BaseStep):
                 )
 
         return errors, warnings
-

@@ -24,7 +24,7 @@ class FileAnalyzer:
             "preisblaetter": 5,
             "netzentgelt": 5,
             "netzentgelte": 5,  # Plural form for exact token matching
-            "preise": 5,        # Price sheets are netzentgelte
+            "preise": 5,  # Price sheets are netzentgelte
             "netznutzung": 3,
             "entgelt": 3,
             "strom": 1,  # Low weight, just a modifier
@@ -35,9 +35,9 @@ class FileAnalyzer:
             "atypisch": 5,
             "hochlast": 5,
             "benutzungsstunden": 3,
-            "regelung": 5,   # Regulatory documents often contain HLZF
-            "regelungen": 5, # Plural form
-        }
+            "regelung": 5,  # Regulatory documents often contain HLZF
+            "regelungen": 5,  # Plural form
+        },
     }
 
     # Minimum score threshold to be confident in detection
@@ -112,7 +112,7 @@ class FileAnalyzer:
         scores = {"netzentgelte": 0, "hlzf": 0}
 
         # Tokenize filename (handles -, _, ., and spaces)
-        tokens = re.split(r'[-_.\s]', fn)
+        tokens = re.split(r"[-_.\s]", fn)
 
         for category, weights in self.FILENAME_MAPPING.items():
             for word, weight in weights.items():
@@ -121,11 +121,12 @@ class FileAnalyzer:
 
         # Determine type based on score threshold
         detected_type = None
-        if (scores["netzentgelte"] >= self.MIN_SCORE_THRESHOLD and
-            scores["netzentgelte"] > scores["hlzf"]):
+        if (
+            scores["netzentgelte"] >= self.MIN_SCORE_THRESHOLD
+            and scores["netzentgelte"] > scores["hlzf"]
+        ):
             detected_type = "netzentgelte"
-        elif (scores["hlzf"] >= self.MIN_SCORE_THRESHOLD and
-              scores["hlzf"] > scores["netzentgelte"]):
+        elif scores["hlzf"] >= self.MIN_SCORE_THRESHOLD and scores["hlzf"] > scores["netzentgelte"]:
             detected_type = "hlzf"
 
         # Extract year - try multiple strategies

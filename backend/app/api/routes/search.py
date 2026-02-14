@@ -7,7 +7,6 @@ skeleton DNO/Location records via VNB Digital API.
 Rate limited: 60 req/min per IP, 50 req/min global VNB quota.
 """
 
-
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
@@ -34,6 +33,7 @@ router = APIRouter()
 
 class AddressSearchInput(BaseModel):
     """Address search input with strict validation."""
+
     street: str = Field(
         ...,
         min_length=1,
@@ -57,18 +57,21 @@ class AddressSearchInput(BaseModel):
 
 class CoordinatesSearchInput(BaseModel):
     """Coordinates search input."""
+
     latitude: float = Field(..., ge=-90, le=90)
     longitude: float = Field(..., ge=-180, le=180)
 
 
 class DNOSearchInput(BaseModel):
     """Direct DNO search input with validation."""
+
     dno_id: str | None = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
     dno_name: str | None = Field(None, max_length=200)
 
 
 class PublicSearchRequest(BaseModel):
     """Public search request - one of three input types."""
+
     address: AddressSearchInput | None = None
     coordinates: CoordinatesSearchInput | None = None
     dno: DNOSearchInput | None = None
@@ -78,6 +81,7 @@ class PublicSearchRequest(BaseModel):
 
 class DNOMetadata(BaseModel):
     """Lightweight DNO info."""
+
     id: int
     slug: str
     name: str
@@ -88,6 +92,7 @@ class DNOMetadata(BaseModel):
 
 class LocationInfo(BaseModel):
     """Location info."""
+
     street: str
     number: str | None = None
     zip_code: str
@@ -98,6 +103,7 @@ class LocationInfo(BaseModel):
 
 class NetzentgelteData(BaseModel):
     """Netzentgelte data."""
+
     year: int
     voltage_level: str
     leistung: float | None = None
@@ -109,8 +115,9 @@ class NetzentgelteData(BaseModel):
 
 class HLZFTimeRange(BaseModel):
     """Parsed time range with start and end times."""
+
     start: str  # e.g., "12:15:00"
-    end: str    # e.g., "13:15:00"
+    end: str  # e.g., "13:15:00"
 
 
 def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
@@ -135,7 +142,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
 
     # Normalize time helper
     def normalize_time(t: str) -> str:
-        parts = t.split(':')
+        parts = t.split(":")
         hour = parts[0].zfill(2)
         minute = parts[1] if len(parts) > 1 else "00"
         second = parts[2] if len(parts) > 2 else "00"
@@ -143,7 +150,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
 
     # Split by comma OR newline to get individual periods
     # This handles both "12:15-13:15, 16:45-19:45" and "12:15-13:15\n16:45-19:45"
-    periods = re.split(r'[,\n]', value)
+    periods = re.split(r"[,\n]", value)
 
     for period in periods:
         period = period.strip()
@@ -153,8 +160,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
         # Match any dash type: hyphen (-), en-dash (–), em-dash (—)
         # Allow optional spaces around the dash
         match = re.match(
-            r'^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$',
-            period
+            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$", period
         )
 
         if match:
@@ -164,10 +170,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
             continue
 
         # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
-        space_match = re.match(
-            r'^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$',
-            period
-        )
+        space_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$", period)
         if space_match:
             start_time = normalize_time(space_match.group(1))
             end_time = normalize_time(space_match.group(2))
@@ -178,6 +181,7 @@ def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
 
 class HLZFData(BaseModel):
     """HLZF data with both raw strings and parsed time ranges."""
+
     year: int
     voltage_level: str
     # Raw string values (for display fallback)
@@ -196,6 +200,7 @@ class HLZFData(BaseModel):
 
 class PublicSearchResponse(BaseModel):
     """Response for public search."""
+
     found: bool
     has_data: bool
     dno: DNOMetadata | None = None
@@ -245,16 +250,21 @@ async def public_search(
         await rate_limiter.check_ip_limit(client_ip)
     except RuntimeError:
         # Rate limiter not initialized (Redis unavailable) -- fail open with ERROR log
-        log.error("rate_limiter_unavailable", detail="Redis down or not configured, rate limiting bypassed")
+        log.error(
+            "rate_limiter_unavailable",
+            detail="Redis down or not configured, rate limiting bypassed",
+        )
         rate_limiter = None
         client_ip = "unknown"
 
     # Validate exactly one input type provided
-    inputs_provided = sum([
-        request.address is not None,
-        request.coordinates is not None,
-        request.dno is not None,
-    ])
+    inputs_provided = sum(
+        [
+            request.address is not None,
+            request.coordinates is not None,
+            request.dno is not None,
+        ]
+    )
     if inputs_provided != 1:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -266,9 +276,7 @@ async def public_search(
 
     # Route to appropriate handler
     if request.address:
-        return await _search_by_address(
-            db, rate_limiter, request.address, filter_years, log
-        )
+        return await _search_by_address(db, rate_limiter, request.address, filter_years, log)
     elif request.coordinates:
         return await _search_by_coordinates(
             db, rate_limiter, request.coordinates, filter_years, log
@@ -378,6 +386,7 @@ async def _search_by_address(
     enriched_address = dno_details.address if dno_details else None
     if dno_details and dno_details.homepage_url and dno_details.address:
         from app.services.impressum_extractor import impressum_extractor
+
         full_addr = await impressum_extractor.extract_full_address(
             dno_details.homepage_url,
             dno_details.address,
@@ -481,6 +490,7 @@ async def _search_by_coordinates(
     enriched_address = dno_details.address if dno_details else None
     if dno_details and dno_details.homepage_url and dno_details.address:
         from app.services.impressum_extractor import impressum_extractor
+
         full_addr = await impressum_extractor.extract_full_address(
             dno_details.homepage_url,
             dno_details.address,
@@ -563,9 +573,9 @@ async def _search_by_dno(
         # Escape ILIKE wildcards to prevent wildcard injection
         safe_term = search_term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
         query = select(DNOModel).where(
-            (DNOModel.name.ilike(f"%{safe_term}%")) |
-            (DNOModel.official_name.ilike(f"%{safe_term}%")) |
-            (DNOModel.slug == search_term.lower().replace(" ", "-"))
+            (DNOModel.name.ilike(f"%{safe_term}%"))
+            | (DNOModel.official_name.ilike(f"%{safe_term}%"))
+            | (DNOModel.slug == search_term.lower().replace(" ", "-"))
         )
     else:
         raise HTTPException(400, "Either dno_id or dno_name must be provided")
@@ -616,6 +626,7 @@ async def _search_by_dno(
     enriched_address = dno_details.address if dno_details else None
     if dno_details and dno_details.homepage_url and dno_details.address:
         from app.services.impressum_extractor import impressum_extractor
+
         full_addr = await impressum_extractor.extract_full_address(
             dno_details.homepage_url,
             dno_details.address,
@@ -712,9 +723,9 @@ async def _build_response(
             voltage_level=n.voltage_level,
             leistung=n.leistung,
             arbeit=n.arbeit,
-            leistung_unter_2500h=getattr(n, 'leistung_unter_2500h', None),
-            arbeit_unter_2500h=getattr(n, 'arbeit_unter_2500h', None),
-            verification_status=getattr(n, 'verification_status', None),
+            leistung_unter_2500h=getattr(n, "leistung_unter_2500h", None),
+            arbeit_unter_2500h=getattr(n, "arbeit_unter_2500h", None),
+            verification_status=getattr(n, "verification_status", None),
         )
         for n in netzentgelte_result.scalars().all()
     ]
@@ -731,7 +742,7 @@ async def _build_response(
             fruehling_ranges=_parse_hlzf_times(h.fruehling),
             sommer_ranges=_parse_hlzf_times(h.sommer),
             herbst_ranges=_parse_hlzf_times(h.herbst),
-            verification_status=getattr(h, 'verification_status', None),
+            verification_status=getattr(h, "verification_status", None),
         )
         for h in hlzf_result.scalars().all()
     ]

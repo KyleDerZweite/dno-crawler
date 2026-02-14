@@ -26,9 +26,11 @@ from bs4 import BeautifulSoup
 # Data Classes
 # =============================================================================
 
+
 @dataclass
 class ExtractedAddress:
     """Full address extracted from Impressum."""
+
     street: str
     house_number: str
     postal_code: str
@@ -83,16 +85,14 @@ TEST_CASES = [
 
 # Pattern: 5-digit German postal code followed by city name
 # Example: "50823 Köln", "44139 Dortmund"
-POSTAL_CITY_PATTERN = re.compile(
-    r"(\d{5})\s+([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\s\-\.]+)"
-)
+POSTAL_CITY_PATTERN = re.compile(r"(\d{5})\s+([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\s\-\.]+)")
 
 # Pattern: Street with house number (German format)
 # Examples: "Parkgürtel 24", "Florianstraße 15-21", "Heidbergstraße 101-111"
 # Note: Street suffix is embedded in word (Florianstraße, not "Florian straße")
 STREET_PATTERN = re.compile(
     r"([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\-]*(?:straße|strasse|str\.|gürtel|weg|platz|ring|allee|damm|ufer|hof|park))\s*(\d+(?:\s*[-–]\s*\d+)?)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 
@@ -153,7 +153,7 @@ def extract_address_from_html(html: str, vnb_street: str) -> ExtractedAddress | 
         return None
 
     # Look for postal code + city in nearby lines (within 3 lines)
-    search_range = lines[max(0, street_line_idx-2):street_line_idx+4]
+    search_range = lines[max(0, street_line_idx - 2) : street_line_idx + 4]
 
     postal_code = None
     city = None
@@ -213,6 +213,7 @@ async def fetch_impressum(url: str) -> str | None:
 # Tests
 # =============================================================================
 
+
 async def test_impressum_extraction():
     """Test Impressum extraction for all test cases."""
     print("\n" + "=" * 70)
@@ -263,7 +264,9 @@ async def test_impressum_extraction():
         else:
             print("   ❌ FAILED validation")
             if not postal_ok:
-                print(f"      Expected postal code: {test['expected_postal_code']}, got: {extracted.postal_code}")
+                print(
+                    f"      Expected postal code: {test['expected_postal_code']}, got: {extracted.postal_code}"
+                )
             if not city_ok:
                 print(f"      Expected city: {test['expected_city']}, got: {extracted.city}")
             failed += 1
@@ -315,6 +318,7 @@ async def test_edge_cases():
 # =============================================================================
 # Main
 # =============================================================================
+
 
 async def main():
     print("=" * 70)

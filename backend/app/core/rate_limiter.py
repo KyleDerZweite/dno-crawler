@@ -7,7 +7,6 @@ Layer 2: Global VNB API quota (protects external API key)
 Uses Redis for distributed rate limiting across multiple workers.
 """
 
-
 import structlog
 from fastapi import HTTPException, Request, status
 from redis.asyncio import Redis
@@ -29,8 +28,8 @@ class RateLimiter:
     def __init__(
         self,
         redis: Redis,
-        ip_rate: int = 60,          # Requests per IP per window
-        ip_window: int = 60,        # Window in seconds
+        ip_rate: int = 60,  # Requests per IP per window
+        ip_window: int = 60,  # Window in seconds
         vnb_global_rate: int = 50,  # VNB API calls per window (ALL users)
         vnb_window: int = 60,
     ):

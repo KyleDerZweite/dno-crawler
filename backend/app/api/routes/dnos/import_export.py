@@ -83,9 +83,13 @@ async def export_dno_data(
                 "voltage_level": r.voltage_level,
                 "leistung": float(r.leistung) if r.leistung else None,
                 "arbeit": float(r.arbeit) if r.arbeit else None,
-                "leistung_unter_2500h": float(r.leistung_unter_2500h) if r.leistung_unter_2500h else None,
+                "leistung_unter_2500h": float(r.leistung_unter_2500h)
+                if r.leistung_unter_2500h
+                else None,
                 "arbeit_unter_2500h": float(r.arbeit_unter_2500h) if r.arbeit_unter_2500h else None,
-                "verification_status": r.verification_status if r.verification_status in VERIFICATION_STATUSES else "unverified",
+                "verification_status": r.verification_status
+                if r.verification_status in VERIFICATION_STATUSES
+                else "unverified",
                 "extraction_source": r.extraction_source,
             }
             for r in netz_records
@@ -107,7 +111,9 @@ async def export_dno_data(
                 "fruehling": r.fruehling,
                 "sommer": r.sommer,
                 "herbst": r.herbst,
-                "verification_status": r.verification_status if r.verification_status in VERIFICATION_STATUSES else "unverified",
+                "verification_status": r.verification_status
+                if r.verification_status in VERIFICATION_STATUSES
+                else "unverified",
                 "extraction_source": r.extraction_source,
             }
             for r in hlzf_records
@@ -200,9 +206,7 @@ async def import_dno_data(
 
             if len(request.hlzf) == 0:
                 # Empty array means: delete ALL hlzf for this DNO
-                await db.execute(
-                    delete(HLZFModel).where(HLZFModel.dno_id == dno_id)
-                )
+                await db.execute(delete(HLZFModel).where(HLZFModel.dno_id == dno_id))
                 logger.info("import_deleted_all_hlzf", dno_id=dno_id)
             else:
                 # Non-empty: delete only for the years being imported
@@ -270,7 +274,11 @@ async def import_dno_data(
         for record in request.hlzf:
             # Sanitize time strings
             winter = sanitize_time_string(record.winter or "", "winter") if record.winter else None
-            fruehling = sanitize_time_string(record.fruehling or "", "fruehling") if record.fruehling else None
+            fruehling = (
+                sanitize_time_string(record.fruehling or "", "fruehling")
+                if record.fruehling
+                else None
+            )
             sommer = sanitize_time_string(record.sommer or "", "sommer") if record.sommer else None
             herbst = sanitize_time_string(record.herbst or "", "herbst") if record.herbst else None
 

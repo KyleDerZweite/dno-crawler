@@ -45,15 +45,17 @@ async def search_vnb(
         result = await db.execute(existing_query)
         existing_dno = result.scalar_one_or_none()
 
-        suggestions.append({
-            "vnb_id": vnb.vnb_id,
-            "name": vnb.name,
-            "subtitle": vnb.subtitle,
-            "logo_url": vnb.logo_url,
-            "exists": existing_dno is not None,
-            "existing_dno_id": str(existing_dno.id) if existing_dno else None,
-            "existing_dno_slug": existing_dno.slug if existing_dno else None,
-        })
+        suggestions.append(
+            {
+                "vnb_id": vnb.vnb_id,
+                "name": vnb.name,
+                "subtitle": vnb.subtitle,
+                "logo_url": vnb.logo_url,
+                "exists": existing_dno is not None,
+                "existing_dno_id": str(existing_dno.id) if existing_dno else None,
+                "existing_dno_slug": existing_dno.slug if existing_dno else None,
+            }
+        )
 
     return APIResponse(
         success=True,
@@ -89,6 +91,7 @@ async def get_vnb_details(
     enriched_address = details.address
     if details.homepage_url and details.address:
         from app.services.impressum_extractor import impressum_extractor
+
         full_addr = await impressum_extractor.extract_full_address(
             details.homepage_url,
             details.address,
@@ -164,6 +167,7 @@ async def create_dno(
             # Try to enrich address with postal code + city from Impressum
             if not contact_address and vnb_details.address and vnb_details.homepage_url:
                 from app.services.impressum_extractor import impressum_extractor
+
                 full_addr = await impressum_extractor.extract_full_address(
                     vnb_details.homepage_url,
                     vnb_details.address,
@@ -196,7 +200,10 @@ async def create_dno(
             # Note: fetch_robots_txt in crud.py is using the old import which doesn't include the new default sitemap check logic
             # Use fetch_and_verify_robots instead for full logic
             from app.services.robots_parser import fetch_and_verify_robots
-            robots_result = await fetch_and_verify_robots(http_client, website, verify_sitemap=False)
+
+            robots_result = await fetch_and_verify_robots(
+                http_client, website, verify_sitemap=False
+            )
 
             tech_info = await tech_task
 
@@ -226,8 +233,8 @@ async def create_dno(
         sitemap_urls=sitemap_urls,
         disallow_paths=disallow_paths,
         # Tech Info
-        cms_system=tech_info.get("cms") if website and 'tech_info' in locals() else None,
-        tech_stack_details=tech_info if website and 'tech_info' in locals() else None,
+        cms_system=tech_info.get("cms") if website and "tech_info" in locals() else None,
+        tech_stack_details=tech_info if website and "tech_info" in locals() else None,
     )
     db.add(dno)
     await db.commit()
@@ -300,8 +307,14 @@ async def list_dnos_detailed(
     page: int = Query(1, ge=1, description="Page number"),
     per_page: int = Query(50, description="Items per page (25, 50, 100, 250)"),
     q: str | None = Query(None, description="Search term"),
-    status_filter: str | None = Query(None, alias="status", description="Filter by status: uncrawled, crawled, running, pending, protected"),
-    sort_by: str = Query("name_asc", description="Sort by: name_asc, name_desc, score_asc, score_desc, region_asc"),
+    status_filter: str | None = Query(
+        None,
+        alias="status",
+        description="Filter by status: uncrawled, crawled, running, pending, protected",
+    ),
+    sort_by: str = Query(
+        "name_asc", description="Sort by: name_asc, name_desc, score_asc, score_desc, region_asc"
+    ),
 ) -> APIResponse:
     """
     List all DNOs with detailed information (paginated).
@@ -357,19 +370,19 @@ async def list_dnos_detailed(
         # This ensures short queries like "Ulm" work via ILIKE even if trigram fails
         combined_filter = or_(
             similarity > similarity_threshold,  # Fuzzy match
-            contains_match,                      # Exact substring in name
-            region_match,                        # Match in region
+            contains_match,  # Exact substring in name
+            region_match,  # Match in region
         )
 
         # Scoring: Prioritize exact matches, then fuzzy matches
         # CASE expression to boost exact substring matches
         exact_boost = case(
             (contains_match, 2.0),  # Boost for exact substring match
-            else_=0.0
+            else_=0.0,
         )
         region_boost = case(
             (region_match, 0.5),  # Small boost for region match
-            else_=0.0
+            else_=0.0,
         )
 
         # Combined score: trigram similarity + bonuses for exact matches
@@ -484,7 +497,7 @@ async def list_dnos_detailed(
             WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
         """),
-        {"dno_ids": dno_ids}
+        {"dno_ids": dno_ids},
     )
     netz_counts = {row[0]: row[1] for row in netz_counts_result.fetchall()}
 
@@ -496,7 +509,7 @@ async def list_dnos_detailed(
             WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
         """),
-        {"dno_ids": dno_ids}
+        {"dno_ids": dno_ids},
     )
     hlzf_counts = {row[0]: row[1] for row in hlzf_counts_result.fetchall()}
 
@@ -508,7 +521,7 @@ async def list_dnos_detailed(
             WHERE dno_id = ANY(:dno_ids) AND status IN ('running', 'pending')
             GROUP BY dno_id, status
         """),
-        {"dno_ids": dno_ids}
+        {"dno_ids": dno_ids},
     )
     job_statuses = {}
     for row in job_status_result.fetchall():
@@ -550,8 +563,8 @@ async def list_dnos_detailed(
             "description": dno.description,
             "region": dno.region,
             "website": dno.website,
-            "crawlable": getattr(dno, 'crawlable', True),
-            "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
+            "crawlable": getattr(dno, "crawlable", True),
+            "crawl_blocked_reason": getattr(dno, "crawl_blocked_reason", None),
             "data_points_count": data_points_count,
             "netzentgelte_count": netzentgelte_count,
             "hlzf_count": hlzf_count,
@@ -674,7 +687,9 @@ async def get_dno_details(
             "activity_start": m.activity_start.isoformat() if m.activity_start else None,
             "activity_end": m.activity_end.isoformat() if m.activity_end else None,
             "registration_date": m.registration_date.isoformat() if m.registration_date else None,
-            "mastr_last_updated": m.mastr_last_updated.isoformat() if m.mastr_last_updated else None,
+            "mastr_last_updated": m.mastr_last_updated.isoformat()
+            if m.mastr_last_updated
+            else None,
             "last_synced_at": m.last_synced_at.isoformat() if m.last_synced_at else None,
         }
 
@@ -701,22 +716,24 @@ async def get_dno_details(
     bdew_data = []
     if dno.bdew_data:
         for b in dno.bdew_data:
-            bdew_data.append({
-                "bdew_code": b.bdew_code,
-                "bdew_internal_id": b.bdew_internal_id,
-                "bdew_company_uid": b.bdew_company_uid,
-                "company_name": b.company_name,
-                "market_function": b.market_function,
-                "contact_name": b.contact_name,
-                "contact_phone": b.contact_phone,
-                "contact_email": b.contact_email,
-                "street": b.street,
-                "zip_code": b.zip_code,
-                "city": b.city,
-                "website": b.website,
-                "is_grid_operator": b.is_grid_operator,
-                "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
-            })
+            bdew_data.append(
+                {
+                    "bdew_code": b.bdew_code,
+                    "bdew_internal_id": b.bdew_internal_id,
+                    "bdew_company_uid": b.bdew_company_uid,
+                    "company_name": b.company_name,
+                    "market_function": b.market_function,
+                    "contact_name": b.contact_name,
+                    "contact_phone": b.contact_phone,
+                    "contact_email": b.contact_email,
+                    "street": b.street,
+                    "zip_code": b.zip_code,
+                    "city": b.city,
+                    "website": b.website,
+                    "is_grid_operator": b.is_grid_operator,
+                    "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
+                }
+            )
 
     return APIResponse(
         success=True,
@@ -745,13 +762,13 @@ async def get_dno_details(
             "acer_code": dno.acer_code,
             "grid_operator_bdew_code": dno.grid_operator_bdew_code,
             # Crawlability info
-            "crawlable": getattr(dno, 'crawlable', True),
-            "crawl_blocked_reason": getattr(dno, 'crawl_blocked_reason', None),
+            "crawlable": getattr(dno, "crawlable", True),
+            "crawl_blocked_reason": getattr(dno, "crawl_blocked_reason", None),
             "has_local_files": has_local_files,
-            "robots_txt": getattr(dno, 'robots_txt', None),
-            "sitemap_urls": getattr(dno, 'sitemap_urls', []),
-            "cms_system": getattr(dno, 'cms_system', None),
-            "tech_stack_details": getattr(dno, 'tech_stack_details', None),
+            "robots_txt": getattr(dno, "robots_txt", None),
+            "sitemap_urls": getattr(dno, "sitemap_urls", []),
+            "cms_system": getattr(dno, "cms_system", None),
+            "tech_stack_details": getattr(dno, "tech_stack_details", None),
             # Source data availability
             "has_mastr": dno.has_mastr,
             "has_vnb": dno.has_vnb,

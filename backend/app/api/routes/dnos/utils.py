@@ -10,9 +10,9 @@ def slugify(name: str) -> str:
     # Convert to lowercase
     slug = name.lower()
     # Replace spaces and special chars with hyphens
-    slug = re.sub(r'[^a-z0-9]+', '-', slug)
+    slug = re.sub(r"[^a-z0-9]+", "-", slug)
     # Remove leading/trailing hyphens
-    slug = slug.strip('-')
+    slug = slug.strip("-")
     # Collapse multiple hyphens
-    slug = re.sub(r'-+', '-', slug)
+    slug = re.sub(r"-+", "-", slug)
     return slug

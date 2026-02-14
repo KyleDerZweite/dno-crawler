@@ -43,16 +43,18 @@ async def list_dno_files(
     files = []
     if downloads_dir.exists():
         for f in downloads_dir.iterdir():
-            if f.is_file() and not f.name.startswith('.'):
+            if f.is_file() and not f.name.startswith("."):
                 # Get file info
                 stat = f.stat()
-                files.append({
-                    "name": f.name,
-                    "size": stat.st_size,
-                    "modified": stat.st_mtime,
-                    "extension": f.suffix.lower(),
-                    "path": f"/files/downloads/{dno.slug}/{f.name}",
-                })
+                files.append(
+                    {
+                        "name": f.name,
+                        "size": stat.st_size,
+                        "modified": stat.st_mtime,
+                        "extension": f.suffix.lower(),
+                        "path": f"/files/downloads/{dno.slug}/{f.name}",
+                    }
+                )
 
     # Sort by name for consistent ordering
     files.sort(key=lambda x: x["name"])
@@ -101,8 +103,18 @@ async def upload_file(
     # Validate file extension
     original_filename = file.filename or "unknown.pdf"
     ALLOWED_EXTENSIONS = {
-        ".pdf", ".xlsx", ".xls", ".csv", ".html", ".htm",
-        ".docx", ".doc", ".txt", ".png", ".jpg", ".jpeg",
+        ".pdf",
+        ".xlsx",
+        ".xls",
+        ".csv",
+        ".html",
+        ".htm",
+        ".docx",
+        ".doc",
+        ".txt",
+        ".png",
+        ".jpg",
+        ".jpeg",
     }
     file_ext = Path(original_filename).suffix.lower()
     if file_ext not in ALLOWED_EXTENSIONS:
@@ -151,7 +163,7 @@ async def upload_file(
                 target_path.unlink(missing_ok=True)
                 raise HTTPException(
                     status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024*1024)}MB.",
+                    detail=f"File too large. Maximum size is {MAX_UPLOAD_SIZE // (1024 * 1024)}MB.",
                 )
             await f.write(chunk)
 

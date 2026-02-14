@@ -118,16 +118,16 @@ def _extract_charset_from_content_type(content_type: str) -> str | None:
 
 def _detect_bom(content: bytes) -> str | None:
     """Detect encoding from Byte Order Mark."""
-    if content.startswith(b'\xef\xbb\xbf'):
-        return 'utf-8'
-    if content.startswith(b'\xff\xfe\x00\x00'):
-        return 'utf-32-le'
-    if content.startswith(b'\x00\x00\xfe\xff'):
-        return 'utf-32-be'
-    if content.startswith(b'\xff\xfe'):
-        return 'utf-16-le'
-    if content.startswith(b'\xfe\xff'):
-        return 'utf-16-be'
+    if content.startswith(b"\xef\xbb\xbf"):
+        return "utf-8"
+    if content.startswith(b"\xff\xfe\x00\x00"):
+        return "utf-32-le"
+    if content.startswith(b"\x00\x00\xfe\xff"):
+        return "utf-32-be"
+    if content.startswith(b"\xff\xfe"):
+        return "utf-16-le"
+    if content.startswith(b"\xfe\xff"):
+        return "utf-16-be"
     return None
 
 
@@ -135,7 +135,7 @@ def _extract_meta_charset(content: bytes) -> str | None:
     """Extract charset from HTML <meta> tags."""
     try:
         # Decode just enough to find meta tags (ASCII-compatible)
-        html_start = content.decode('ascii', errors='ignore')
+        html_start = content.decode("ascii", errors="ignore")
 
         # HTML5: <meta charset="utf-8">
         match = re.search(r'<meta\s+charset\s*=\s*["\']?([^"\'>\s]+)', html_start, re.IGNORECASE)
@@ -146,7 +146,7 @@ def _extract_meta_charset(content: bytes) -> str | None:
         match = re.search(
             r'<meta\s+[^>]*content\s*=\s*["\'][^"\']*charset\s*=\s*([^"\';\s]+)',
             html_start,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         if match:
             return match.group(1)
@@ -155,7 +155,7 @@ def _extract_meta_charset(content: bytes) -> str | None:
         match = re.search(
             r'<meta\s+[^>]*http-equiv\s*=\s*["\']?content-type["\']?\s+[^>]*charset\s*=\s*([^"\';\s>]+)',
             html_start,
-            re.IGNORECASE
+            re.IGNORECASE,
         )
         if match:
             return match.group(1)
@@ -172,16 +172,16 @@ def _normalize_encoding(encoding: str) -> str:
 
     # Common aliases
     aliases = {
-        'iso-8859-1': 'iso-8859-1',
-        'iso_8859_1': 'iso-8859-1',
-        'latin1': 'iso-8859-1',
-        'latin-1': 'iso-8859-1',
-        'windows-1252': 'cp1252',
-        'win-1252': 'cp1252',
-        'utf8': 'utf-8',
-        'utf-8': 'utf-8',
-        'ascii': 'ascii',
-        'us-ascii': 'ascii',
+        "iso-8859-1": "iso-8859-1",
+        "iso_8859_1": "iso-8859-1",
+        "latin1": "iso-8859-1",
+        "latin-1": "iso-8859-1",
+        "windows-1252": "cp1252",
+        "win-1252": "cp1252",
+        "utf8": "utf-8",
+        "utf-8": "utf-8",
+        "ascii": "ascii",
+        "us-ascii": "ascii",
     }
 
     return aliases.get(encoding, encoding)

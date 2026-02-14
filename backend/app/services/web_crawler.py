@@ -42,7 +42,6 @@ MIN_HTML_CONTENT_LENGTH = 1024
 HTML_PARSERS = ["lxml", "html.parser", "html5lib"]
 
 
-
 # =============================================================================
 # Data Classes
 # =============================================================================
@@ -51,6 +50,7 @@ HTML_PARSERS = ["lxml", "html.parser", "html5lib"]
 @dataclass
 class CrawlResult:
     """Result of crawling a page."""
+
     url: str
     final_url: str  # After redirects
     content_type: str
@@ -66,6 +66,7 @@ class CrawlResult:
 @dataclass(order=True)
 class QueueItem:
     """Priority queue item for BFS crawl."""
+
     priority: float  # Lower = higher priority (negative score)
     url: str = field(compare=False)
     depth: int = field(compare=False)
@@ -80,18 +81,38 @@ class QueueItem:
 # Keywords indicating relevant pages for each data type
 KEYWORDS = {
     "netzentgelte": [
-        "netzentgelte", "preisblatt", "preisblaetter", "netzzugang",
-        "netznutzung", "entgelt", "tarif", "veroeffentlichung",
-        "strom", "netznutzungsentgelte", "arbeitspreis", "leistungspreis",
+        "netzentgelte",
+        "preisblatt",
+        "preisblaetter",
+        "netzzugang",
+        "netznutzung",
+        "entgelt",
+        "tarif",
+        "veroeffentlichung",
+        "strom",
+        "netznutzungsentgelte",
+        "arbeitspreis",
+        "leistungspreis",
     ],
     "hlzf": [
-        "hlzf", "hochlast", "hochlastzeitfenster", "zeitfenster",
-        "stromnev", "§19", "veroeffentlichung", "regelungen",
-        "strom", "netzentgelte",  # HLZF often on same page as netzentgelte
+        "hlzf",
+        "hochlast",
+        "hochlastzeitfenster",
+        "zeitfenster",
+        "stromnev",
+        "§19",
+        "veroeffentlichung",
+        "regelungen",
+        "strom",
+        "netzentgelte",  # HLZF often on same page as netzentgelte
     ],
     "both": [
-        "downloads", "dokumente", "service", "veroeffentlichung",
-        "netzbetreiber", "netz",
+        "downloads",
+        "dokumente",
+        "service",
+        "veroeffentlichung",
+        "netzbetreiber",
+        "netz",
     ],
 }
 
@@ -103,7 +124,8 @@ NEGATIVE_KEYWORDS = {
         ("vermiedene", -25),  # Avoided network charges (different document type)
         ("referenzpreis", -25),  # Reference prices
         ("individuelle", -25),  # Individual tariffs (special cases)
-        ("vorlaeufig", -25), ("vorläufig", -25),  # Preliminary versions
+        ("vorlaeufig", -25),
+        ("vorläufig", -25),  # Preliminary versions
         ("entwurf", -25),  # Draft
     ],
     "hlzf": [
@@ -115,19 +137,45 @@ NEGATIVE_KEYWORDS = {
 
 # Irrelevant path segments to skip
 IRRELEVANT_PATHS = {
-    "/karriere/", "/jobs/", "/career/", "/stellenangebote/",
-    "/kontakt/", "/contact/", "/impressum/", "/imprint/",
-    "/datenschutz/", "/privacy/", "/agb/", "/terms/",
-    "/presse/", "/press/", "/news/", "/blog/", "/aktuelles/",
-    "/login/", "/register/", "/anmelden/", "/registrieren/",
-    "/warenkorb/", "/cart/", "/checkout/",
-    "/suche/", "/search/", "/sitemap/",
+    "/karriere/",
+    "/jobs/",
+    "/career/",
+    "/stellenangebote/",
+    "/kontakt/",
+    "/contact/",
+    "/impressum/",
+    "/imprint/",
+    "/datenschutz/",
+    "/privacy/",
+    "/agb/",
+    "/terms/",
+    "/presse/",
+    "/press/",
+    "/news/",
+    "/blog/",
+    "/aktuelles/",
+    "/login/",
+    "/register/",
+    "/anmelden/",
+    "/registrieren/",
+    "/warenkorb/",
+    "/cart/",
+    "/checkout/",
+    "/suche/",
+    "/search/",
+    "/sitemap/",
 }
 
 # External domains to skip
 SKIP_DOMAINS = {
-    "facebook.com", "twitter.com", "linkedin.com", "youtube.com",
-    "instagram.com", "xing.com", "kununu.com", "google.com",
+    "facebook.com",
+    "twitter.com",
+    "linkedin.com",
+    "youtube.com",
+    "instagram.com",
+    "xing.com",
+    "kununu.com",
+    "google.com",
 }
 
 
@@ -271,7 +319,9 @@ class WebCrawler:
                     normalized_link = normalize_url(link)
                     if normalized_link not in visited:
                         visited.add(normalized_link)
-                        link_score = self._score_url(normalized_link, depth + 1, target_keywords, data_type)
+                        link_score = self._score_url(
+                            normalized_link, depth + 1, target_keywords, data_type
+                        )
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
 
         # Sort results by score (highest first)
@@ -345,7 +395,9 @@ class WebCrawler:
             content_length = len(content)
 
             # Check for possible SPA (suspiciously small content)
-            needs_headless = content_length < MIN_HTML_CONTENT_LENGTH and "text/html" in (content_type or "")
+            needs_headless = content_length < MIN_HTML_CONTENT_LENGTH and "text/html" in (
+                content_type or ""
+            )
 
             # Parse HTML with fallback parsers
             soup = self._parse_html(content)
@@ -363,7 +415,8 @@ class WebCrawler:
                 depth=depth,
                 score=score + len(text_keywords) * 5,  # Boost for content keywords
                 title=title,
-                keywords_found=text_keywords or self._find_keywords_in_url(final_url, target_keywords),
+                keywords_found=text_keywords
+                or self._find_keywords_in_url(final_url, target_keywords),
                 is_document=False,
                 content_length=content_length,
                 needs_headless=needs_headless,
@@ -427,22 +480,23 @@ class WebCrawler:
         """
         # Common token/download URL patterns
         token_patterns = [
-            r'/(media_token|get_file|download_id|fileadmin)/[\w-]+$',
-            r'/ajax/.*download',
-            r'\.(asp|aspx|php)\?.*file',
-            r'/_layouts/.*/download',
-            r'/blob/',
-            r'/download\.(?:php|aspx?)\?',
-            r'/Binaerfile\.asp',
-            r'/getmedia/',
-            r'/dms_download/',
-            r'/attachment/',
-            r'/file\.axd',
+            r"/(media_token|get_file|download_id|fileadmin)/[\w-]+$",
+            r"/ajax/.*download",
+            r"\.(asp|aspx|php)\?.*file",
+            r"/_layouts/.*/download",
+            r"/blob/",
+            r"/download\.(?:php|aspx?)\?",
+            r"/Binaerfile\.asp",
+            r"/getmedia/",
+            r"/dms_download/",
+            r"/attachment/",
+            r"/file\.axd",
         ]
         return any(re.search(pattern, url, re.IGNORECASE) for pattern in token_patterns)
 
-
-    def _score_url(self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None) -> float:
+    def _score_url(
+        self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None
+    ) -> float:
         """Score URL based on relevance.
 
         Higher score = more likely to contain target data.
@@ -487,11 +541,11 @@ class WebCrawler:
         bonus = 0.0
         # Support multiple formats: /2025/, -2025., _2025_, ?year=2025
         year_patterns = [
-            r'/(\d{4})/',        # /2025/
-            r'-(\d{4})\.',       # -2025.pdf
-            r'_(\d{4})_',        # _2025_
-            r'[?&]year=(\d{4})', # ?year=2025
-            r'/(\d{4})-',        # /2025-01/
+            r"/(\d{4})/",  # /2025/
+            r"-(\d{4})\.",  # -2025.pdf
+            r"_(\d{4})_",  # _2025_
+            r"[?&]year=(\d{4})",  # ?year=2025
+            r"/(\d{4})-",  # /2025-01/
         ]
 
         current_year = datetime.now().year
@@ -567,7 +621,9 @@ class WebCrawler:
                 host_check = host_lower[4:] if host_lower.startswith("www.") else host_lower
 
                 # Skip external domains
-                if not any(host_check == d or host_check.endswith(f".{d}") for d in allowed_domains):
+                if not any(
+                    host_check == d or host_check.endswith(f".{d}") for d in allowed_domains
+                ):
                     continue
 
                 # Skip known bad domains

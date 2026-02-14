@@ -18,6 +18,7 @@ from bs4 import BeautifulSoup
 @dataclass
 class EmbeddedDataResult:
     """Result of HTML content analysis."""
+
     has_data_table: bool = False
     years_found: list[int] = None
     table_count: int = 0
@@ -41,8 +42,22 @@ DATA_PATTERNS = {
         ],
     },
     "netzentgelte": {
-        "header_keywords": ["netzentgelt", "preisblatt", "entgelt", "tarif", "arbeitspreis", "leistungspreis"],
-        "table_keywords": ["ct/kwh", "eur/kw", "niederspannung", "mittelspannung", "hochspannung", "netzebene"],
+        "header_keywords": [
+            "netzentgelt",
+            "preisblatt",
+            "entgelt",
+            "tarif",
+            "arbeitspreis",
+            "leistungspreis",
+        ],
+        "table_keywords": [
+            "ct/kwh",
+            "eur/kw",
+            "niederspannung",
+            "mittelspannung",
+            "hochspannung",
+            "netzebene",
+        ],
         "year_patterns": [
             r"gültig ab 01\.01\.(\d{4})",
             r"(\d{4})",

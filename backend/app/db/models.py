@@ -46,9 +46,7 @@ if TYPE_CHECKING:
 class TimestampMixin:
     """Mixin for created_at and updated_at columns."""
 
-    created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True), server_default=func.now()
-    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
     updated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), onupdate=func.now()
     )
@@ -85,13 +83,21 @@ class DNOModel(Base, TimestampMixin):
     def validate_slug(self, key: str, value: str) -> str:
         """Reject slugs containing path traversal characters."""
         import re
+
         if not value or not re.fullmatch(r"[a-z0-9][a-z0-9\-]*", value):
-            raise ValueError(f"Invalid slug: must be lowercase alphanumeric with hyphens, got '{value}'")
+            raise ValueError(
+                f"Invalid slug: must be lowercase alphanumeric with hyphens, got '{value}'"
+            )
         return value
 
     __table_args__ = (
         # Trigram index for fuzzy search optimization
-        Index('ix_dnos_name_trgm', 'name', postgresql_using='gin', postgresql_ops={'name': 'gin_trgm_ops'}),
+        Index(
+            "ix_dnos_name_trgm",
+            "name",
+            postgresql_using="gin",
+            postgresql_ops={"name": "gin_trgm_ops"},
+        ),
     )
 
     # -------------------------------------------------------------------------
@@ -110,7 +116,9 @@ class DNOModel(Base, TimestampMixin):
     # -------------------------------------------------------------------------
     mastr_nr: Mapped[str | None] = mapped_column(String(50), unique=True, index=True)
     vnb_id: Mapped[str | None] = mapped_column(String(100), unique=True, index=True)
-    primary_bdew_code: Mapped[str | None] = mapped_column(String(20), index=True)  # Netzbetreiber code
+    primary_bdew_code: Mapped[str | None] = mapped_column(
+        String(20), index=True
+    )  # Netzbetreiber code
 
     # -------------------------------------------------------------------------
     # Operational Status
@@ -123,7 +131,9 @@ class DNOModel(Base, TimestampMixin):
     # -------------------------------------------------------------------------
     # Enrichment Status (VNB lookup, robots.txt analysis)
     # -------------------------------------------------------------------------
-    enrichment_status: Mapped[str | None] = mapped_column(String(20), default="pending")  # pending | processing | completed | failed
+    enrichment_status: Mapped[str | None] = mapped_column(
+        String(20), default="pending"
+    )  # pending | processing | completed | failed
     last_enriched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     contact_address: Mapped[str | None] = mapped_column(Text)  # Resolved contact address
 
@@ -132,10 +142,16 @@ class DNOModel(Base, TimestampMixin):
     # TTL: robots_txt = 150 days, sitemap = 120 days
     # -------------------------------------------------------------------------
     robots_txt: Mapped[str | None] = mapped_column(Text)
-    robots_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # TTL: 150 days
+    robots_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )  # TTL: 150 days
     sitemap_urls: Mapped[list | None] = mapped_column(JSON)  # URLs declared in robots.txt
-    sitemap_parsed_urls: Mapped[list | None] = mapped_column(JSON)  # All URLs extracted from sitemaps (recursively)
-    sitemap_fetched_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))  # TTL: 120 days
+    sitemap_parsed_urls: Mapped[list | None] = mapped_column(
+        JSON
+    )  # All URLs extracted from sitemaps (recursively)
+    sitemap_fetched_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True)
+    )  # TTL: 120 days
     disallow_paths: Mapped[list | None] = mapped_column(JSON)
     crawlable: Mapped[bool] = mapped_column(Boolean, default=True)
     crawl_blocked_reason: Mapped[str | None] = mapped_column(String(100))
@@ -290,6 +306,7 @@ class LocationModel(Base, TimestampMixin):
     - Address → (address_hash) → DNO
     - (lat, lon) → DNO (with spatial tolerance)
     """
+
     __tablename__ = "locations"
     __table_args__ = (
         Index("idx_locations_geocoord", "latitude", "longitude"),
@@ -327,6 +344,7 @@ class LocationModel(Base, TimestampMixin):
 
 class NetzentgelteModel(Base, TimestampMixin):
     """Netzentgelte (network tariffs) data."""
+
     __tablename__ = "netzentgelte"
     __table_args__ = (
         Index("idx_netzentgelte_dno_year", "dno_id", "year"),
@@ -334,9 +352,7 @@ class NetzentgelteModel(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
-    )
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
 
@@ -349,7 +365,9 @@ class NetzentgelteModel(Base, TimestampMixin):
     leistung_unter_2500h: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
     # Extraction source tracking
-    extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
+    extraction_source: Mapped[str | None] = mapped_column(
+        String(20)
+    )  # ai | html_parser | pdf_regex | manual
     extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
     extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
 
@@ -379,6 +397,7 @@ class HLZFModel(Base, TimestampMixin):
     Each row = one voltage level for one year.
     Columns = seasonal time windows.
     """
+
     __tablename__ = "hlzf"
     __table_args__ = (
         Index("idx_hlzf_dno_year", "dno_id", "year"),
@@ -386,9 +405,7 @@ class HLZFModel(Base, TimestampMixin):
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
-    )
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
 
@@ -399,7 +416,9 @@ class HLZFModel(Base, TimestampMixin):
     herbst: Mapped[str | None] = mapped_column(Text)
 
     # Extraction source tracking
-    extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
+    extraction_source: Mapped[str | None] = mapped_column(
+        String(20)
+    )  # ai | html_parser | pdf_regex | manual
     extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
     extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
 
@@ -427,14 +446,10 @@ class DataSourceModel(Base, TimestampMixin):
     """Provenance tracking: where did extracted data come from?"""
 
     __tablename__ = "data_sources"
-    __table_args__ = (
-        Index("idx_data_sources_dno_year", "dno_id", "year"),
-    )
+    __table_args__ = (Index("idx_data_sources_dno_year", "dno_id", "year"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
-    )
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf
 
@@ -462,10 +477,9 @@ class CrawlPathPatternModel(Base, TimestampMixin):
     Stores patterns like '/veroeffentlichungen/{year}/' that are known to work
     across multiple DNOs. Higher success_rate patterns are tried first during crawls.
     """
+
     __tablename__ = "crawl_path_patterns"
-    __table_args__ = (
-        Index("idx_path_patterns_data_type", "data_type"),
-    )
+    __table_args__ = (Index("idx_path_patterns_data_type", "data_type"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 
@@ -494,15 +508,12 @@ class DNOSourceProfile(Base, TimestampMixin):
     This is the "learning" system - stores what worked for future crawls.
     One profile per (dno_id, data_type) pair.
     """
+
     __tablename__ = "dno_source_profiles"
-    __table_args__ = (
-        Index("idx_source_profile_dno_type", "dno_id", "data_type", unique=True),
-    )
+    __table_args__ = (Index("idx_source_profile_dno_type", "dno_id", "data_type", unique=True),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
-    )
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)  # netzentgelte | hlzf
 
     # Discovery info
@@ -550,9 +561,7 @@ class CrawlJobModel(Base, TimestampMixin):
     __tablename__ = "crawl_jobs"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
-    dno_id: Mapped[int] = mapped_column(
-        Integer, ForeignKey("dnos.id", ondelete="CASCADE")
-    )
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     data_type: Mapped[str] = mapped_column(String(20), nullable=False)
 
@@ -563,7 +572,9 @@ class CrawlJobModel(Base, TimestampMixin):
     parent_job_id: Mapped[int | None] = mapped_column(
         Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL"), nullable=True
     )
-    child_job_id: Mapped[int | None] = mapped_column(Integer, nullable=True)  # Updated when extract job is created
+    child_job_id: Mapped[int | None] = mapped_column(
+        Integer, nullable=True
+    )  # Updated when extract job is created
 
     # Status
     status: Mapped[str] = mapped_column(String(20), default=JobStatus.PENDING.value)
@@ -684,10 +695,9 @@ class AIProviderConfigModel(Base, TimestampMixin):
     - Health tracking (consecutive failures, rate limit detection)
     - Model capability tracking (text, vision, file support)
     """
+
     __tablename__ = "ai_provider_configs"
-    __table_args__ = (
-        Index("idx_ai_provider_enabled_priority", "is_enabled", "priority"),
-    )
+    __table_args__ = (Index("idx_ai_provider_enabled_priority", "is_enabled", "priority"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
 

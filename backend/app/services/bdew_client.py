@@ -24,9 +24,10 @@ logger = structlog.get_logger()
 @dataclass
 class BDEWCompany:
     """A company entry from the list endpoint."""
-    id: int                     # Internal ID for detail lookup ("Id" in API)
-    company_uid: int            # Company UID ("CompanyUId" in API)
-    name: str                   # Company name ("Company" in API, cleaned)
+
+    id: int  # Internal ID for detail lookup ("Id" in API)
+    company_uid: int  # Company UID ("CompanyUId" in API)
+    name: str  # Company name ("Company" in API, cleaned)
 
 
 @dataclass
@@ -39,10 +40,11 @@ class BDEWRecord:
     - bdew_company_uid: The "CompanyUId" - another internal identifier
     - bdew_code: The actual 13-digit BDEW code (e.g., "9900001000002")
     """
-    bdew_internal_id: int       # Internal ID for API lookups ("Id")
-    bdew_company_uid: int       # Company UID ("CompanyUId")
-    bdew_code: str              # 13-digit code (e.g., "9900001000002")
-    company_name: str           # Company name
+
+    bdew_internal_id: int  # Internal ID for API lookups ("Id")
+    bdew_company_uid: int  # Company UID ("CompanyUId")
+    bdew_code: str  # 13-digit code (e.g., "9900001000002")
+    company_name: str  # Company name
     street: str | None = None
     zip_code: str | None = None
     city: str | None = None
@@ -127,19 +129,21 @@ class BDEWClient:
                 for record in page_records:
                     name = record.get("Company", "").strip()
                     # Clean up name (remove leading tabs/spaces)
-                    name = name.lstrip('\t ')
+                    name = name.lstrip("\t ")
 
-                    companies.append(BDEWCompany(
-                        id=record.get("Id", 0),
-                        company_uid=record.get("CompanyUId", 0),
-                        name=name,
-                    ))
+                    companies.append(
+                        BDEWCompany(
+                            id=record.get("Id", 0),
+                            company_uid=record.get("CompanyUId", 0),
+                            name=name,
+                        )
+                    )
 
                 self.log.info(
                     "Fetched BDEW company page",
                     start=start_index,
                     count=len(page_records),
-                    total=total_count
+                    total=total_count,
                 )
 
                 start_index += self.PAGE_SIZE
@@ -183,7 +187,9 @@ class BDEWClient:
 
             # Response is {Result: "OK", Records: [...]}
             if data.get("Result") != "OK":
-                self.log.debug("API error for company", company_id=company.id, result=data.get("Result"))
+                self.log.debug(
+                    "API error for company", company_id=company.id, result=data.get("Result")
+                )
                 return None
 
             records = data.get("Records", [])
@@ -218,7 +224,9 @@ class BDEWClient:
             )
 
         except httpx.HTTPError as e:
-            self.log.debug("HTTP error fetching company details", company_id=company.id, error=str(e))
+            self.log.debug(
+                "HTTP error fetching company details", company_id=company.id, error=str(e)
+            )
             return None
         except Exception as e:
             self.log.debug("Error parsing company details", company_id=company.id, error=str(e))
@@ -269,7 +277,11 @@ class BDEWClient:
                             continue
 
                         # Prefer Netzbetreiber role
-                        preferred_roles = ["Netzbetreiber", "Verteilnetzbetreiber", "Übertragungsnetzbetreiber"]
+                        preferred_roles = [
+                            "Netzbetreiber",
+                            "Verteilnetzbetreiber",
+                            "Übertragungsnetzbetreiber",
+                        ]
                         item = None
 
                         for role in preferred_roles:
@@ -491,4 +503,3 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
-

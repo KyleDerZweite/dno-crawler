@@ -62,7 +62,7 @@ async def test_robots_compliance(client: httpx.AsyncClient, base_url: str):
         "/downloads/",
         "/veroeffentlichungen/",
         "/karriere/",  # Usually blocked
-        "/admin/",     # Usually blocked
+        "/admin/",  # Usually blocked
     ]
 
     for path in test_paths:
@@ -240,7 +240,6 @@ async def main():
         follow_redirects=True,
         timeout=15.0,
     ) as client:
-
         # Run tests
         results = {}
 

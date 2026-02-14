@@ -51,28 +51,30 @@ async def get_dno_data(
 
     netzentgelte = []
     for row in netzentgelte_rows:
-        netzentgelte.append({
-            "id": row[0],
-            "voltage_level": row[1],
-            "year": row[2],
-            "leistung": row[3],  # T >= 2500 h/a
-            "arbeit": row[4],    # T >= 2500 h/a
-            "leistung_unter_2500h": row[5],  # T < 2500 h/a
-            "arbeit_unter_2500h": row[6],
-            "verification_status": row[7],
-            # Extraction source fields
-            "extraction_source": row[8],
-            "extraction_model": row[9],
-            "extraction_source_format": row[10],
-            "last_edited_by": row[11],
-            "last_edited_at": row[12].isoformat() if row[12] else None,
-            # Verification/flag fields
-            "verified_by": row[13],
-            "verified_at": row[14].isoformat() if row[14] else None,
-            "flagged_by": row[15],
-            "flagged_at": row[16].isoformat() if row[16] else None,
-            "flag_reason": row[17],
-        })
+        netzentgelte.append(
+            {
+                "id": row[0],
+                "voltage_level": row[1],
+                "year": row[2],
+                "leistung": row[3],  # T >= 2500 h/a
+                "arbeit": row[4],  # T >= 2500 h/a
+                "leistung_unter_2500h": row[5],  # T < 2500 h/a
+                "arbeit_unter_2500h": row[6],
+                "verification_status": row[7],
+                # Extraction source fields
+                "extraction_source": row[8],
+                "extraction_model": row[9],
+                "extraction_source_format": row[10],
+                "last_edited_by": row[11],
+                "last_edited_at": row[12].isoformat() if row[12] else None,
+                # Verification/flag fields
+                "verified_by": row[13],
+                "verified_at": row[14].isoformat() if row[14] else None,
+                "flagged_by": row[15],
+                "flagged_at": row[16].isoformat() if row[16] else None,
+                "flag_reason": row[17],
+            }
+        )
 
     # Query HLZF data
     hlzf_query = text("""
@@ -96,33 +98,44 @@ async def get_dno_data(
         sommer_val = row[5]
         herbst_val = row[6]
 
-        hlzf.append({
-            "id": row[0],
-            "voltage_level": row[1],
-            "year": row[2],
-            "winter": winter_val,
-            "fruehling": fruehling_val,
-            "sommer": sommer_val,
-            "herbst": herbst_val,
-            # Parsed time ranges
-            "winter_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(winter_val) or [])],
-            "fruehling_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(fruehling_val) or [])],
-            "sommer_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(sommer_val) or [])],
-            "herbst_ranges": [{"start": r.start, "end": r.end} for r in (_parse_hlzf_times(herbst_val) or [])],
-            "verification_status": row[7],
-            # Extraction source fields
-            "extraction_source": row[8],
-            "extraction_model": row[9],
-            "extraction_source_format": row[10],
-            "last_edited_by": row[11],
-            "last_edited_at": row[12].isoformat() if row[12] else None,
-            # Verification/flag fields
-            "verified_by": row[13],
-            "verified_at": row[14].isoformat() if row[14] else None,
-            "flagged_by": row[15],
-            "flagged_at": row[16].isoformat() if row[16] else None,
-            "flag_reason": row[17],
-        })
+        hlzf.append(
+            {
+                "id": row[0],
+                "voltage_level": row[1],
+                "year": row[2],
+                "winter": winter_val,
+                "fruehling": fruehling_val,
+                "sommer": sommer_val,
+                "herbst": herbst_val,
+                # Parsed time ranges
+                "winter_ranges": [
+                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(winter_val) or [])
+                ],
+                "fruehling_ranges": [
+                    {"start": r.start, "end": r.end}
+                    for r in (_parse_hlzf_times(fruehling_val) or [])
+                ],
+                "sommer_ranges": [
+                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(sommer_val) or [])
+                ],
+                "herbst_ranges": [
+                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(herbst_val) or [])
+                ],
+                "verification_status": row[7],
+                # Extraction source fields
+                "extraction_source": row[8],
+                "extraction_model": row[9],
+                "extraction_source_format": row[10],
+                "last_edited_by": row[11],
+                "last_edited_at": row[12].isoformat() if row[12] else None,
+                # Verification/flag fields
+                "verified_by": row[13],
+                "verified_at": row[14].isoformat() if row[14] else None,
+                "flagged_by": row[15],
+                "flagged_at": row[16].isoformat() if row[16] else None,
+                "flag_reason": row[17],
+            }
+        )
 
     return APIResponse(
         success=True,

@@ -105,23 +105,25 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
 
     for match in matches:
         voltage_level_raw = match[0].strip()
-        voltage_level_raw = re.sub(r'\s+', ' ', voltage_level_raw).strip()
+        voltage_level_raw = re.sub(r"\s+", " ", voltage_level_raw).strip()
         voltage_level = normalize_voltage_level(voltage_level_raw)
 
         try:
-            lp_unter = float(match[1].replace(',', '.'))
-            ap_unter = float(match[2].replace(',', '.'))
-            lp = float(match[3].replace(',', '.'))
-            ap = float(match[4].replace(',', '.'))
+            lp_unter = float(match[1].replace(",", "."))
+            ap_unter = float(match[2].replace(",", "."))
+            lp = float(match[3].replace(",", "."))
+            ap = float(match[4].replace(",", "."))
 
-            records.append({
-                "voltage_level": voltage_level,
-                "leistung_unter_2500h": lp_unter,
-                "arbeit_unter_2500h": ap_unter,
-                "leistung": lp,
-                "arbeit": ap,
-                "source_page": page_num,
-            })
+            records.append(
+                {
+                    "voltage_level": voltage_level,
+                    "leistung_unter_2500h": lp_unter,
+                    "arbeit_unter_2500h": ap_unter,
+                    "leistung": lp,
+                    "arbeit": ap,
+                    "source_page": page_num,
+                }
+            )
         except (ValueError, IndexError) as e:
             logger.warning(f"Failed to parse numbers: {match}, error: {e}")
             continue
@@ -138,8 +140,16 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     uber_section = ""
 
     # Split text by usage threshold markers
-    unter_match = re.search(r"bis\s+(?:zu\s+)?2\.?500\s+Stunden[^\n]*\n(.*?)(?=über\s+2\.?500\s+Stunden|$)", text, re.IGNORECASE | re.DOTALL)
-    uber_match = re.search(r"über\s+2\.?500\s+Stunden[^\n]*\n(.*?)(?=bis\s+(?:zu\s+)?2\.?500\s+Stunden|$)", text, re.IGNORECASE | re.DOTALL)
+    unter_match = re.search(
+        r"bis\s+(?:zu\s+)?2\.?500\s+Stunden[^\n]*\n(.*?)(?=über\s+2\.?500\s+Stunden|$)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
+    uber_match = re.search(
+        r"über\s+2\.?500\s+Stunden[^\n]*\n(.*?)(?=bis\s+(?:zu\s+)?2\.?500\s+Stunden|$)",
+        text,
+        re.IGNORECASE | re.DOTALL,
+    )
 
     if unter_match:
         unter_section = unter_match.group(1)
@@ -158,7 +168,7 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     def extract_prices_from_section(section_text: str) -> dict:
         """Extract voltage level -> (leistungspreis, arbeitspreis) from a section."""
         results = {}
-        lines = section_text.split('\n')
+        lines = section_text.split("\n")
 
         for line in lines:
             for vl_pattern, vl_abbrev in voltage_patterns:
@@ -168,8 +178,8 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
                     # Extract Arbeitspreis (Ct/kWh)
                     ap_match = re.search(r"([\d,\.]+)\s*(?:Ct|ct)\s*/\s*kWh", line, re.IGNORECASE)
 
-                    lp = float(lp_match.group(1).replace(',', '.')) if lp_match else None
-                    ap = float(ap_match.group(1).replace(',', '.')) if ap_match else None
+                    lp = float(lp_match.group(1).replace(",", ".")) if lp_match else None
+                    ap = float(ap_match.group(1).replace(",", ".")) if ap_match else None
 
                     if lp is not None or ap is not None:
                         results[vl_abbrev] = (lp, ap)
@@ -188,14 +198,16 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
         unter_lp, unter_ap = unter_prices.get(vl, (None, None))
         uber_lp, uber_ap = uber_prices.get(vl, (None, None))
 
-        records.append({
-            "voltage_level": vl,
-            "leistung_unter_2500h": unter_lp,
-            "arbeit_unter_2500h": unter_ap,
-            "leistung": uber_lp,
-            "arbeit": uber_ap,
-            "source_page": page_num,
-        })
+        records.append(
+            {
+                "voltage_level": vl,
+                "leistung_unter_2500h": unter_lp,
+                "arbeit_unter_2500h": unter_ap,
+                "leistung": uber_lp,
+                "arbeit": uber_ap,
+                "source_page": page_num,
+            }
+        )
 
     return records
 
@@ -220,7 +232,7 @@ def _parse_netzentgelte_table(table: list[list], page_num: int) -> list[dict[str
             numbers = []
             for cell in row[1:]:
                 if cell:
-                    cell_str = str(cell).replace(',', '.').strip()
+                    cell_str = str(cell).replace(",", ".").strip()
                     try:
                         numbers.append(float(cell_str))
                     except ValueError:
@@ -229,14 +241,16 @@ def _parse_netzentgelte_table(table: list[list], page_num: int) -> list[dict[str
             if len(numbers) >= 4:
                 # Normalize voltage level to standard abbreviation
                 voltage_level = normalize_voltage_level(str(row[0]).strip())
-                records.append({
-                    "voltage_level": voltage_level,
-                    "leistung_unter_2500h": numbers[0],
-                    "arbeit_unter_2500h": numbers[1],
-                    "leistung": numbers[2],
-                    "arbeit": numbers[3],
-                    "source_page": page_num,
-                })
+                records.append(
+                    {
+                        "voltage_level": voltage_level,
+                        "leistung_unter_2500h": numbers[0],
+                        "arbeit_unter_2500h": numbers[1],
+                        "leistung": numbers[2],
+                        "arbeit": numbers[3],
+                        "source_page": page_num,
+                    }
+                )
 
     return records
 
@@ -416,7 +430,14 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
     header_str = " ".join(str(cell or "").lower() for cell in header_row)
 
     # Check if header contains voltage level names (inverted table)
-    voltage_keywords = ["mittelspannung", "niederspannung", "hochspannung", "umspannung", "msp", "nsp"]
+    voltage_keywords = [
+        "mittelspannung",
+        "niederspannung",
+        "hochspannung",
+        "umspannung",
+        "msp",
+        "nsp",
+    ]
     season_keywords = ["winter", "frühling", "fruehling", "sommer", "herbst"]
 
     has_voltage_in_header = any(kw in header_str for kw in voltage_keywords)
@@ -459,7 +480,14 @@ def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[st
             vl = normalize_voltage_level(cell_str)
             if vl:
                 voltage_columns[col_idx] = vl
-                records_dict[vl] = {"voltage_level": vl, "winter": None, "fruehling": None, "sommer": None, "herbst": None, "source_page": page_num}
+                records_dict[vl] = {
+                    "voltage_level": vl,
+                    "winter": None,
+                    "fruehling": None,
+                    "sommer": None,
+                    "herbst": None,
+                    "source_page": page_num,
+                }
 
     if not voltage_columns:
         return []
@@ -541,7 +569,7 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
     logger.debug(f"HLZF season column mapping: {season_columns}")
 
     # Parse data rows after header
-    for row in table[header_row_idx + 1:]:
+    for row in table[header_row_idx + 1 :]:
         if not row or len(row) < 2:
             continue
 
@@ -558,14 +586,16 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
                     return _clean_time_value(row[col_idx])
                 return None
 
-            records.append({
-                "voltage_level": voltage_level,
-                "winter": get_season_value("winter"),
-                "fruehling": get_season_value("fruehling"),
-                "sommer": get_season_value("sommer"),
-                "herbst": get_season_value("herbst"),
-                "source_page": page_num,
-            })
+            records.append(
+                {
+                    "voltage_level": voltage_level,
+                    "winter": get_season_value("winter"),
+                    "fruehling": get_season_value("fruehling"),
+                    "sommer": get_season_value("sommer"),
+                    "herbst": get_season_value("herbst"),
+                    "source_page": page_num,
+                }
+            )
 
     return records
 
@@ -597,14 +627,16 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
             times = re.findall(time_pattern, match.group(1))
             if times:
                 time_str = "\n".join([f"{t[0]}-{t[1]}" for t in times])
-                records.append({
-                    "voltage_level": voltage,
-                    "winter": time_str,  # Assuming Winter since that's most common
-                    "fruehling": None,
-                    "sommer": None,
-                    "herbst": None,
-                    "source_page": 0,
-                })
+                records.append(
+                    {
+                        "voltage_level": voltage,
+                        "winter": time_str,  # Assuming Winter since that's most common
+                        "fruehling": None,
+                        "sommer": None,
+                        "herbst": None,
+                        "source_page": 0,
+                    }
+                )
 
     return records
 
@@ -633,16 +665,16 @@ def _clean_time_value(value: Any) -> str | None:
         return "-"
 
     # Remove "Uhr" suffix (e.g., "16:30 Uhr bis 19:30 Uhr" -> "16:30 bis 19:30")
-    s = re.sub(r'\s*[Uu]hr\s*', ' ', s).strip()
+    s = re.sub(r"\s*[Uu]hr\s*", " ", s).strip()
 
     # Replace "bis" with dash (e.g., "16:30 bis 19:30" -> "16:30-19:30")
-    s = re.sub(r'\s*bis\s*', '-', s, flags=re.IGNORECASE)
+    s = re.sub(r"\s*bis\s*", "-", s, flags=re.IGNORECASE)
 
     # Clean up time format: "08:15 - 18:00" or "08:15\n-\n18:00" -> "08:15-18:00"
     # First, normalize all whitespace/newlines around dashes
-    s = re.sub(r'\s*-\s*', '-', s)
-    s = re.sub(r'\s*–\s*', '-', s)  # en-dash
-    s = re.sub(r'\s*—\s*', '-', s)  # em-dash
+    s = re.sub(r"\s*-\s*", "-", s)
+    s = re.sub(r"\s*–\s*", "-", s)  # en-dash
+    s = re.sub(r"\s*—\s*", "-", s)  # em-dash
 
     # Multiple time ranges separated by newlines should be cleaned
     # "12:15-13:15\n16:45-19:45" is valid format
@@ -652,7 +684,7 @@ def _clean_time_value(value: Any) -> str | None:
     for part in parts:
         part = part.strip()
         # Check if it looks like a time range (HH:MM-HH:MM)
-        if re.match(r'^\d{1,2}:\d{2}-\d{1,2}:\d{2}$', part):
+        if re.match(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$", part):
             cleaned_parts.append(part)
 
     if cleaned_parts:

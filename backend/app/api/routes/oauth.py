@@ -25,6 +25,7 @@ router = APIRouter(prefix="/oauth", tags=["oauth"])
 # CLI Credential Detection
 # ==============================================================================
 
+
 @router.get("/detect-credentials")
 async def detect_cli_credentials(
     admin: Annotated[AuthUser, Depends(require_admin)],
@@ -96,13 +97,16 @@ async def detect_cli_credentials(
 # Google OAuth Endpoints
 # ==============================================================================
 
+
 class GoogleOAuthInitRequest(BaseModel):
     """Request to start Google OAuth flow."""
+
     redirect_uri: str | None = None  # Override callback URL if needed
 
 
 class GoogleOAuthCallbackRequest(BaseModel):
     """Callback from Google OAuth."""
+
     code: str
     state: str
 
@@ -116,8 +120,13 @@ _OAUTH_MAX_PENDING = 50  # Max concurrent pending states
 def _cleanup_expired_states() -> None:
     """Remove expired OAuth states to prevent memory leaks."""
     import time
+
     now = time.time()
-    expired = [k for k, v in _oauth_pending_states.items() if now - v.get("created_at", 0) > _OAUTH_STATE_TTL]
+    expired = [
+        k
+        for k, v in _oauth_pending_states.items()
+        if now - v.get("created_at", 0) > _OAUTH_STATE_TTL
+    ]
     for k in expired:
         del _oauth_pending_states[k]
 
@@ -144,7 +153,7 @@ async def start_google_oauth(
         redirect_uri = request.redirect_uri
     else:
         # Construct from settings
-        base_url = getattr(settings, 'base_url', None) or "http://localhost:8000"
+        base_url = getattr(settings, "base_url", None) or "http://localhost:8000"
         redirect_uri = f"{base_url}/api/v1/admin/oauth/google/callback"
 
     flow = GoogleOAuthFlow(redirect_uri=redirect_uri)
@@ -152,9 +161,12 @@ async def start_google_oauth(
 
     # Clean up expired states before adding new one
     import time
+
     _cleanup_expired_states()
     if len(_oauth_pending_states) >= _OAUTH_MAX_PENDING:
-        return APIResponse(success=False, message="Too many pending OAuth flows. Please try again shortly.")
+        return APIResponse(
+            success=False, message="Too many pending OAuth flows. Please try again shortly."
+        )
 
     # Store state for verification (with code_verifier for PKCE)
     _oauth_pending_states[state] = {
@@ -203,11 +215,11 @@ async def google_oauth_callback_get(
 
     # Return HTML that closes the popup and notifies parent
     if result["success"]:
-        safe_email = html_escape(str(result.get('email', '')), quote=True)
-        safe_name = html_escape(str(result.get('name', '')), quote=True)
+        safe_email = html_escape(str(result.get("email", "")), quote=True)
+        # safe_name = html_escape(str(result.get('name', '')), quote=True)
         # JSON-encode for safe embedding in JavaScript
-        js_email = json_mod.dumps(str(result.get('email', '')))
-        js_name = json_mod.dumps(str(result.get('name', '')))
+        js_email = json_mod.dumps(str(result.get("email", "")))
+        js_name = json_mod.dumps(str(result.get("name", "")))
         js_origin = json_mod.dumps(post_message_origin)
         html = f"""
 <!DOCTYPE html>
@@ -261,8 +273,8 @@ async def google_oauth_callback_get(
 </html>
 """
     else:
-        safe_message = html_escape(str(result.get('message', 'Unknown error')), quote=True)
-        js_message = json_mod.dumps(str(result.get('message', 'Unknown error')))
+        safe_message = html_escape(str(result.get("message", "Unknown error")), quote=True)
+        js_message = json_mod.dumps(str(result.get("message", "Unknown error")))
         js_origin = json_mod.dumps(post_message_origin)
         html = f"""
 <!DOCTYPE html>
@@ -346,10 +358,11 @@ async def google_oauth_callback_post(
 
 async def _handle_google_callback_internal(code: str, state: str) -> dict:
     """Process OAuth callback and store credentials. Returns a dict."""
+    import time
+
     from app.services.ai.oauth.google import GoogleOAuthFlow, get_credential_manager
 
     # Verify state (with TTL check)
-    import time
     _cleanup_expired_states()
     pending = _oauth_pending_states.get(state)
     if not pending:

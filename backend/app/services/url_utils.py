@@ -55,9 +55,24 @@ DOCUMENT_EXTENSIONS = {".pdf", ".pdfx", ".xlsx", ".xls", ".docx", ".doc"}
 
 # Query parameters to strip (tracking, session, download flags, etc.)
 STRIP_PARAMS = {
-    "utm_source", "utm_medium", "utm_campaign", "utm_term", "utm_content",
-    "fbclid", "gclid", "session_id", "sessionid", "sid", "ref", "referrer",
-    "source", "tracking", "_ga", "_gl", "mc_cid", "mc_eid",
+    "utm_source",
+    "utm_medium",
+    "utm_campaign",
+    "utm_term",
+    "utm_content",
+    "fbclid",
+    "gclid",
+    "session_id",
+    "sessionid",
+    "sid",
+    "ref",
+    "referrer",
+    "source",
+    "tracking",
+    "_ga",
+    "_gl",
+    "mc_cid",
+    "mc_eid",
     "forced",  # Download flag (same file with or without)
 }
 
@@ -151,13 +166,13 @@ def normalize_url(url: str) -> str:
         netloc = f"{hostname}:{port}" if port else hostname
 
         # Clean path - normalize double slashes
-        path = re.sub(r'/+', '/', parsed.path)
+        path = re.sub(r"/+", "/", parsed.path)
         if not path:
             path = "/"
 
         # Percent-encode unicode characters in path (safe chars preserved)
         with contextlib.suppress(Exception):
-            path = quote(path, safe='/-_.~!$&\'()*+,;=:@')
+            path = quote(path, safe="/-_.~!$&'()*+,;=:@")
 
         # DON'T add trailing slashes - many sites return 404 for them
         # Just preserve the original slash status (except for homepage)
@@ -167,7 +182,8 @@ def normalize_url(url: str) -> str:
         if parsed.query:
             params = parse_qs(parsed.query, keep_blank_values=True)
             filtered = {
-                k: v for k, v in params.items()
+                k: v
+                for k, v in params.items()
                 if k.lower() not in STRIP_PARAMS and not k.lower().startswith("utm_")
             }
             # Sort for consistency
@@ -176,17 +192,18 @@ def normalize_url(url: str) -> str:
             query = ""
 
         # Remove fragment (anchor)
-        return urlunparse((
-            parsed.scheme.lower(),  # Also lowercase scheme
-            netloc,
-            path,
-            "",  # params
-            query,
-            "",  # fragment removed
-        ))
+        return urlunparse(
+            (
+                parsed.scheme.lower(),  # Also lowercase scheme
+                netloc,
+                path,
+                "",  # params
+                query,
+                "",  # fragment removed
+            )
+        )
     except Exception:
         return url  # Return original on error
-
 
 
 def extract_domain(url: str) -> str | None:
@@ -388,6 +405,7 @@ class UrlProber:
 
         Blocks: private, loopback, link-local, multicast, reserved, unspecified.
         """
+
         def _check():
             try:
                 ips = socket.getaddrinfo(host, None, socket.AF_UNSPEC)
@@ -462,7 +480,7 @@ class UrlProber:
                     self.log.debug(
                         "HEAD blocked, falling back to GET peek",
                         url=current_url[:80],
-                        status=response.status_code
+                        status=response.status_code,
                     )
                     response = await self._peek_with_get(current_url)
                     if response is None:
@@ -486,13 +504,17 @@ class UrlProber:
                     next_parsed = urlparse(next_url)
 
                     # Domain check on redirect
-                    if allowed_domains and not self._is_allowed_domain(next_parsed.hostname, allowed_domains):
+                    if allowed_domains and not self._is_allowed_domain(
+                        next_parsed.hostname, allowed_domains
+                    ):
                         self.log.warning("Redirect to disallowed domain", host=next_parsed.hostname)
                         return False, None, None, None
 
                     # DNS check on redirect (rebinding protection)
                     if not await self._resolves_to_safe_ip(next_parsed.hostname):
-                        self.log.warning("Redirect to non-global IP blocked", host=next_parsed.hostname)
+                        self.log.warning(
+                            "Redirect to non-global IP blocked", host=next_parsed.hostname
+                        )
                         return False, None, None, None
 
                     current_url = next_url
@@ -522,8 +544,11 @@ class UrlProber:
                     # Allow files by extension even if content-type is wrong
                     url_lower = current_url.lower()
                     if not any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
-                        self.log.debug("Content type not allowed",
-                                      content_type=content_type, url=current_url[:80])
+                        self.log.debug(
+                            "Content type not allowed",
+                            content_type=content_type,
+                            url=current_url[:80],
+                        )
                         return False, None, None, None
 
                 return True, content_type, current_url, content_length
@@ -541,7 +566,6 @@ class UrlProber:
         except Exception as e:
             self.log.debug("Probe failed", url=url[:80], error=str(e))
             return False, None, None, None
-
 
     async def _peek_with_get(self, url: str) -> httpx.Response | None:
         """Fallback probe using streaming GET when HEAD is blocked.

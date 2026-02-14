@@ -83,7 +83,7 @@ def parse_sitemap_content(xml_content: str) -> tuple[list[str], list[str]]:
 
     except ElementTree.ParseError:
         # Regex fallback
-        pattern = r'<loc>([^<]+)</loc>'
+        pattern = r"<loc>([^<]+)</loc>"
         urls = re.findall(pattern, xml_content)
 
     return urls, nested_sitemaps
@@ -92,7 +92,20 @@ def parse_sitemap_content(xml_content: str) -> tuple[list[str], list[str]]:
 # Language path patterns to filter/prioritize
 PREFERRED_LANG = "/de/"
 FALLBACK_LANG = "/en/"
-EXCLUDE_LANGS = ["/es/", "/it/", "/fr/", "/nl/", "/pt/", "/ru/", "/cn/", "/zh/", "/ja/", "/ko/", "/pl/", "/tr/"]
+EXCLUDE_LANGS = [
+    "/es/",
+    "/it/",
+    "/fr/",
+    "/nl/",
+    "/pt/",
+    "/ru/",
+    "/cn/",
+    "/zh/",
+    "/ja/",
+    "/ko/",
+    "/pl/",
+    "/tr/",
+]
 
 
 def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
@@ -161,7 +174,11 @@ async def fetch_sitemap_recursive(
         content = response.text
 
         # Verify it's XML
-        if not (content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<sitemapindex" in content[:500]):
+        if not (
+            content.strip().startswith("<?xml")
+            or "<urlset" in content[:500]
+            or "<sitemapindex" in content[:500]
+        ):
             return all_urls
 
         urls, nested_sitemaps = parse_sitemap_content(content)
@@ -289,34 +306,42 @@ async def recheck_robots_for_all(
 
             # Progress report
             if (i + 1) % 25 == 0:
-                log.info("Progress", processed=i + 1, updated=updated, skipped=skipped, errors=errors)
+                log.info(
+                    "Progress", processed=i + 1, updated=updated, skipped=skipped, errors=errors
+                )
 
     log.info("Recheck complete", updated=updated, skipped=skipped, errors=errors)
     return records
 
 
 async def main():
-    parser = argparse.ArgumentParser(description="Re-check robots.txt and sitemaps for enriched DNOs")
+    parser = argparse.ArgumentParser(
+        description="Re-check robots.txt and sitemaps for enriched DNOs"
+    )
     parser.add_argument(
-        "--input", "-i",
+        "--input",
+        "-i",
         type=Path,
         default=Path(__file__).parent.parent.parent / "data" / "seed-data" / "dnos_enriched.json",
         help="Input JSON file path",
     )
     parser.add_argument(
-        "--output", "-o",
+        "--output",
+        "-o",
         type=Path,
         default=None,
         help="Output JSON file path (defaults to input file - in-place update)",
     )
     parser.add_argument(
-        "--limit", "-l",
+        "--limit",
+        "-l",
         type=int,
         default=None,
         help="Limit number of records to process",
     )
     parser.add_argument(
-        "--delay", "-d",
+        "--delay",
+        "-d",
         type=float,
         default=0.5,
         help="Delay between requests in seconds (default: 0.5)",

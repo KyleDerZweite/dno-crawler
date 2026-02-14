@@ -7,15 +7,17 @@ Supports both online (with DB connection) and offline (SQL script generation) mi
 import asyncio
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from sqlalchemy.ext.asyncio import async_engine_from_config
 
+from alembic import context
 from app.core.config import settings
+from app.db import (
+    models,  # noqa: F401 - Import all models for metadata
+    source_models,  # noqa: F401 - Import source models for metadata
+)
 from app.db.database import Base
-from app.db import models  # noqa: F401 - Import all models for metadata
-from app.db import source_models  # noqa: F401 - Import source models for metadata
 
 config = context.config
 

@@ -15,6 +15,7 @@ class StepError(Exception):
     Use this for controlled failures with user-friendly messages,
     as opposed to unexpected exceptions.
     """
+
     pass
 
 
@@ -32,7 +33,9 @@ class BaseStep(ABC):
         """Logic for the step goes here."""
         pass
 
-    async def execute(self, db: AsyncSession, job: CrawlJobModel, step_num: int, total_steps: int) -> None:
+    async def execute(
+        self, db: AsyncSession, job: CrawlJobModel, step_num: int, total_steps: int
+    ) -> None:
         """Wrapper around run() that handles DB updates and logging."""
         self.log.info(f"Starting step {step_num}/{total_steps}")
 
@@ -46,7 +49,7 @@ class BaseStep(ABC):
             step_name=self.label,
             status="running",
             started_at=datetime.now(UTC),
-            details={"description": self.description}
+            details={"description": self.description},
         )
         db.add(step_record)
         await db.commit()
@@ -65,10 +68,7 @@ class BaseStep(ABC):
 
             # Add result to details if returned
             if result_msg:
-                step_record.details = {
-                    **(step_record.details or {}),
-                    "result": result_msg
-                }
+                step_record.details = {**(step_record.details or {}), "result": result_msg}
 
             job.progress = int((step_num / total_steps) * 100)
             await db.commit()
@@ -89,10 +89,7 @@ class BaseStep(ABC):
 
                 step_record.status = "failed"
                 step_record.completed_at = datetime.now(UTC)
-                step_record.details = {
-                    "description": self.description,
-                    "error": str(e)
-                }
+                step_record.details = {"description": self.description, "error": str(e)}
 
                 job.status = "failed"
                 job.completed_at = datetime.now(UTC)

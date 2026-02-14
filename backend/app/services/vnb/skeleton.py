@@ -28,11 +28,12 @@ logger = structlog.get_logger()
 @dataclass
 class NormalizedAddress:
     """Normalized address with clean components and hash for deduplication."""
-    street_clean: str       # For storage/API calls: "An der Ronne"
+
+    street_clean: str  # For storage/API calls: "An der Ronne"
     number_clean: str | None  # For storage/API calls: "160"
     zip_code: str
     city: str
-    address_hash: str       # For DB uniqueness: hash("anderronne|160|12345")
+    address_hash: str  # For DB uniqueness: hash("anderronne|160|12345")
 
 
 # =============================================================================
@@ -42,12 +43,12 @@ class NormalizedAddress:
 
 # Aggressive replacements for German street abbreviations
 STREET_REPLACEMENTS = {
-    r'straße': 'str',
-    r'strasse': 'str',
-    r'str\.': 'str',
-    r'\.': '',        # Remove dots
-    r'\s+': '',       # Remove ALL spaces
-    r'-': '',         # Remove hyphens
+    r"straße": "str",
+    r"strasse": "str",
+    r"str\.": "str",
+    r"\.": "",  # Remove dots
+    r"\s+": "",  # Remove ALL spaces
+    r"-": "",  # Remove hyphens
 }
 
 
@@ -69,7 +70,7 @@ def normalize_address(street_input: str, zip_code: str, city: str) -> Normalized
 
     # 2. Extract House Number (Regex looks for number at end of string)
     # Matches "Musterstr. 12" or "Musterstr 12a"
-    match = re.search(r'^(.+?)\s+(\d+\s*[a-z]?)$', street_input, re.IGNORECASE)
+    match = re.search(r"^(.+?)\s+(\d+\s*[a-z]?)$", street_input, re.IGNORECASE)
     if match:
         street_clean = match.group(1).strip()
         number_clean = match.group(2).strip()
@@ -103,16 +104,16 @@ def snap_coordinate(value: float) -> Decimal:
     6 decimal places = ~11cm precision.
     Using Decimal avoids floating point comparison issues.
     """
-    return Decimal(str(value)).quantize(Decimal('0.000001'), rounding=ROUND_HALF_UP)
+    return Decimal(str(value)).quantize(Decimal("0.000001"), rounding=ROUND_HALF_UP)
 
 
 def generate_slug(name: str) -> str:
     """Generate URL-safe slug from DNO name."""
     slug = name.lower()
-    slug = re.sub(r'\s+', '-', slug)
-    slug = re.sub(r'[^a-z0-9-]', '', slug)
-    slug = re.sub(r'-+', '-', slug)
-    return slug.strip('-')
+    slug = re.sub(r"\s+", "-", slug)
+    slug = re.sub(r"[^a-z0-9-]", "", slug)
+    slug = re.sub(r"-+", "-", slug)
+    return slug.strip("-")
 
 
 # =============================================================================
@@ -158,9 +159,7 @@ class SkeletonService:
         log = self.log.bind(name=name, vnb_id=vnb_id)
 
         # First, try to find existing by vnb_id
-        result = await db.execute(
-            select(DNOModel).where(DNOModel.vnb_id == vnb_id)
-        )
+        result = await db.execute(select(DNOModel).where(DNOModel.vnb_id == vnb_id))
         existing = result.scalar_one_or_none()
         if existing:
             log.debug("DNO already exists", dno_id=existing.id)
@@ -201,8 +200,9 @@ class SkeletonService:
 
             # Enqueue enrichment job for newly created skeletons if not already enriched
             try:
-                if getattr(dno, 'enrichment_status', None) != 'completed':
+                if getattr(dno, "enrichment_status", None) != "completed":
                     from app.jobs.enrichment_job import enqueue_enrichment_job
+
                     await enqueue_enrichment_job(dno.id)
             except Exception as e:
                 log.warning("Failed to enqueue enrichment job for skeleton", error=str(e))
@@ -215,9 +215,7 @@ class SkeletonService:
 
             # Fetch the existing record (try by vnb_id, then by slug)
             result = await db.execute(
-                select(DNOModel).where(
-                    (DNOModel.vnb_id == vnb_id) | (DNOModel.slug == slug)
-                )
+                select(DNOModel).where((DNOModel.vnb_id == vnb_id) | (DNOModel.slug == slug))
             )
             existing = result.scalar_one_or_none()
             if existing:
@@ -225,6 +223,7 @@ class SkeletonService:
 
             # If still not found, re-raise the error
             raise
+
     async def find_location_by_hash(
         self,
         db: AsyncSession,

@@ -37,6 +37,7 @@ USER_AGENT = "DNO-Data-Crawler/1.0 (Discovery Test)"
 @dataclass
 class DiscoveredDocument:
     """A discovered document/file or HTML page with embedded data."""
+
     url: str
     found_on_page: str
     link_text: str
@@ -101,31 +102,30 @@ async def _scan_for_hlzf_html(
             if response.status_code != 200:
                 continue
 
-            html_score, html_result = score_html_page_for_data(
-                response.text, "hlzf", target_year
-            )
+            html_score, html_result = score_html_page_for_data(response.text, "hlzf", target_year)
 
             if html_result.has_data_table and html_score > 30:
                 has_target_year = target_year in html_result.years_found if target_year else False
-                all_documents.append(DiscoveredDocument(
-                    url=url,
-                    found_on_page="(embedded data)",
-                    link_text="",
-                    is_external=False,
-                    file_type="html",
-                    score=html_score + 50,  # Base bonus for having HLZF table
-                    keywords_in_url=html_result.keywords_found,
-                    has_year=has_target_year,
-                    is_html_data=True,
-                    years_in_page=html_result.years_found,
-                ))
+                all_documents.append(
+                    DiscoveredDocument(
+                        url=url,
+                        found_on_page="(embedded data)",
+                        link_text="",
+                        is_external=False,
+                        file_type="html",
+                        score=html_score + 50,  # Base bonus for having HLZF table
+                        keywords_in_url=html_result.keywords_found,
+                        has_year=has_target_year,
+                        is_html_data=True,
+                        years_in_page=html_result.years_found,
+                    )
+                )
                 if verbose:
                     print(f"      📊 Found HLZF data at {url}... Years: {html_result.years_found}")
 
         except Exception as e:
             if verbose:
                 print(f"      ⚠️ Error checking {url}: {e}")
-
 
 
 async def discover_documents(
@@ -157,7 +157,6 @@ async def discover_documents(
         follow_redirects=True,
         timeout=15.0,
     ) as client:
-
         all_documents: list[DiscoveredDocument] = []
         discovery_strategy = "unknown"
         pages_crawled = 0
@@ -194,16 +193,18 @@ async def discover_documents(
                 discovery_strategy = "sitemap"
 
                 for r in sitemap_results:
-                    all_documents.append(DiscoveredDocument(
-                        url=r.url,
-                        found_on_page="(sitemap)",
-                        link_text="",
-                        is_external=False,
-                        file_type=r.file_type or "unknown",
-                        score=r.score,
-                        keywords_in_url=r.keywords_found,
-                        has_year=r.has_year,
-                    ))
+                    all_documents.append(
+                        DiscoveredDocument(
+                            url=r.url,
+                            found_on_page="(sitemap)",
+                            link_text="",
+                            is_external=False,
+                            file_type=r.file_type or "unknown",
+                            score=r.score,
+                            keywords_in_url=r.keywords_found,
+                            has_year=r.has_year,
+                        )
+                    )
 
                 # For HLZF without specific files, also do BFS to find HTML tables
                 if data_type == "hlzf" and not hlzf_specific:
@@ -250,16 +251,18 @@ async def discover_documents(
             print(f"   Found {len(pages)} HTML pages")
 
             for doc in internal_docs:
-                all_documents.append(DiscoveredDocument(
-                    url=doc.final_url,
-                    found_on_page="(direct discovery)",
-                    link_text="",
-                    is_external=False,
-                    file_type=_get_file_type(doc.final_url),
-                    score=doc.score,
-                    keywords_in_url=doc.keywords_found,
-                    has_year=bool(target_year and str(target_year) in doc.final_url),
-                ))
+                all_documents.append(
+                    DiscoveredDocument(
+                        url=doc.final_url,
+                        found_on_page="(direct discovery)",
+                        link_text="",
+                        is_external=False,
+                        file_type=_get_file_type(doc.final_url),
+                        score=doc.score,
+                        keywords_in_url=doc.keywords_found,
+                        has_year=bool(target_year and str(target_year) in doc.final_url),
+                    )
+                )
 
             top_pages_crawl = sorted(pages, key=lambda r: r.score, reverse=True)[:15]
             top_pages = [(p.final_url, p.score, p.title) for p in top_pages_crawl[:5]]
@@ -289,21 +292,27 @@ async def discover_documents(
                         )
 
                         if html_result.has_data_table and html_score > 30:
-                            has_target_year = target_year in html_result.years_found if target_year else False
-                            all_documents.append(DiscoveredDocument(
-                                url=page.final_url,
-                                found_on_page="(embedded data)",
-                                link_text=page.title or "",
-                                is_external=False,
-                                file_type="html",
-                                score=html_score + page.score,
-                                keywords_in_url=html_result.keywords_found,
-                                has_year=has_target_year,
-                                is_html_data=True,
-                                years_in_page=html_result.years_found,
-                            ))
+                            has_target_year = (
+                                target_year in html_result.years_found if target_year else False
+                            )
+                            all_documents.append(
+                                DiscoveredDocument(
+                                    url=page.final_url,
+                                    found_on_page="(embedded data)",
+                                    link_text=page.title or "",
+                                    is_external=False,
+                                    file_type="html",
+                                    score=html_score + page.score,
+                                    keywords_in_url=html_result.keywords_found,
+                                    has_year=has_target_year,
+                                    is_html_data=True,
+                                    years_in_page=html_result.years_found,
+                                )
+                            )
                             if verbose:
-                                print(f"      📊 Embedded data found! Years: {html_result.years_found}")
+                                print(
+                                    f"      📊 Embedded data found! Years: {html_result.years_found}"
+                                )
 
                     # Find document links
                     for link in soup.find_all("a", href=True):
@@ -316,7 +325,9 @@ async def discover_documents(
                             continue
 
                         parsed_url = urlparse(full_url)
-                        is_external = parsed_url.hostname and start_domain not in parsed_url.hostname
+                        is_external = (
+                            parsed_url.hostname and start_domain not in parsed_url.hostname
+                        )
 
                         score = 0.0
                         keywords_found = []
@@ -344,20 +355,25 @@ async def discover_documents(
 
                         if data_type in NEGATIVE_KEYWORDS:
                             for neg_kw, penalty in NEGATIVE_KEYWORDS[data_type]:
-                                if neg_kw.lower() in url_lower or neg_kw.lower() in link_text.lower():
+                                if (
+                                    neg_kw.lower() in url_lower
+                                    or neg_kw.lower() in link_text.lower()
+                                ):
                                     score += penalty
 
                         if score > 0 or file_type:
-                            all_documents.append(DiscoveredDocument(
-                                url=full_url,
-                                found_on_page=page.final_url,
-                                link_text=link_text,
-                                is_external=is_external,
-                                file_type=file_type,
-                                score=score,
-                                keywords_in_url=keywords_found,
-                                has_year=has_year,
-                            ))
+                            all_documents.append(
+                                DiscoveredDocument(
+                                    url=full_url,
+                                    found_on_page=page.final_url,
+                                    link_text=link_text,
+                                    is_external=is_external,
+                                    file_type=file_type,
+                                    score=score,
+                                    keywords_in_url=keywords_found,
+                                    has_year=has_year,
+                                )
+                            )
 
                 except Exception as e:
                     if verbose:
@@ -430,6 +446,7 @@ async def download_top_result(
 
         if top_doc.is_html_data:
             from app.services.extraction.html_stripper import HtmlStripper
+
             stripper = HtmlStripper()
             stripped_html, years = stripper.strip_html(response.text)
             output_path.write_text(stripped_html, encoding="utf-8")
@@ -479,10 +496,10 @@ def print_results(results: dict, verbose: bool):
             html_data = " [HTML]" if doc.is_html_data else ""
             year_mark = " 📅" if doc.has_year else ""
 
-            print(f"\n   {i+1}. [{doc.score:5.1f}]{external}{html_data}{year_mark}")
+            print(f"\n   {i + 1}. [{doc.score:5.1f}]{external}{html_data}{year_mark}")
             print(f"      URL: {doc.url[:80]}")
             if doc.link_text:
-                print(f"      Link: \"{doc.link_text[:60]}\"")
+                print(f'      Link: "{doc.link_text[:60]}"')
             if doc.is_html_data and doc.years_in_page:
                 print(f"      Years in page: {doc.years_in_page}")
     else:

@@ -29,7 +29,7 @@ def strip_file(html_path: Path) -> None:
     print(f"\n📄 Input file: {html_path}")
     print(f"   Size: {get_file_size_kb(html_path):.1f} KB")
 
-    html_content = html_path.read_text(encoding='utf-8')
+    html_content = html_path.read_text(encoding="utf-8")
 
     stripper = HtmlStripper()
     stripped_html, years_found = stripper.strip_html(html_content)
@@ -46,7 +46,7 @@ def strip_file(html_path: Path) -> None:
 
     # Save to temp file for inspection
     output_path = html_path.parent / f"{html_path.stem}_stripped.html"
-    output_path.write_text(stripped_html, encoding='utf-8')
+    output_path.write_text(stripped_html, encoding="utf-8")
     print(f"\n✅ Saved stripped HTML to: {output_path}")
 
 
@@ -58,14 +58,11 @@ def split_file(html_path: Path, output_dir: Path, slug: str, data_type: str) -> 
     print(f"   Slug: {slug}")
     print(f"   Data type: {data_type}")
 
-    html_content = html_path.read_text(encoding='utf-8')
+    html_content = html_path.read_text(encoding="utf-8")
 
     stripper = HtmlStripper()
     created_files = stripper.strip_and_split(
-        html_content=html_content,
-        output_dir=output_dir,
-        slug=slug,
-        data_type=data_type
+        html_content=html_content, output_dir=output_dir, slug=slug, data_type=data_type
     )
 
     print(f"\n✅ Created {len(created_files)} files:")
@@ -77,7 +74,13 @@ def split_file(html_path: Path, output_dir: Path, slug: str, data_type: str) -> 
 def test_rheinnetz() -> None:
     """Test with the RheinNetz example file."""
     base_dir = Path(__file__).parent.parent.parent.parent
-    html_path = base_dir / "data" / "downloads" / "rheinnetz-gmbh-rng" / "Netzentgelte für die Stromnetznutzung _ RheinNetz.html"
+    html_path = (
+        base_dir
+        / "data"
+        / "downloads"
+        / "rheinnetz-gmbh-rng"
+        / "Netzentgelte für die Stromnetznutzung _ RheinNetz.html"
+    )
 
     if not html_path.exists():
         print(f"❌ Test file not found: {html_path}")
@@ -96,10 +99,7 @@ def test_rheinnetz() -> None:
     # Then, strip and split
     print("\n--- Step 2: Strip and split by year ---")
     split_file(
-        html_path=html_path,
-        output_dir=output_dir,
-        slug="rheinnetz-gmbh-rng",
-        data_type="hlzf"
+        html_path=html_path, output_dir=output_dir, slug="rheinnetz-gmbh-rng", data_type="hlzf"
     )
 
     # Now test extraction on the split files
@@ -114,7 +114,7 @@ def test_rheinnetz() -> None:
         except ValueError:
             continue
 
-        html_content = year_file.read_text(encoding='utf-8')
+        html_content = year_file.read_text(encoding="utf-8")
         records = extract_hlzf_from_html(html_content, year)
 
         print(f"\n   📊 {year_file.name}:")
@@ -149,7 +149,9 @@ def main() -> None:
 
     elif command == "split":
         if len(sys.argv) < 6:
-            print("Usage: python -m tests.manual.html_strip_test split <html_file> <output_dir> <slug> <data_type>")
+            print(
+                "Usage: python -m tests.manual.html_strip_test split <html_file> <output_dir> <slug> <data_type>"
+            )
             return
         html_path = Path(sys.argv[2])
         output_dir = Path(sys.argv[3])

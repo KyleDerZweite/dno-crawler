@@ -99,14 +99,17 @@ async def fetch_sitemap(
             # Check if it's valid XML (not a Cloudflare challenge)
             if response.status_code == 200:  # type: ignore[union-attr]
                 content = response.text  # type: ignore[union-attr]
-                if content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<loc>" in content[:1000]:
+                if (
+                    content.strip().startswith("<?xml")
+                    or "<urlset" in content[:500]
+                    or "<loc>" in content[:1000]
+                ):
                     log.info("Found sitemap", url=sitemap_url)
                     return content
 
         except Exception as e:
             log.debug("Sitemap fetch failed", url=sitemap_url[:60], error=str(e))
             continue
-
 
     log.info("No sitemap found", base_url=base_url)
     return None
@@ -177,7 +180,7 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
             # Try to detect namespace from root tag
             root_tag = root.tag
             if "{" in root_tag:
-                ns = root_tag[root_tag.find("{") + 1:root_tag.find("}")]
+                ns = root_tag[root_tag.find("{") + 1 : root_tag.find("}")]
                 dynamic_ns = {"sm": ns}
 
                 for sitemap_elem in root.findall(".//sm:sitemap", dynamic_ns):
@@ -192,7 +195,7 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
 
     except ElementTree.ParseError:
         # Try regex fallback for malformed XML
-        pattern = r'<loc>([^<]+)</loc>'
+        pattern = r"<loc>([^<]+)</loc>"
         urls = [u.strip() for u in re.findall(pattern, xml_content)]
 
     # Deduplicate while preserving order
@@ -202,11 +205,23 @@ def parse_sitemap(xml_content: str) -> tuple[list[str], list[str]]:
     return urls, nested_sitemaps
 
 
-
 # Language path patterns to filter/prioritize
 PREFERRED_LANG = "/de/"
 FALLBACK_LANG = "/en/"
-EXCLUDE_LANGS = ["/es/", "/it/", "/fr/", "/nl/", "/pt/", "/ru/", "/cn/", "/zh/", "/ja/", "/ko/", "/pl/", "/tr/"]
+EXCLUDE_LANGS = [
+    "/es/",
+    "/it/",
+    "/fr/",
+    "/nl/",
+    "/pt/",
+    "/ru/",
+    "/cn/",
+    "/zh/",
+    "/ja/",
+    "/ko/",
+    "/pl/",
+    "/tr/",
+]
 
 
 def filter_sitemaps_by_language(sitemap_urls: list[str]) -> list[str]:
@@ -282,7 +297,11 @@ async def fetch_and_parse_sitemap_recursive(
         content = response.text
 
         # Verify it's XML
-        if not (content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<sitemapindex" in content[:500]):
+        if not (
+            content.strip().startswith("<?xml")
+            or "<urlset" in content[:500]
+            or "<sitemapindex" in content[:500]
+        ):
             log.debug("Not valid sitemap XML", url=sitemap_url[:60])
             return all_urls
 
@@ -380,7 +399,6 @@ async def discover_via_sitemap(
 
     # If this is a sitemap index, recursively fetch nested sitemaps
     if nested_sitemaps and not urls:
-
         log.info("Sitemap is an index, fetching nested sitemaps", count=len(nested_sitemaps))
         # Get the sitemap URL we're working with
         urlparse(base_url)
@@ -407,14 +425,16 @@ async def discover_via_sitemap(
         if score <= 0 and file_type == FileType.UNKNOWN:
             continue
 
-        candidates.append(DiscoveredDocument(
-            url=url,
-            score=score,
-            file_type=file_type,
-            found_on_page="(sitemap)",
-            keywords_found=keywords,
-            has_target_year=has_year,
-        ))
+        candidates.append(
+            DiscoveredDocument(
+                url=url,
+                score=score,
+                file_type=file_type,
+                found_on_page="(sitemap)",
+                keywords_found=keywords,
+                has_target_year=has_year,
+            )
+        )
 
     # Sort by score
     candidates.sort(key=lambda d: d.score, reverse=True)

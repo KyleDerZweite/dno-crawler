@@ -48,5 +48,6 @@ async def main():
         except Exception as e:
             print(f"Error inspecting schema: {e}")
 
+
 if __name__ == "__main__":
     asyncio.run(main())

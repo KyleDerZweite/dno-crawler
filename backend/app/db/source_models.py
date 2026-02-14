@@ -67,7 +67,9 @@ class DNOMastrData(Base, TimestampMixin):
     )
 
     # MaStR Identification
-    mastr_nr: Mapped[str] = mapped_column(String(50), unique=True, nullable=False)  # e.g., SNB982046657236
+    mastr_nr: Mapped[str] = mapped_column(
+        String(50), unique=True, nullable=False
+    )  # e.g., SNB982046657236
     acer_code: Mapped[str | None] = mapped_column(String(50))  # e.g., A00014369.DE
 
     # Company name as registered in MaStR
@@ -85,7 +87,9 @@ class DNOMastrData(Base, TimestampMixin):
 
     # Activity status
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)  # Tätigkeitsstatus
-    closed_network: Mapped[bool] = mapped_column(Boolean, default=False)  # Geschlossenes Verteilernetz
+    closed_network: Mapped[bool] = mapped_column(
+        Boolean, default=False
+    )  # Geschlossenes Verteilernetz
     activity_start: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     activity_end: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
@@ -118,9 +122,7 @@ class DNOVnbData(Base, TimestampMixin):
     """
 
     __tablename__ = "dno_vnb_data"
-    __table_args__ = (
-        Index("idx_vnb_id", "vnb_id"),
-    )
+    __table_args__ = (Index("idx_vnb_id", "vnb_id"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     dno_id: Mapped[int] = mapped_column(

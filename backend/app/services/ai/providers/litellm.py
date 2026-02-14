@@ -78,8 +78,7 @@ class LiteLLMProvider(BaseProvider):
     ) -> dict[str, Any]:
         """Not implemented yet."""
         raise NotImplementedError(
-            "LiteLLM provider is coming soon. "
-            "Use OpenRouter or Custom provider for now."
+            "LiteLLM provider is coming soon. Use OpenRouter or Custom provider for now."
         )
 
     async def extract_vision(
@@ -90,8 +89,7 @@ class LiteLLMProvider(BaseProvider):
     ) -> dict[str, Any]:
         """Not implemented yet."""
         raise NotImplementedError(
-            "LiteLLM provider is coming soon. "
-            "Use OpenRouter or Custom provider for now."
+            "LiteLLM provider is coming soon. Use OpenRouter or Custom provider for now."
         )
 
     async def health_check(self) -> bool:

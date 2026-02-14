@@ -42,6 +42,7 @@ logger = structlog.get_logger()
 @dataclass
 class FullAddress:
     """Full address extracted from Impressum."""
+
     street: str
     house_number: str
     postal_code: str
@@ -58,15 +59,13 @@ class FullAddress:
 # =============================================================================
 
 # 5-digit German postal code followed by city name
-POSTAL_CITY_PATTERN = re.compile(
-    r"(\d{5})\s+([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\s\-\.]+)"
-)
+POSTAL_CITY_PATTERN = re.compile(r"(\d{5})\s+([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\s\-\.]+)")
 
 # Street with house number (German format)
 # Note: Street suffix is embedded in word (Florianstraße, not "Florian straße")
 STREET_PATTERN = re.compile(
     r"([A-ZÄÖÜa-zäöü][A-ZÄÖÜa-zäöü\-]*(?:straße|strasse|str\.|gürtel|weg|platz|ring|allee|damm|ufer|hof|park))\s*(\d+(?:\s*[-–]\s*\d+)?)",
-    re.IGNORECASE
+    re.IGNORECASE,
 )
 
 # Common Impressum URL paths
@@ -200,7 +199,7 @@ class ImpressumExtractor:
             return None
 
         # Look for postal code + city nearby
-        search_range = lines[max(0, street_line_idx-2):street_line_idx+4]
+        search_range = lines[max(0, street_line_idx - 2) : street_line_idx + 4]
 
         postal_code = None
         city = None

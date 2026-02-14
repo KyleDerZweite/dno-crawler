@@ -46,6 +46,7 @@ async def trigger_crawl(
     from arq.connections import RedisSettings
 
     from app.core.config import settings
+
     logger = structlog.get_logger()
 
     # Verify DNO exists - support both ID and slug
@@ -74,7 +75,7 @@ async def trigger_crawl(
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"No downloaded file found for {dno.name} {request.data_type.value} {request.year}. "
-                       f"Use 'full' or 'crawl' job type to download first.",
+                f"Use 'full' or 'crawl' job type to download first.",
             )
         # Use the first matching file
         file_path = str(existing_files[0])
@@ -83,9 +84,9 @@ async def trigger_crawl(
 
     # For crawl and full jobs, check DNO lock status
     if job_type in ("full", "crawl"):
-        dno_status = getattr(dno, 'status', 'uncrawled')
+        dno_status = getattr(dno, "status", "uncrawled")
         if dno_status == "crawling":
-            locked_at = getattr(dno, 'crawl_locked_at', None)
+            locked_at = getattr(dno, "crawl_locked_at", None)
             now = datetime.now(UTC)
             threshold = now - timedelta(hours=1)
             if locked_at:
@@ -163,9 +164,7 @@ async def trigger_crawl(
 
     # Enqueue job to appropriate worker queue
     try:
-        redis_pool = await create_pool(
-            RedisSettings.from_dsn(str(settings.redis_url))
-        )
+        redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
         await redis_pool.enqueue_job(
             job_function,
             job.id,

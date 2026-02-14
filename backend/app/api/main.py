@@ -161,21 +161,16 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": "Validation failed",
                     "type": "validation_error",
-                    "details": exc.errors()
+                    "details": exc.errors(),
                 }
-            }
+            },
         )
 
     @app.exception_handler(DatabaseError)
     async def database_exception_handler(request: Request, exc: DatabaseError):
         """Handle database errors"""
         logger.error("Database error", url=str(request.url), error=exc.message, exc_info=True)
-        return JSONResponse(
-            status_code=503,
-            content={
-                "detail": "Database operation failed"
-            }
-        )
+        return JSONResponse(status_code=503, content={"detail": "Database operation failed"})
 
     @app.exception_handler(AuthenticationError)
     async def authentication_exception_handler(request: Request, exc: AuthenticationError):
@@ -187,9 +182,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": exc.message,
                     "type": "authentication_error",
-                    "details": exc.details
+                    "details": exc.details,
                 }
-            }
+            },
         )
 
     @app.exception_handler(AuthorizationError)
@@ -202,9 +197,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": exc.message,
                     "type": "authorization_error",
-                    "details": exc.details
+                    "details": exc.details,
                 }
-            }
+            },
         )
 
     @app.exception_handler(ResourceNotFoundError)
@@ -214,12 +209,8 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=404,
             content={
-                "error": {
-                    "message": exc.message,
-                    "type": "not_found_error",
-                    "details": exc.details
-                }
-            }
+                "error": {"message": exc.message, "type": "not_found_error", "details": exc.details}
+            },
         )
 
     @app.exception_handler(ConflictError)
@@ -229,12 +220,8 @@ def create_app() -> FastAPI:
         return JSONResponse(
             status_code=409,
             content={
-                "error": {
-                    "message": exc.message,
-                    "type": "conflict_error",
-                    "details": exc.details
-                }
-            }
+                "error": {"message": exc.message, "type": "conflict_error", "details": exc.details}
+            },
         )
 
     @app.exception_handler(RateLimitError)
@@ -247,9 +234,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": exc.message,
                     "type": "rate_limit_error",
-                    "details": exc.details
+                    "details": exc.details,
                 }
-            }
+            },
         )
 
     @app.exception_handler(ExternalServiceError)
@@ -262,9 +249,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": exc.message,
                     "type": "external_service_error",
-                    "details": exc.details
+                    "details": exc.details,
                 }
-            }
+            },
         )
 
     @app.exception_handler(DNOCrawlerException)
@@ -277,9 +264,9 @@ def create_app() -> FastAPI:
                 "error": {
                     "message": exc.message,
                     "type": "application_error",
-                    "details": exc.details
+                    "details": exc.details,
                 }
-            }
+            },
         )
 
     @app.exception_handler(Exception)
@@ -292,12 +279,7 @@ def create_app() -> FastAPI:
 
         return JSONResponse(
             status_code=500,
-            content={
-                "error": {
-                    "message": message,
-                    "type": "internal_server_error"
-                }
-            }
+            content={"error": {"message": message, "type": "internal_server_error"}},
         )
 
     return app

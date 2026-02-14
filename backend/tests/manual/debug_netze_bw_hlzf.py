@@ -90,6 +90,7 @@ async def extract_pdf(file_path: Path, dno_name: str, year: int):
     # Check PDF content with PyMuPDF
     try:
         import fitz
+
         doc = fitz.open(file_path)
         print(f"   Pages: {len(doc)}")
 
@@ -145,6 +146,7 @@ async def extract_pdf(file_path: Path, dno_name: str, year: int):
     except Exception as e:
         print(f"\n❌ Extraction failed: {e}")
         import traceback
+
         traceback.print_exc()
         return None
 

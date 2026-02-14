@@ -1,4 +1,3 @@
-
 import asyncio
 
 import httpx
@@ -13,6 +12,7 @@ structlog.configure(
         structlog.dev.ConsoleRenderer(colors=True),
     ]
 )
+
 
 async def test_westnetz():
     async with httpx.AsyncClient(
@@ -32,6 +32,6 @@ async def test_westnetz():
         else:
             print("No content")
 
+
 if __name__ == "__main__":
     asyncio.run(test_westnetz())
-

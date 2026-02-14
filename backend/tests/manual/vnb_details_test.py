@@ -35,6 +35,7 @@ TEST_DNOS = [
 # Tests
 # =============================================================================
 
+
 async def test_get_vnb_details():
     """Test get_vnb_details for multiple DNOs."""
     print("\n" + "=" * 60)
@@ -62,7 +63,9 @@ async def test_get_vnb_details():
 
         # Validate
         name_ok = test["expected_name"].lower() in details.name.lower()
-        homepage_ok = details.homepage_url and test["expected_homepage"].rstrip("/") in details.homepage_url.rstrip("/")
+        homepage_ok = details.homepage_url and test["expected_homepage"].rstrip(
+            "/"
+        ) in details.homepage_url.rstrip("/")
 
         if name_ok and homepage_ok:
             print("   ✅ PASSED")
@@ -128,6 +131,7 @@ async def test_full_flow():
 # =============================================================================
 # Main
 # =============================================================================
+
 
 async def main():
     print("=" * 60)

@@ -72,7 +72,6 @@ def init_request_event(
     event = {
         "request_id": request_id or str(uuid.uuid4())[:8],
         "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S.000Z", time.gmtime()),
-
         # Request context
         "http": {
             "method": method,
@@ -80,7 +79,6 @@ def init_request_event(
             "client_ip": client_ip,
             "user_agent": user_agent[:200] if user_agent else None,
         },
-
         # Service context
         "service": {
             "name": "dno-crawler-api",
@@ -152,6 +150,7 @@ def should_sample(event: dict[str, Any]) -> bool:
 
     # Sample 10% of the rest
     import random
+
     return random.random() < 0.10
 
 
@@ -200,6 +199,7 @@ def configure_logging(json_logs: bool = True, log_level: str = "INFO") -> None:
 
     # Set log level for standard library logging
     import logging
+
     logging.basicConfig(
         format="%(message)s",
         stream=sys.stdout,
