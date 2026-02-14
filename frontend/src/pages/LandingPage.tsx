@@ -82,53 +82,52 @@ export default function LandingPage() {
         zipCode.trim().length >= 4 &&
         city.trim().length > 0;
 
+    const COORD_PATTERN = /^-?\d{1,3}([.,]\d{1,10})?$/;
+
     const isCoordinatesValid = () => {
         const latStr = latitude.trim().replace(",", ".");
         const lonStr = longitude.trim().replace(",", ".");
-        
+
         if (!latStr || !lonStr) return false;
-        
+
         const lat = parseFloat(latStr);
         const lon = parseFloat(lonStr);
-        
+
         if (isNaN(lat) || isNaN(lon)) return false;
-        
+
         if (lat < -90 || lat > 90) return false;
         if (lon < -180 || lon > 180) return false;
-        
-        const coordPattern = /^-?\d{1,3}([.,]\d{1,10})?$/;
-        if (!coordPattern.test(latitude.trim()) || !coordPattern.test(longitude.trim())) {
+
+        if (!COORD_PATTERN.test(latitude.trim()) || !COORD_PATTERN.test(longitude.trim())) {
             return false;
         }
-        
+
         return true;
     };
 
     const getCoordinateError = (): string | null => {
         const latStr = latitude.trim().replace(",", ".");
         const lonStr = longitude.trim().replace(",", ".");
-        
+
         if (!latStr && !lonStr) return null;
-        
-        const coordPattern = /^-?\d{1,3}([.,]\d{1,10})?$/;
-        
-        if (latStr && !coordPattern.test(latitude.trim())) {
+
+        if (latStr && !COORD_PATTERN.test(latitude.trim())) {
             return "Latitude must be a number like 50.9413 or 50,9413";
         }
-        if (lonStr && !coordPattern.test(longitude.trim())) {
+        if (lonStr && !COORD_PATTERN.test(longitude.trim())) {
             return "Longitude must be a number like 6.9578 or 6,9578";
         }
-        
+
         const lat = parseFloat(latStr);
         const lon = parseFloat(lonStr);
-        
+
         if (!isNaN(lat) && (lat < -90 || lat > 90)) {
             return "Latitude must be between -90 and 90";
         }
         if (!isNaN(lon) && (lon < -180 || lon > 180)) {
             return "Longitude must be between -180 and 180";
         }
-        
+
         return null;
     };
 

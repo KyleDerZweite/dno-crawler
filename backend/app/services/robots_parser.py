@@ -406,8 +406,8 @@ async def fetch_and_verify_robots(
                     log.info("Found sitemap at default location", url=url)
                     result.sitemap_urls.append(url)
                     break
-            except Exception:
-                pass
+            except Exception as e:
+                log.debug("Default sitemap check failed", url=url, error=str(e))
 
     # If robots.txt reports not crawlable, no need to check sitemap
     if not result.crawlable:
@@ -491,8 +491,8 @@ def detect_tech_stack(content: str, headers: dict) -> dict:
             ):
                 stack["cms"] = "WordPress"
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Tech stack detection failed", error=str(e))
 
     return stack
 
@@ -517,7 +517,7 @@ async def fetch_site_tech_info(
         )
         if response.status_code == HTTP_OK:
             return detect_tech_stack(response.text, response.headers)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to fetch site tech info", website=website, error=str(e))
 
     return {}

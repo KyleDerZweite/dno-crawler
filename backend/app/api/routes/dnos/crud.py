@@ -2,7 +2,6 @@
 CRUD operations for DNO management.
 """
 
-import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
@@ -12,6 +11,7 @@ from sqlalchemy.orm import selectinload
 
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user
+from app.core.config import settings
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, HLZFModel, NetzentgelteModel, get_db
 
@@ -35,35 +35,38 @@ async def search_vnb(
     from app.services.vnb import VNBDigitalClient
 
     vnb_client = VNBDigitalClient(request_delay=0.5)
-    vnb_results = await vnb_client.search_vnb(q)
+    try:
+        vnb_results = await vnb_client.search_vnb(q)
 
-    # Check which VNBs already exist in our database
-    suggestions = []
-    for vnb in vnb_results:
-        # Check if this VNB already exists by vnb_id
-        existing_query = select(DNOModel).where(DNOModel.vnb_id == vnb.vnb_id)
-        result = await db.execute(existing_query)
-        existing_dno = result.scalar_one_or_none()
+        # Check which VNBs already exist in our database
+        suggestions = []
+        for vnb in vnb_results:
+            # Check if this VNB already exists by vnb_id
+            existing_query = select(DNOModel).where(DNOModel.vnb_id == vnb.vnb_id)
+            result = await db.execute(existing_query)
+            existing_dno = result.scalar_one_or_none()
 
-        suggestions.append(
-            {
-                "vnb_id": vnb.vnb_id,
-                "name": vnb.name,
-                "subtitle": vnb.subtitle,
-                "logo_url": vnb.logo_url,
-                "exists": existing_dno is not None,
-                "existing_dno_id": str(existing_dno.id) if existing_dno else None,
-                "existing_dno_slug": existing_dno.slug if existing_dno else None,
-            }
+            suggestions.append(
+                {
+                    "vnb_id": vnb.vnb_id,
+                    "name": vnb.name,
+                    "subtitle": vnb.subtitle,
+                    "logo_url": vnb.logo_url,
+                    "exists": existing_dno is not None,
+                    "existing_dno_id": str(existing_dno.id) if existing_dno else None,
+                    "existing_dno_slug": existing_dno.slug if existing_dno else None,
+                }
+            )
+
+        return APIResponse(
+            success=True,
+            data={
+                "suggestions": suggestions,
+                "count": len(suggestions),
+            },
         )
-
-    return APIResponse(
-        success=True,
-        data={
-            "suggestions": suggestions,
-            "count": len(suggestions),
-        },
-    )
+    finally:
+        await vnb_client.close()
 
 
 @router.get("/search-vnb/{vnb_id}/details")
@@ -79,7 +82,10 @@ async def get_vnb_details(
     from app.services.vnb import VNBDigitalClient
 
     vnb_client = VNBDigitalClient(request_delay=0.5)
-    details = await vnb_client.get_vnb_details(vnb_id)
+    try:
+        details = await vnb_client.get_vnb_details(vnb_id)
+    finally:
+        await vnb_client.close()
 
     if not details:
         raise HTTPException(
@@ -158,7 +164,10 @@ async def create_dno(
 
     if request.vnb_id and not all([website, phone, email]):
         vnb_client = VNBDigitalClient(request_delay=0.5)
-        vnb_details = await vnb_client.get_vnb_details(request.vnb_id)
+        try:
+            vnb_details = await vnb_client.get_vnb_details(request.vnb_id)
+        finally:
+            await vnb_client.close()
         if vnb_details:
             website = website or vnb_details.homepage_url
             phone = phone or vnb_details.phone
@@ -639,7 +648,7 @@ async def get_dno_details(
         )
 
     # Check if local files exist for this DNO
-    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    storage_path = settings.storage_path
     dno_dir = Path(storage_path) / "downloads" / dno.slug
     has_local_files = dno_dir.exists() and any(dno_dir.iterdir())
 

@@ -35,6 +35,7 @@ from app.core.logging import (
     finalize_request_event,
     init_request_event,
 )
+from app.core.rate_limiter import get_client_ip
 
 
 class WideEventMiddleware(BaseHTTPMiddleware):
@@ -67,7 +68,7 @@ class WideEventMiddleware(BaseHTTPMiddleware):
             request_id=request_id,
             method=request.method,
             path=request.url.path,
-            client_ip=self._get_client_ip(request),
+            client_ip=get_client_ip(request),
             user_agent=request.headers.get("user-agent", ""),
         )
 
@@ -94,22 +95,6 @@ class WideEventMiddleware(BaseHTTPMiddleware):
             event = finalize_request_event(status_code, error)
             emit_wide_event(event)
 
-    def _get_client_ip(self, request: Request) -> str:
-        """Extract client IP, respecting proxy headers."""
-        # Check forwarded headers (reverse proxy)
-        forwarded = request.headers.get("x-forwarded-for")
-        if forwarded:
-            return forwarded.split(",")[0].strip()
-
-        real_ip = request.headers.get("x-real-ip")
-        if real_ip:
-            return real_ip
-
-        # Fall back to direct connection
-        if request.client:
-            return request.client.host
-
-        return "unknown"
 
 
 def add_user_to_wide_event(

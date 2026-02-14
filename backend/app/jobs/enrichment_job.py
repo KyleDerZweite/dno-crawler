@@ -127,8 +127,8 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
                     update(DNOModel).where(DNOModel.id == dno_id).values(enrichment_status="failed")
                 )
                 await db.commit()
-            except Exception:
-                pass
+            except Exception as mark_err:
+                log.error("Failed to mark enrichment as failed", error=str(mark_err))
 
     return result
 

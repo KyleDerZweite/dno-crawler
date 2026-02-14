@@ -10,6 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import Response
 
 from app.api.middleware import WideEventMiddleware
 from app.api.routes import admin, ai, auth, dnos, files, health, jobs, oauth, search, verification
@@ -126,13 +128,26 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    # Security headers middleware
+    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
+        async def dispatch(self, request: Request, call_next) -> Response:
+            response = await call_next(request)
+            response.headers["X-Content-Type-Options"] = "nosniff"
+            response.headers["X-Frame-Options"] = "DENY"
+            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+            if settings.is_production:
+                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+            return response
+
+    app.add_middleware(SecurityHeadersMiddleware)
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origins,
         allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+        allow_headers=["Content-Type", "Authorization"],
     )
 
     # Wide Events middleware - canonical log line per request

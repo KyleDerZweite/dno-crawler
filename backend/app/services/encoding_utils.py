@@ -160,8 +160,8 @@ def _extract_meta_charset(content: bytes) -> str | None:
         if match:
             return match.group(1)
 
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to extract meta charset", error=str(e))
 
     return None
 

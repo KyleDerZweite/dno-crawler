@@ -38,6 +38,35 @@ logger = structlog.get_logger()
 # Minimum content length to trigger SPA/Headless check
 MIN_HTML_CONTENT_LENGTH = 1024
 
+# Pre-compiled regex patterns for URL scoring (avoid recompilation per call)
+_TOKEN_URL_PATTERNS = [
+    re.compile(pattern, re.IGNORECASE)
+    for pattern in [
+        r"/(media_token|get_file|download_id|fileadmin)/[\w-]+$",
+        r"/ajax/.*download",
+        r"\.(asp|aspx|php)\?.*file",
+        r"/_layouts/.*/download",
+        r"/blob/",
+        r"/download\.(?:php|aspx?)\?",
+        r"/Binaerfile\.asp",
+        r"/getmedia/",
+        r"/dms_download/",
+        r"/attachment/",
+        r"/file\.axd",
+    ]
+]
+
+_YEAR_PATTERNS = [
+    re.compile(pattern)
+    for pattern in [
+        r"/(\d{4})/",
+        r"-(\d{4})\.",
+        r"_(\d{4})_",
+        r"[?&]year=(\d{4})",
+        r"/(\d{4})-",
+    ]
+]
+
 # Preferred HTML parsers in order (lxml is fastest, html.parser is most forgiving)
 HTML_PARSERS = ["lxml", "html.parser", "html5lib"]
 
@@ -478,21 +507,7 @@ class WebCrawler:
         Many CMS platforms (TYPO3, SharePoint, ASP.NET, etc.) use opaque token URLs
         for downloads like /media_token/abc123 or /get_file/xyz without file extensions.
         """
-        # Common token/download URL patterns
-        token_patterns = [
-            r"/(media_token|get_file|download_id|fileadmin)/[\w-]+$",
-            r"/ajax/.*download",
-            r"\.(asp|aspx|php)\?.*file",
-            r"/_layouts/.*/download",
-            r"/blob/",
-            r"/download\.(?:php|aspx?)\?",
-            r"/Binaerfile\.asp",
-            r"/getmedia/",
-            r"/dms_download/",
-            r"/attachment/",
-            r"/file\.axd",
-        ]
-        return any(re.search(pattern, url, re.IGNORECASE) for pattern in token_patterns)
+        return any(pattern.search(url) for pattern in _TOKEN_URL_PATTERNS)
 
     def _score_url(
         self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None
@@ -539,18 +554,9 @@ class WebCrawler:
     def _get_year_bonus(self, url_lower: str) -> float:
         """Calculate score bonus for recent years in URL."""
         bonus = 0.0
-        # Support multiple formats: /2025/, -2025., _2025_, ?year=2025
-        year_patterns = [
-            r"/(\d{4})/",  # /2025/
-            r"-(\d{4})\.",  # -2025.pdf
-            r"_(\d{4})_",  # _2025_
-            r"[?&]year=(\d{4})",  # ?year=2025
-            r"/(\d{4})-",  # /2025-01/
-        ]
-
         current_year = datetime.now().year
-        for pattern in year_patterns:
-            matches = re.findall(pattern, url_lower)
+        for pattern in _YEAR_PATTERNS:
+            matches = pattern.findall(url_lower)
             for year in matches:
                 if current_year - 6 <= int(year) <= current_year:
                     bonus += 10

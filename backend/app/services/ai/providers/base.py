@@ -162,14 +162,36 @@ class BaseProvider(ABC):
     # -------------------------------------------------------------------------
 
     def _parse_json_response(self, content: str) -> dict[str, Any]:
-        """Parse JSON from model response, handling common edge cases."""
+        """Parse JSON from model response, handling common edge cases.
+
+        Validates the response is a dict with a 'data' key containing a list.
+        """
         try:
-            return json.loads(content)
+            parsed = json.loads(content)
         except json.JSONDecodeError:
             # Try to extract JSON from markdown code blocks
             if "```json" in content:
                 start = content.find("```json") + 7
                 end = content.find("```", start)
                 if end > start:
-                    return json.loads(content[start:end].strip())
-            raise
+                    parsed = json.loads(content[start:end].strip())
+                else:
+                    raise
+            else:
+                raise
+
+        # Validate basic structure: must be a dict
+        if not isinstance(parsed, dict):
+            raise ValueError(f"AI response must be a JSON object, got {type(parsed).__name__}")
+
+        # If it has a "data" key, it must be a list of dicts
+        if "data" in parsed:
+            if not isinstance(parsed["data"], list):
+                raise ValueError(
+                    f"AI response 'data' must be a list, got {type(parsed['data']).__name__}"
+                )
+            for i, record in enumerate(parsed["data"]):
+                if not isinstance(record, dict):
+                    raise ValueError(f"AI response record [{i}] must be a dict, got {type(record).__name__}")
+
+        return parsed

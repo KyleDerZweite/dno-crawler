@@ -3,12 +3,12 @@ File serving routes with rate limiting.
 """
 
 import mimetypes
-import os
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Request, status
 from fastapi.responses import FileResponse
 
+from app.core.config import settings
 from app.core.rate_limiter import get_client_ip, get_rate_limiter
 
 router = APIRouter()
@@ -25,7 +25,7 @@ async def serve_download(filepath: str, request: Request) -> FileResponse:
     except RuntimeError:
         pass  # Rate limiter not initialized (dev mode), allow request
 
-    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    storage_path = settings.storage_path
     file_path = Path(storage_path) / "downloads" / filepath
 
     # Security check - ensure path is within downloads directory

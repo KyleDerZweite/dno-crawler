@@ -215,8 +215,8 @@ def extract_domain(url: str) -> str | None:
             if domain.startswith("www."):
                 domain = domain[4:]
             return domain
-    except Exception:
-        pass
+    except Exception as e:
+        logger.debug("Failed to extract domain", url=url[:80], error=str(e))
     return None
 
 

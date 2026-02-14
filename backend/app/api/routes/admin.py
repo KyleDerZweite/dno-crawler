@@ -5,7 +5,6 @@ User management has been moved to Zitadel.
 This module only contains job management and data normalization routes.
 """
 
-import os
 import re
 from datetime import UTC, datetime
 from pathlib import Path
@@ -241,7 +240,7 @@ async def list_cached_files(
     - Total files, by data type, by format
     - Extraction status (no data, flagged, verified, unverified)
     """
-    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
 
     if not downloads_path.exists():
@@ -391,7 +390,7 @@ async def preview_bulk_extract(
     - force_override: ALL files (including verified)
     - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
-    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
 
     if not downloads_path.exists():
@@ -574,7 +573,7 @@ async def trigger_bulk_extract(
     - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
     # First get the preview to know what to extract
-    storage_path = os.environ.get("STORAGE_PATH", "/data")
+    storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
 
     if not downloads_path.exists():
