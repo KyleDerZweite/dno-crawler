@@ -33,13 +33,17 @@ function LoginRedirect() {
     }
   }, [isLoading, isAuthenticated, login]);
 
-  if (isLoading) {
-    return (
-      <div className="flex h-screen items-center justify-center">
-        <div className="text-lg">Loading...</div>
-      </div>
-    );
-  }
+if (isLoading) {
+        return (
+            <div className="flex h-screen items-center justify-center" role="status" aria-busy="true">
+                <div className="text-lg">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900 mx-auto mb-4" />
+                    <span className="sr-only">Loading...</span>
+                    Loading...
+                </div>
+            </div>
+        );
+    }
 
   if (isAuthenticated) {
     return <Navigate to="/dashboard" replace />;

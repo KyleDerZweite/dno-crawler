@@ -187,9 +187,25 @@ Schema changes are managed via Alembic:
 
 ```bash
 cd backend
+
+# Generate a new migration after model changes
 alembic revision --autogenerate -m "description"
+
+# Apply migrations
 alembic upgrade head
+
+# Rollback one migration
+alembic downgrade -1
 ```
+
+**Production Setup:**
+1. Set `USE_ALEMBIC_MIGRATIONS=true` in your environment
+2. Run `alembic upgrade head` before starting the application
+3. The application will skip `create_all()` and use the migrated schema
+
+**Development:**
+- By default, the application uses `create_all()` for automatic schema creation
+- No manual migrations required during development
 
 ### Running Tests
 

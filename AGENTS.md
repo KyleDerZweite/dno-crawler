@@ -30,6 +30,8 @@ ruff check .                               # Lint
 ruff check . --fix                         # Lint with auto-fix
 ruff format .                              # Format (or: black .)
 mypy app                                   # Type check (strict mode)
+alembic revision --autogenerate -m "msg"   # Generate migration
+alembic upgrade head                       # Apply migrations
 ```
 
 ### Frontend (run from `frontend/`)
@@ -38,6 +40,8 @@ npm install        # Install dependencies
 npm run dev        # Vite dev server on :5173
 npm run build      # tsc -b && vite build
 npm run lint       # ESLint
+npm test           # Run Vitest tests
+npm run test:watch # Run tests in watch mode
 ```
 
 ### Podman
@@ -102,7 +106,7 @@ frontend/src/
 - **Deterministic-first extraction**: Regex/HTML parsing first, AI fallback only when validation fails (cost-aware).
 - **Pattern learning**: Successful URL patterns with `{year}` placeholders stored in `crawl_path_patterns` table, reused across DNOs.
 - **Hub-and-spoke data model**: `DNOModel` is the central hub; source data (MaStR, VNB, BDEW) in separate spoke tables.
-- **No migrations (dev phase)**: The project is pre-v1. The database is recreated and seeded from scratch rather than migrated. Alembic is a dependency and will be set up for v1 production use. Tables are currently created via `Base.metadata.create_all()` in `init_db()`.
+- **Alembic migrations**: Database schema changes are managed via Alembic. In development, `USE_ALEMBIC_MIGRATIONS=false` (default) uses `create_all()` for auto-creation. In production, set `USE_ALEMBIC_MIGRATIONS=true` and run `alembic upgrade head`.
 - **Wide Events logging**: One canonical structured JSON log line per request via structlog middleware. See `docs/LOGGING_CONVENTIONS.md`.
 
 ### Infrastructure

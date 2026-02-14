@@ -39,8 +39,9 @@ export function ProtectedRoute({ children, requiredRole }: ProtectedRouteProps) 
     // Show loading state while checking auth
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center min-h-screen">
+            <div className="flex items-center justify-center min-h-screen" role="status" aria-busy="true">
                 <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-gray-900" />
+                <span className="sr-only">Loading authentication status...</span>
             </div>
         );
     }

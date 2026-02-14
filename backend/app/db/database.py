@@ -130,16 +130,27 @@ async def get_db_session() -> AsyncGenerator[AsyncSession, None]:
 async def init_db() -> None:
     """Initialize database tables.
 
-    Handles concurrent startup of multiple workers safely by:
+    In production (USE_ALEMBIC_MIGRATIONS=true), this skips table creation
+    and assumes Alembic migrations have been applied.
+
+    In development, handles concurrent startup of multiple workers safely by:
     1. Using checkfirst=True to avoid creating existing objects
     2. Catching duplicate key errors (race condition between check and create)
 
     If another worker creates tables between our check and create, we catch
     the error and continue - the tables exist, which is what we wanted.
     """
+    if settings.use_alembic_migrations:
+        logger.info(
+            "Alembic migrations enabled - skipping create_all(). "
+            "Ensure migrations are applied via 'alembic upgrade head'"
+        )
+        async with engine.begin() as conn:
+            await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
+        return
+
     try:
         async with engine.begin() as conn:
-            # Enable extensions
             await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
             await conn.run_sync(lambda sync_conn: Base.metadata.create_all(sync_conn, checkfirst=True))
         logger.info("Database tables initialized")

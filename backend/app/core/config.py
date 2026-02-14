@@ -37,6 +37,11 @@ class Settings(BaseSettings):
     )
     database_pool_size: int = 20
     database_max_overflow: int = 10
+    use_alembic_migrations: bool = Field(
+        default=False,
+        validation_alias="USE_ALEMBIC_MIGRATIONS",
+        description="If True, skip create_all() and rely on Alembic migrations"
+    )
 
     # Redis
     redis_url: RedisDsn = Field(default="redis://localhost:6379/0")
