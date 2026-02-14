@@ -4,6 +4,7 @@ PDF extraction utilities for DNO data extraction.
 Uses pdfplumber to extract text and tables from Netzentgelte PDFs.
 """
 
+import asyncio
 import re
 from pathlib import Path
 from typing import Any
@@ -13,9 +14,16 @@ import structlog
 
 from app.core.constants import normalize_voltage_level
 
-# Import voltage level normalization from shared constants
-
 logger = structlog.get_logger()
+
+
+async def extract_netzentgelte_from_pdf_async(pdf_path: str | Path) -> list[dict[str, Any]]:
+    """Async wrapper for extract_netzentgelte_from_pdf.
+
+    Wraps the synchronous pdfplumber operations in asyncio.to_thread()
+    to avoid blocking the event loop.
+    """
+    return await asyncio.to_thread(extract_netzentgelte_from_pdf, pdf_path)
 
 
 def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
@@ -266,6 +274,15 @@ def find_pdf_url_for_dno(dno_name: str, year: int, pdf_type: str = "netzentgelte
         return pdf_dict.get(year)
 
     return None
+
+
+async def extract_hlzf_from_pdf_async(pdf_path: str | Path) -> list[dict[str, Any]]:
+    """Async wrapper for extract_hlzf_from_pdf.
+
+    Wraps the synchronous pdfplumber operations in asyncio.to_thread()
+    to avoid blocking the event loop.
+    """
+    return await asyncio.to_thread(extract_hlzf_from_pdf, pdf_path)
 
 
 def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:

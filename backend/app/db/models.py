@@ -413,6 +413,7 @@ class HLZFModel(Base, TimestampMixin):
     )
     verified_by: Mapped[str | None] = mapped_column(String(255))
     verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_notes: Mapped[str | None] = mapped_column(Text)
 
     # Flagging (when users report data as wrong)
     flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged

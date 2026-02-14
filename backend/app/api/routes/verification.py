@@ -258,6 +258,7 @@ async def verify_hlzf(
     record.verification_status = VerificationStatus.VERIFIED.value
     record.verified_by = user.id
     record.verified_at = datetime.now(UTC)
+    record.verification_notes = request.notes if request else None
 
     # Clear any existing flags when verifying
     record.flagged_by = None
@@ -278,7 +279,7 @@ async def verify_hlzf(
         verification_status=record.verification_status,
         verified_by=record.verified_by,
         verified_at=record.verified_at,
-        verification_notes=None,  # HLZF model doesn't have verification_notes
+        verification_notes=record.verification_notes,
         flagged_by=record.flagged_by,
         flagged_at=record.flagged_at,
         flag_reason=record.flag_reason,
@@ -331,7 +332,7 @@ async def flag_hlzf(
         verification_status=record.verification_status,
         verified_by=record.verified_by,
         verified_at=record.verified_at,
-        verification_notes=None,
+        verification_notes=record.verification_notes,
         flagged_by=record.flagged_by,
         flagged_at=record.flagged_at,
         flag_reason=record.flag_reason,
@@ -388,7 +389,7 @@ async def unflag_hlzf(
         verification_status=record.verification_status,
         verified_by=record.verified_by,
         verified_at=record.verified_at,
-        verification_notes=None,
+        verification_notes=record.verification_notes,
         flagged_by=record.flagged_by,
         flagged_at=record.flagged_at,
         flag_reason=record.flag_reason,

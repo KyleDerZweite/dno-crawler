@@ -287,6 +287,8 @@ class ContentVerifier:
             original_filename = Path(unquote(parsed.path)).name
             if not original_filename or original_filename == "/":
                 # Generate filename from URL hash
+                # NOTE: MD5 is used here for deduplication cache keys only, not for security/cryptography.
+                # This is safe since we control the input (URL strings) and only use the hash for identification.
                 url_hash = hashlib.md5(url.encode()).hexdigest()[:8]
                 ext = self._get_extension_for_content_type(content_type)
                 original_filename = f"document_{url_hash}{ext}"
@@ -309,6 +311,7 @@ class ContentVerifier:
             dest_path = dest_dir / dest_filename
 
             # Handle duplicates (add hash suffix if file already exists with different content)
+            # NOTE: MD5 is used for deduplication only, not security. See line 290 for details.
             if dest_path.exists():
                 existing_hash = hashlib.md5(dest_path.read_bytes()).hexdigest()[:8]
                 new_hash = hashlib.md5(content).hexdigest()[:8]
@@ -367,38 +370,41 @@ class ContentVerifier:
         url: str,
         max_size: int
     ) -> bytes | None:
-        """Perform the actual full download."""
+        """Perform the actual full download with streaming size check."""
         from app.services.retry_utils import with_retries
 
         async def _download() -> bytes | None:
-            response = await client.get(url, follow_redirects=True)
-
-            if response.status_code != 200:
-                if 400 <= response.status_code < 500:
+            async with client.stream("GET", url, follow_redirects=True) as response:
+                if response.status_code != 200:
+                    if 400 <= response.status_code < 500:
+                        return None
+                    if response.status_code >= 500:
+                        raise httpx.HTTPStatusError(
+                            f"Server error {response.status_code}",
+                            request=response.request,
+                            response=response,
+                        )
                     return None
-                if response.status_code >= 500:
-                    raise httpx.HTTPStatusError(
-                        f"Server error {response.status_code}",
-                        request=response.request,
-                        response=response,
-                    )
-                return None
 
-            # Check content length before accepting
-            content_length = response.headers.get("content-length")
-            if content_length and int(content_length) > max_size:
-                self.log.warning("file_too_large", url=url[:80], size=content_length)
-                return None
+                content_length = response.headers.get("content-length")
+                if content_length and int(content_length) > max_size:
+                    self.log.warning("file_too_large_header", url=url[:80], size=content_length)
+                    return None
 
-            content = response.content
-            if len(content) > max_size:
-                self.log.warning("file_too_large", url=url[:80], size=len(content))
-                return None
+                chunks: list[bytes] = []
+                total_size = 0
+                async for chunk in response.aiter_bytes(chunk_size=1024 * 1024):
+                    total_size += len(chunk)
+                    if total_size > max_size:
+                        self.log.warning("file_too_large_streaming", url=url[:80], size=total_size)
+                        return None
+                    chunks.append(chunk)
 
-            return content
+                return b"".join(chunks)
 
         try:
-            return await with_retries(_download, max_attempts=3, backoff_base=1.0)
+            result: bytes | None = await with_retries(_download, max_attempts=3, backoff_base=1.0)
+            return result
         except Exception as e:
             self.log.debug("download_full_retries_failed", url=url[:80], error=str(e))
             return None
@@ -607,7 +613,8 @@ class ContentVerifier:
             return None
 
         try:
-            return await with_retries(_fetch, max_attempts=3, backoff_base=0.5)
+            result: bytes | None = await with_retries(_fetch, max_attempts=3, backoff_base=0.5)
+            return result
         except Exception as e:
             self.log.debug("fetch_partial_failed", url=url[:80], error=str(e))
             return None

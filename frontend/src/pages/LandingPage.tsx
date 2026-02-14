@@ -83,16 +83,53 @@ export default function LandingPage() {
         city.trim().length > 0;
 
     const isCoordinatesValid = () => {
-        const lat = parseFloat(latitude.replace(",", "."));
-        const lon = parseFloat(longitude.replace(",", "."));
-        return (
-            !isNaN(lat) &&
-            !isNaN(lon) &&
-            lat >= -90 &&
-            lat <= 90 &&
-            lon >= -180 &&
-            lon <= 180
-        );
+        const latStr = latitude.trim().replace(",", ".");
+        const lonStr = longitude.trim().replace(",", ".");
+        
+        if (!latStr || !lonStr) return false;
+        
+        const lat = parseFloat(latStr);
+        const lon = parseFloat(lonStr);
+        
+        if (isNaN(lat) || isNaN(lon)) return false;
+        
+        if (lat < -90 || lat > 90) return false;
+        if (lon < -180 || lon > 180) return false;
+        
+        const coordPattern = /^-?\d{1,3}([.,]\d{1,10})?$/;
+        if (!coordPattern.test(latitude.trim()) || !coordPattern.test(longitude.trim())) {
+            return false;
+        }
+        
+        return true;
+    };
+
+    const getCoordinateError = (): string | null => {
+        const latStr = latitude.trim().replace(",", ".");
+        const lonStr = longitude.trim().replace(",", ".");
+        
+        if (!latStr && !lonStr) return null;
+        
+        const coordPattern = /^-?\d{1,3}([.,]\d{1,10})?$/;
+        
+        if (latStr && !coordPattern.test(latitude.trim())) {
+            return "Latitude must be a number like 50.9413 or 50,9413";
+        }
+        if (lonStr && !coordPattern.test(longitude.trim())) {
+            return "Longitude must be a number like 6.9578 or 6,9578";
+        }
+        
+        const lat = parseFloat(latStr);
+        const lon = parseFloat(lonStr);
+        
+        if (!isNaN(lat) && (lat < -90 || lat > 90)) {
+            return "Latitude must be between -90 and 90";
+        }
+        if (!isNaN(lon) && (lon < -180 || lon > 180)) {
+            return "Longitude must be between -180 and 180";
+        }
+        
+        return null;
     };
 
     const isDnoNameValid = dnoName.trim().length >= 2;
@@ -273,21 +310,26 @@ export default function LandingPage() {
 
                             {/* Coordinates Input */}
                             {searchMode === "coordinates" && (
-                                <div className="grid grid-cols-2 gap-4">
-                                    <Input
-                                        placeholder="Latitude (e.g. 50.9413)"
-                                        value={latitude}
-                                        onChange={(e) => { setLatitude(e.target.value); }}
-                                        onKeyDown={handleKeyDown}
-                                        disabled={isSearching}
-                                    />
-                                    <Input
-                                        placeholder="Longitude (e.g. 6.9578)"
-                                        value={longitude}
-                                        onChange={(e) => { setLongitude(e.target.value); }}
-                                        onKeyDown={handleKeyDown}
-                                        disabled={isSearching}
-                                    />
+                                <div className="space-y-2">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <Input
+                                            placeholder="Latitude (e.g. 50.9413)"
+                                            value={latitude}
+                                            onChange={(e) => { setLatitude(e.target.value); }}
+                                            onKeyDown={handleKeyDown}
+                                            disabled={isSearching}
+                                        />
+                                        <Input
+                                            placeholder="Longitude (e.g. 6.9578)"
+                                            value={longitude}
+                                            onChange={(e) => { setLongitude(e.target.value); }}
+                                            onKeyDown={handleKeyDown}
+                                            disabled={isSearching}
+                                        />
+                                    </div>
+                                    {getCoordinateError() && (
+                                        <p className="text-sm text-destructive">{getCoordinateError()}</p>
+                                    )}
                                 </div>
                             )}
 
