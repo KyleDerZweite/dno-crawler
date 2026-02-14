@@ -29,6 +29,7 @@ from urllib.parse import urlparse
 
 import structlog
 from sqlalchemy import and_, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.models import CrawlJobModel, DNOSourceProfile, HLZFModel, NetzentgelteModel
@@ -218,18 +219,6 @@ class FinalizeStep(BaseStep):
         if "nieder" in raw_lower or "ns" in raw_lower.split():
             return "NS"
 
-        # Specific exact matches for short codes if regex failed
-        if raw == "HS":
-            return "HS"
-        if raw == "MS":
-            return "MS"
-        if raw == "NS":
-            return "NS"
-        if raw == "HS/MS":
-            return "HS/MS"
-        if raw == "MS/NS":
-            return "MS/NS"
-
         # Fallback: return cleaned up version
         logger.warning("unknown_voltage_level", raw=raw)
         return raw.strip()
@@ -301,83 +290,66 @@ class FinalizeStep(BaseStep):
         auto_flag_reason: str | None = None,
         force_override: bool = False,
     ) -> int:
-        """Save HLZF records with upsert logic.
+        """Save HLZF records using atomic bulk upsert (INSERT ... ON CONFLICT).
 
         Args:
             force_override: If True, override even verified records. If False, skip verified records.
         """
-        saved = 0
         source_meta = source_meta or {}
+        rows_to_upsert = []
 
         for record in records:
             raw_voltage = record.get("voltage_level", "").strip()
             if not raw_voltage:
                 continue
 
-            # Normalize voltage level to standard format
             voltage_level = self._normalize_voltage_level(raw_voltage)
+            rows_to_upsert.append({
+                "dno_id": dno_id,
+                "year": year,
+                "voltage_level": voltage_level,
+                "winter": self._normalize_hlzf_time(record.get("winter")),
+                "fruehling": self._normalize_hlzf_time(record.get("fruehling")),
+                "sommer": self._normalize_hlzf_time(record.get("sommer")),
+                "herbst": self._normalize_hlzf_time(record.get("herbst")),
+                "extraction_source": source_meta.get("source"),
+                "extraction_model": source_meta.get("model"),
+                "extraction_source_format": source_meta.get("source_format"),
+                "verification_status": "flagged" if auto_flagged else "pending",
+                "flag_reason": auto_flag_reason if auto_flagged else None,
+            })
 
-            # Check if record exists
-            query = select(HLZFModel).where(
-                and_(
-                    HLZFModel.dno_id == dno_id,
-                    HLZFModel.year == year,
-                    HLZFModel.voltage_level == voltage_level,
-                )
-            )
-            result = await db.execute(query)
-            existing = result.scalar_one_or_none()
+        if not rows_to_upsert:
+            return 0
 
-            if existing:
-                # Skip verified records unless force_override is set
-                if existing.verification_status == "verified" and not force_override:
-                    logger.debug("hlzf_skip_verified", voltage_level=voltage_level, year=year)
-                    continue
+        stmt = pg_insert(HLZFModel).values(rows_to_upsert)
 
-                # Update existing record - always overwrite with new values (including null)
-                if "winter" in record:
-                    existing.winter = self._normalize_hlzf_time(record.get("winter"))
-                if "fruehling" in record:
-                    existing.fruehling = self._normalize_hlzf_time(record.get("fruehling"))
-                if "sommer" in record:
-                    existing.sommer = self._normalize_hlzf_time(record.get("sommer"))
-                if "herbst" in record:
-                    existing.herbst = self._normalize_hlzf_time(record.get("herbst"))
-                # Update extraction source (overwrite with new extraction)
-                existing.extraction_source = source_meta.get("source")
-                existing.extraction_model = source_meta.get("model")
-                existing.extraction_source_format = source_meta.get("source_format")
-                # Update verification status based on extraction result
-                if auto_flagged:
-                    existing.verification_status = "flagged"
-                    existing.flag_reason = auto_flag_reason
-                # Clear flags on successful re-extraction (unless verified)
-                elif existing.verification_status == "flagged":
-                    existing.verification_status = "pending"
-                    existing.flag_reason = None
-                logger.debug("hlzf_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
-            else:
-                # Insert new record with extraction source
-                new_record = HLZFModel(
-                    dno_id=dno_id,
-                    year=year,
-                    voltage_level=voltage_level,
-                    winter=self._normalize_hlzf_time(record.get("winter")),
-                    fruehling=self._normalize_hlzf_time(record.get("fruehling")),
-                    sommer=self._normalize_hlzf_time(record.get("sommer")),
-                    herbst=self._normalize_hlzf_time(record.get("herbst")),
-                    extraction_source=source_meta.get("source"),
-                    extraction_model=source_meta.get("model"),
-                    extraction_source_format=source_meta.get("source_format"),
-                    # Apply auto-flag if sanity check failed
-                    verification_status="flagged" if auto_flagged else "pending",
-                    flag_reason=auto_flag_reason if auto_flagged else None,
-                )
-                db.add(new_record)
-                logger.debug("hlzf_inserted", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
+        # Build SET clause for ON CONFLICT UPDATE
+        update_cols = {
+            "winter": stmt.excluded.winter,
+            "fruehling": stmt.excluded.fruehling,
+            "sommer": stmt.excluded.sommer,
+            "herbst": stmt.excluded.herbst,
+            "extraction_source": stmt.excluded.extraction_source,
+            "extraction_model": stmt.excluded.extraction_model,
+            "extraction_source_format": stmt.excluded.extraction_source_format,
+            "verification_status": stmt.excluded.verification_status,
+            "flag_reason": stmt.excluded.flag_reason,
+        }
 
-            saved += 1
+        # Skip verified records unless force_override is set
+        where_clause = None if force_override else (
+            HLZFModel.verification_status != "verified"
+        )
 
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["dno_id", "year", "voltage_level"],
+            set_=update_cols,
+            where=where_clause,
+        )
+
+        await db.execute(stmt)
+        saved = len(rows_to_upsert)
         logger.info("hlzf_saved", count=saved, dno_id=dno_id, year=year)
         return saved
 
@@ -392,32 +364,20 @@ class FinalizeStep(BaseStep):
         auto_flag_reason: str | None = None,
         force_override: bool = False,
     ) -> int:
-        """Save Netzentgelte records with upsert logic.
+        """Save Netzentgelte records using atomic bulk upsert (INSERT ... ON CONFLICT).
 
         Args:
             force_override: If True, override even verified records. If False, skip verified records.
         """
-        saved = 0
         source_meta = source_meta or {}
+        rows_to_upsert = []
 
         for record in records:
             raw_voltage = record.get("voltage_level", "").strip()
             if not raw_voltage:
                 continue
 
-            # Normalize voltage level to standard format
             voltage_level = self._normalize_voltage_level(raw_voltage)
-
-            # Check if record exists
-            query = select(NetzentgelteModel).where(
-                and_(
-                    NetzentgelteModel.dno_id == dno_id,
-                    NetzentgelteModel.year == year,
-                    NetzentgelteModel.voltage_level == voltage_level,
-                )
-            )
-            result = await db.execute(query)
-            existing = result.scalar_one_or_none()
 
             # Map field names (AI may return different names)
             arbeit = record.get("arbeit") or record.get("arbeitspreis")
@@ -425,56 +385,52 @@ class FinalizeStep(BaseStep):
             arbeit_u2500 = record.get("arbeit_unter_2500h")
             leistung_u2500 = record.get("leistung_unter_2500h")
 
-            if existing:
-                # Skip verified records unless force_override is set
-                if existing.verification_status == "verified" and not force_override:
-                    logger.debug("netzentgelte_skip_verified", voltage_level=voltage_level, year=year)
-                    continue
+            rows_to_upsert.append({
+                "dno_id": dno_id,
+                "year": year,
+                "voltage_level": voltage_level,
+                "arbeit": self._parse_german_float(arbeit),
+                "leistung": self._parse_german_float(leistung),
+                "arbeit_unter_2500h": self._parse_german_float(arbeit_u2500),
+                "leistung_unter_2500h": self._parse_german_float(leistung_u2500),
+                "extraction_source": source_meta.get("source"),
+                "extraction_model": source_meta.get("model"),
+                "extraction_source_format": source_meta.get("source_format"),
+                "verification_status": "flagged" if auto_flagged else "pending",
+                "flag_reason": auto_flag_reason if auto_flagged else None,
+            })
 
-                # Update existing record
-                if arbeit is not None:
-                    existing.arbeit = self._parse_german_float(arbeit)
-                if leistung is not None:
-                    existing.leistung = self._parse_german_float(leistung)
-                if arbeit_u2500 is not None:
-                    existing.arbeit_unter_2500h = self._parse_german_float(arbeit_u2500)
-                if leistung_u2500 is not None:
-                    existing.leistung_unter_2500h = self._parse_german_float(leistung_u2500)
-                # Update extraction source (overwrite with new extraction)
-                existing.extraction_source = source_meta.get("source")
-                existing.extraction_model = source_meta.get("model")
-                existing.extraction_source_format = source_meta.get("source_format")
-                # Update verification status based on extraction result
-                if auto_flagged:
-                    existing.verification_status = "flagged"
-                    existing.flag_reason = auto_flag_reason
-                # Clear flags on successful re-extraction (unless verified)
-                elif existing.verification_status == "flagged":
-                    existing.verification_status = "pending"
-                    existing.flag_reason = None
-                logger.debug("netzentgelte_updated", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
-            else:
-                # Insert new record with extraction source
-                new_record = NetzentgelteModel(
-                    dno_id=dno_id,
-                    year=year,
-                    voltage_level=voltage_level,
-                    arbeit=self._parse_german_float(arbeit),
-                    leistung=self._parse_german_float(leistung),
-                    arbeit_unter_2500h=self._parse_german_float(arbeit_u2500),
-                    leistung_unter_2500h=self._parse_german_float(leistung_u2500),
-                    extraction_source=source_meta.get("source"),
-                    extraction_model=source_meta.get("model"),
-                    extraction_source_format=source_meta.get("source_format"),
-                    # Apply auto-flag if sanity check failed
-                    verification_status="flagged" if auto_flagged else "pending",
-                    flag_reason=auto_flag_reason if auto_flagged else None,
-                )
-                db.add(new_record)
-                logger.debug("netzentgelte_inserted", voltage_level=voltage_level, year=year, auto_flagged=auto_flagged)
+        if not rows_to_upsert:
+            return 0
 
-            saved += 1
+        stmt = pg_insert(NetzentgelteModel).values(rows_to_upsert)
 
+        # Build SET clause for ON CONFLICT UPDATE
+        update_cols = {
+            "arbeit": stmt.excluded.arbeit,
+            "leistung": stmt.excluded.leistung,
+            "arbeit_unter_2500h": stmt.excluded.arbeit_unter_2500h,
+            "leistung_unter_2500h": stmt.excluded.leistung_unter_2500h,
+            "extraction_source": stmt.excluded.extraction_source,
+            "extraction_model": stmt.excluded.extraction_model,
+            "extraction_source_format": stmt.excluded.extraction_source_format,
+            "verification_status": stmt.excluded.verification_status,
+            "flag_reason": stmt.excluded.flag_reason,
+        }
+
+        # Skip verified records unless force_override is set
+        where_clause = None if force_override else (
+            NetzentgelteModel.verification_status != "verified"
+        )
+
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["dno_id", "year", "voltage_level"],
+            set_=update_cols,
+            where=where_clause,
+        )
+
+        await db.execute(stmt)
+        saved = len(rows_to_upsert)
         logger.info("netzentgelte_saved", count=saved, dno_id=dno_id, year=year)
         return saved
 

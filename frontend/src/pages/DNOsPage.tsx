@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/lib/use-auth";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -103,6 +103,9 @@ export function DNOsPage() {
   const { toast } = useToast();
   const { isAdmin } = useAuth();
 
+  // Track whether active jobs exist so we only poll when needed
+  const [hasActiveJobs, setHasActiveJobs] = useState(false);
+
   const { data: dnosResponse, isLoading } = useQuery({
     queryKey: ["dnos", page, perPage, debouncedSearchTerm, statusFilter, sortBy],
     queryFn: () => api.dnos.list({
@@ -114,11 +117,18 @@ export function DNOsPage() {
       sort_by: sortBy,
     }),
     refetchOnMount: "always",
-    refetchInterval: 5000, // Poll every 5 seconds for live status updates
+    refetchInterval: hasActiveJobs ? 5000 : false,
   });
 
   const dnos = dnosResponse?.data;
   const meta = dnosResponse?.meta;
+
+  // Update polling state when data changes
+  useEffect(() => {
+    if (dnos) {
+      setHasActiveJobs(dnos.some((d: DNO) => d.status === "running" || d.status === "pending"));
+    }
+  }, [dnos]);
 
   // Use dnos directly since filtering is now server-side
   const displayedDnos = dnos;
@@ -677,7 +687,7 @@ export function DNOsPage() {
   );
 }
 
-function DNOCard({ dno }: { dno: DNO }) {
+const DNOCard = memo(function DNOCard({ dno }: { dno: DNO }) {
   const getStatusBadge = () => {
     // First check if it's protected (crawlable = false)
     if (dno.crawlable === false) {
@@ -790,4 +800,4 @@ function DNOCard({ dno }: { dno: DNO }) {
       </Link>
     </Card>
   );
-}
+});

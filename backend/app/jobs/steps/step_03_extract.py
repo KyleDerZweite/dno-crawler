@@ -467,8 +467,10 @@ class ExtractStep(BaseStep):
             try:
                 import fitz
                 doc = fitz.open(file_path)
-                metadata["pages"] = len(doc)
-                doc.close()
+                try:
+                    metadata["pages"] = len(doc)
+                finally:
+                    doc.close()
             except Exception:
                 pass  # Skip if PyMuPDF not available
 
@@ -487,7 +489,9 @@ class ExtractStep(BaseStep):
         if file_format in ("html", "htm"):
             from app.services.extraction.html_extractor import extract_hlzf_from_html
 
-            html_content = file_path.read_text(encoding="utf-8", errors="replace")
+            html_content = await asyncio.to_thread(
+                file_path.read_text, encoding="utf-8", errors="replace"
+            )
 
             if data_type == "hlzf":
                 records = extract_hlzf_from_html(html_content, year)

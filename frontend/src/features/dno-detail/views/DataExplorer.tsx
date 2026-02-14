@@ -63,7 +63,8 @@ export function DataExplorer() {
             setEditModalOpen(false);
             refetchData();
             toast({ title: "Updated", description: "Record updated." });
-        }
+        },
+        onError: () => { toast({ variant: "destructive", title: "Update Failed", description: "Could not update record." }); },
     });
 
     const updateHLZFMutation = useMutation({
@@ -73,17 +74,20 @@ export function DataExplorer() {
             setEditModalOpen(false);
             refetchData();
             toast({ title: "Updated", description: "Record updated." });
-        }
+        },
+        onError: () => { toast({ variant: "destructive", title: "Update Failed", description: "Could not update record." }); },
     });
 
     const deleteNetzentgelteMutation = useMutation({
         mutationFn: (rid: number) => api.dnos.deleteNetzentgelte(String(numericId), rid),
-        onSuccess: () => { refetchData(); toast({ title: "Deleted", description: "Record removed." }); }
+        onSuccess: () => { refetchData(); toast({ title: "Deleted", description: "Record removed." }); },
+        onError: () => { toast({ variant: "destructive", title: "Delete Failed", description: "Could not delete record." }); },
     });
 
     const deleteHLZFMutation = useMutation({
         mutationFn: (rid: number) => api.dnos.deleteHLZF(String(numericId), rid),
-        onSuccess: () => { refetchData(); toast({ title: "Deleted", description: "Record removed." }); }
+        onSuccess: () => { refetchData(); toast({ title: "Deleted", description: "Record removed." }); },
+        onError: () => { toast({ variant: "destructive", title: "Delete Failed", description: "Could not delete record." }); },
     });
 
     // Export handler
@@ -101,6 +105,7 @@ export function DataExplorer() {
             a.href = url;
             a.download = `dno-${numericId}-export.json`;
             document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
             toast({ title: "Exported", description: "Download started." });
         } catch {
             toast({ variant: "destructive", title: "Export Failed" });

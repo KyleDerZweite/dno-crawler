@@ -168,6 +168,7 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
     log.info("Created extract job", extract_job_id=extract_job.id)
 
     # Enqueue to the extract queue
+    redis_pool = None
     try:
         redis_pool = await create_pool(
             RedisSettings.from_dsn(str(settings.redis_url))
@@ -178,7 +179,6 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
             _job_id=f"extract_{extract_job.id}",
             _queue_name="extract",  # Different queue for extract jobs
         )
-        await redis_pool.close()
 
         log.info("Extract job enqueued to Redis", extract_job_id=extract_job.id)
         return extract_job.id
@@ -191,3 +191,6 @@ async def _enqueue_extract_job(db, parent_job: CrawlJobModel, log) -> int | None
         extract_job.error_message = f"Failed to enqueue: {e!s}"
         await db.commit()
         return None
+    finally:
+        if redis_pool:
+            await redis_pool.close()

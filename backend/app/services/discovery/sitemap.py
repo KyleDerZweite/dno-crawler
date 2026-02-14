@@ -12,7 +12,6 @@ from urllib.parse import urlparse
 from xml.etree import ElementTree
 
 import defusedxml.ElementTree as DefusedET
-
 import httpx
 import structlog
 
@@ -86,26 +85,26 @@ async def fetch_sitemap(
         sitemap_urls.append(site_base + path)
 
     # Step 3: Try each sitemap URL with retries
-    for url in sitemap_urls:
+    from app.services.retry_utils import with_retries
+
+    async def _fetch_sitemap_url(target_url: str) -> httpx.Response:
+        return await client.get(target_url, timeout=10.0, follow_redirects=True)
+
+    for sitemap_url in sitemap_urls:
         try:
-            from app.services.retry_utils import with_retries
-
-            async def _fetch_sitemap_url(sitemap_url: str) -> httpx.Response:
-                return await client.get(sitemap_url, timeout=10.0, follow_redirects=True)
-
             response = await with_retries(
-                _fetch_sitemap_url, url, max_attempts=2, backoff_base=0.5
-            )
+                _fetch_sitemap_url, sitemap_url, max_attempts=2, backoff_base=0.5
+            )  # type: ignore[misc]
 
             # Check if it's valid XML (not a Cloudflare challenge)
-            if response.status_code == 200:
-                content = response.text
+            if response.status_code == 200:  # type: ignore[union-attr]
+                content = response.text  # type: ignore[union-attr]
                 if content.strip().startswith("<?xml") or "<urlset" in content[:500] or "<loc>" in content[:1000]:
-                    log.info("Found sitemap", url=url)
+                    log.info("Found sitemap", url=sitemap_url)
                     return content
 
         except Exception as e:
-            log.debug("Sitemap fetch failed", url=url[:60], error=str(e))
+            log.debug("Sitemap fetch failed", url=sitemap_url[:60], error=str(e))
             continue
 
 

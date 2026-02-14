@@ -126,7 +126,7 @@ def add_user_to_wide_event(
         @router.get("/protected")
         async def protected(user: User = Depends(get_current_user)):
             add_user_to_wide_event(
-                user_id=user.sub,
+                user_id=user.id,
                 email=user.email,
                 roles=user.roles,
                 is_admin="ADMIN" in user.roles,

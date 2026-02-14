@@ -8,6 +8,7 @@ Features:
 - Role-based access control (ADMIN, MEMBER)
 """
 
+import asyncio
 import time
 from dataclasses import dataclass
 
@@ -27,6 +28,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # JWKS cache
 _jwks_cache: dict = {}
 _jwks_cache_time: float = 0
+_jwks_lock = asyncio.Lock()
 JWKS_CACHE_TTL = 3600  # 1 hour
 
 
@@ -60,19 +62,25 @@ class User:
 
 
 async def fetch_jwks() -> dict:
-    """Fetch JWKS from Zitadel (cached)."""
+    """Fetch JWKS from Zitadel (cached, with lock to prevent thundering herd)."""
     global _jwks_cache, _jwks_cache_time
 
     now = time.time()
     if _jwks_cache and (now - _jwks_cache_time) < JWKS_CACHE_TTL:
         return _jwks_cache
 
-    async with httpx.AsyncClient() as client:
-        response = await client.get(auth_settings.jwks_url)
-        response.raise_for_status()
-        _jwks_cache = response.json()
-        _jwks_cache_time = now
-        return _jwks_cache
+    async with _jwks_lock:
+        # Double-check after acquiring lock (another coroutine may have refreshed)
+        now = time.time()
+        if _jwks_cache and (now - _jwks_cache_time) < JWKS_CACHE_TTL:
+            return _jwks_cache
+
+        async with httpx.AsyncClient() as client:
+            response = await client.get(auth_settings.jwks_url)
+            response.raise_for_status()
+            _jwks_cache = response.json()
+            _jwks_cache_time = now
+            return _jwks_cache
 
 
 def get_signing_key(token: str, jwks: dict) -> str:

@@ -15,6 +15,12 @@ def parse_german_number(value: str | None) -> float | None:
     """
     Parse a German-formatted number (comma as decimal separator).
 
+    Known ambiguity: "1.234" with exactly one dot and no comma is ambiguous.
+    It could be German 1234 (dot as thousands separator) or 1.234 (dot as
+    decimal separator). Both conventions appear in German energy documents.
+    Current behavior: treated as 1.234 (decimal), since the else-branch
+    passes the value through unchanged.
+
     Examples:
         "1.234,56" -> 1234.56
         "1234,56" -> 1234.56

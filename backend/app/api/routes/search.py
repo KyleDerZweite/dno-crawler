@@ -244,8 +244,8 @@ async def public_search(
         client_ip = get_client_ip(http_request)
         await rate_limiter.check_ip_limit(client_ip)
     except RuntimeError:
-        # Rate limiter not initialized (dev mode without Redis)
-        log.warning("Rate limiter not available")
+        # Rate limiter not initialized (Redis unavailable) -- fail open with ERROR log
+        log.error("rate_limiter_unavailable", detail="Redis down or not configured, rate limiting bypassed")
         rate_limiter = None
         client_ip = "unknown"
 

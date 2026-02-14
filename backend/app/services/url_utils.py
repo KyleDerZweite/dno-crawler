@@ -26,6 +26,9 @@ import structlog
 
 logger = structlog.get_logger()
 
+# Type alias for robots cache entries
+_RobotsCacheEntry = tuple[RobotFileParser | None, float]
+
 
 # =============================================================================
 # Constants
@@ -209,14 +212,58 @@ class RobotsChecker:
     """Check robots.txt compliance for crawling.
 
     Caches robots.txt per domain to avoid repeated fetches.
+    Uses TTL-based eviction to prevent memory leaks in long-running workers.
     """
 
     USER_AGENT = "DNO-Data-Crawler/1.0"
+    CACHE_TTL_SECONDS = 3600  # 1 hour TTL
+    CACHE_MAX_SIZE = 500  # Maximum cached domains
 
     def __init__(self, client: httpx.AsyncClient):
         self.client = client
-        self._cache: dict[str, RobotFileParser] = {}
+        # Cache stores tuple of (RobotFileParser, timestamp)
+        self._cache: dict[str, _RobotsCacheEntry] = {}
         self.log = logger.bind(component="RobotsChecker")
+
+    def _evict_expired_entries(self) -> None:
+        """Remove expired entries from cache to prevent unbounded growth."""
+        import time
+
+        current_time = time.time()
+        expired_domains = [
+            domain
+            for domain, (_, timestamp) in self._cache.items()
+            if current_time - timestamp > self.CACHE_TTL_SECONDS
+        ]
+        for domain in expired_domains:
+            del self._cache[domain]
+
+        if expired_domains:
+            self.log.debug(
+                "evicted_expired_robots_cache",
+                count=len(expired_domains),
+                remaining=len(self._cache),
+            )
+
+    def _enforce_max_size(self) -> None:
+        """Evict oldest entries if cache exceeds max size."""
+        if len(self._cache) <= self.CACHE_MAX_SIZE:
+            return
+
+        # Remove oldest 20% of entries
+        sorted_entries = sorted(
+            self._cache.items(),
+            key=lambda x: x[1][1],  # Sort by timestamp
+        )
+        to_remove = int(self.CACHE_MAX_SIZE * 0.2)
+        for domain, _ in sorted_entries[:to_remove]:
+            del self._cache[domain]
+
+        self.log.debug(
+            "enforced_robots_cache_limit",
+            removed=to_remove,
+            remaining=len(self._cache),
+        )
 
     async def can_fetch(self, url: str) -> bool:
         """Check if URL can be fetched according to robots.txt.
@@ -227,39 +274,59 @@ class RobotsChecker:
         Returns:
             True if allowed to fetch, False if disallowed
         """
+        import time
+
         try:
             parsed = urlparse(url)
             domain = f"{parsed.scheme}://{parsed.netloc}"
 
-            # Get or fetch robots.txt
-            if domain not in self._cache:
-                await self._fetch_robots(domain)
+            current_time = time.time()
+
+            # Check if cached entry exists and is still valid
+            cached = self._cache.get(domain)
+            if cached is not None:
+                rp, timestamp = cached
+                if current_time - timestamp <= self.CACHE_TTL_SECONDS:
+                    if rp is None:
+                        return True  # No robots.txt
+                    return rp.can_fetch(self.USER_AGENT, url)
+
+            # Cache miss or expired - fetch fresh
+            await self._fetch_robots(domain)
 
             rp = self._cache.get(domain)
-            if rp is None:
-                # No robots.txt or fetch failed - allow by default
-                return True
+            if rp is None or rp[0] is None:
+                return True  # No robots.txt or fetch failed
 
-            return rp.can_fetch(self.USER_AGENT, url)
+            return rp[0].can_fetch(self.USER_AGENT, url)
         except Exception as e:
             self.log.debug("robots.txt check failed", url=url[:80], error=str(e))
             return True  # Allow on error
 
     async def _fetch_robots(self, domain: str):
         """Fetch and parse robots.txt for domain."""
+        import time
+
+        # Evict expired entries before adding new ones
+        self._evict_expired_entries()
+
         robots_url = f"{domain}/robots.txt"
         try:
             response = await self.client.get(robots_url, timeout=5.0)
+            current_time = time.time()
             if response.status_code == HTTP_OK:
                 rp = RobotFileParser()
                 rp.parse(response.text.splitlines())
-                self._cache[domain] = rp
+                self._cache[domain] = (rp, current_time)
                 self.log.debug("Loaded robots.txt", domain=domain)
             else:
-                self._cache[domain] = None  # No robots.txt
+                self._cache[domain] = (None, current_time)  # No robots.txt
         except Exception as e:
             self.log.debug("Failed to fetch robots.txt", domain=domain, error=str(e))
-            self._cache[domain] = None
+            self._cache[domain] = (None, time.time())
+
+        # Enforce max size after adding new entry
+        self._enforce_max_size()
 
 
 # =============================================================================

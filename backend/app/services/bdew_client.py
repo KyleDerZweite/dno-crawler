@@ -80,6 +80,19 @@ class BDEWClient:
         self._companies: list[BDEWCompany] = []
         self._records: list[BDEWRecord] = []
         self._name_index: dict[str, BDEWRecord] = {}
+        self._client: httpx.AsyncClient | None = None
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the shared httpx client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(timeout=30.0, headers=self.HEADERS)
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared httpx client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def fetch_company_list(self) -> list[BDEWCompany]:
         """
@@ -95,49 +108,49 @@ class BDEWClient:
         companies = []
         start_index = 0
 
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            while True:
-                url = f"{self.BASE_URL}{self.LIST_ENDPOINT}?jtStartIndex={start_index}&jtPageSize={self.PAGE_SIZE}"
+        client = await self._get_client()
+        while True:
+            url = f"{self.BASE_URL}{self.LIST_ENDPOINT}?jtStartIndex={start_index}&jtPageSize={self.PAGE_SIZE}"
 
-                try:
-                    response = await client.post(url, headers=self.HEADERS)
-                    response.raise_for_status()
-                    data = response.json()
+            try:
+                response = await client.post(url)
+                response.raise_for_status()
+                data = response.json()
 
-                    if data.get("Result") != "OK":
-                        self.log.error("API returned error", result=data.get("Result"))
-                        break
-
-                    page_records = data.get("Records", [])
-                    total_count = data.get("TotalRecordCount", 0)
-
-                    for record in page_records:
-                        name = record.get("Company", "").strip()
-                        # Clean up name (remove leading tabs/spaces)
-                        name = name.lstrip('\t ')
-
-                        companies.append(BDEWCompany(
-                            id=record.get("Id", 0),
-                            company_uid=record.get("CompanyUId", 0),
-                            name=name,
-                        ))
-
-                    self.log.info(
-                        "Fetched BDEW company page",
-                        start=start_index,
-                        count=len(page_records),
-                        total=total_count
-                    )
-
-                    start_index += self.PAGE_SIZE
-                    if start_index >= total_count:
-                        break
-
-                    await asyncio.sleep(self.request_delay)
-
-                except httpx.HTTPError as e:
-                    self.log.error("HTTP error fetching company list", error=str(e))
+                if data.get("Result") != "OK":
+                    self.log.error("API returned error", result=data.get("Result"))
                     break
+
+                page_records = data.get("Records", [])
+                total_count = data.get("TotalRecordCount", 0)
+
+                for record in page_records:
+                    name = record.get("Company", "").strip()
+                    # Clean up name (remove leading tabs/spaces)
+                    name = name.lstrip('\t ')
+
+                    companies.append(BDEWCompany(
+                        id=record.get("Id", 0),
+                        company_uid=record.get("CompanyUId", 0),
+                        name=name,
+                    ))
+
+                self.log.info(
+                    "Fetched BDEW company page",
+                    start=start_index,
+                    count=len(page_records),
+                    total=total_count
+                )
+
+                start_index += self.PAGE_SIZE
+                if start_index >= total_count:
+                    break
+
+                await asyncio.sleep(self.request_delay)
+
+            except httpx.HTTPError as e:
+                self.log.error("HTTP error fetching company list", error=str(e))
+                break
 
         self._companies = companies
         self.log.info("Fetched all companies", total=len(companies))
@@ -156,53 +169,53 @@ class BDEWClient:
         url = f"{self.BASE_URL}{self.DETAIL_ENDPOINT}?companyId={company.id}&filter="
 
         try:
-            async with httpx.AsyncClient(timeout=15.0) as client:
-                response = await client.post(url, headers=self.HEADERS)
-                response.raise_for_status()
+            client = await self._get_client()
+            response = await client.post(url)
+            response.raise_for_status()
 
-                # The response might be HTML or JSON
-                content_type = response.headers.get("content-type", "")
-                if "json" not in content_type:
-                    self.log.debug("Non-JSON response for company", company_id=company.id)
-                    return None
+            # The response might be HTML or JSON
+            content_type = response.headers.get("content-type", "")
+            if "json" not in content_type:
+                self.log.debug("Non-JSON response for company", company_id=company.id)
+                return None
 
-                data = response.json()
+            data = response.json()
 
-                # Response is {Result: "OK", Records: [...]}
-                if data.get("Result") != "OK":
-                    self.log.debug("API error for company", company_id=company.id, result=data.get("Result"))
-                    return None
+            # Response is {Result: "OK", Records: [...]}
+            if data.get("Result") != "OK":
+                self.log.debug("API error for company", company_id=company.id, result=data.get("Result"))
+                return None
 
-                records = data.get("Records", [])
-                if not records:
-                    return None
+            records = data.get("Records", [])
+            if not records:
+                return None
 
-                # Each record is a different market function (Netzbetreiber, Lieferant, etc.)
-                # Prefer "Netzbetreiber" (VNB) or "Verteilnetzbetreiber" role
-                preferred_roles = ["Netzbetreiber", "Verteilnetzbetreiber", "Übertragungsnetzbetreiber"]
-                item = None
+            # Each record is a different market function (Netzbetreiber, Lieferant, etc.)
+            # Prefer "Netzbetreiber" (VNB) or "Verteilnetzbetreiber" role
+            preferred_roles = ["Netzbetreiber", "Verteilnetzbetreiber", "Übertragungsnetzbetreiber"]
+            item = None
 
-                for role in preferred_roles:
-                    for r in records:
-                        if r.get("MarketFunctionName") == role:
-                            item = r
-                            break
-                    if item:
+            for role in preferred_roles:
+                for r in records:
+                    if r.get("MarketFunctionName") == role:
+                        item = r
                         break
+                if item:
+                    break
 
-                # If no preferred role found, use first record
-                if not item:
-                    item = records[0]
+            # If no preferred role found, use first record
+            if not item:
+                item = records[0]
 
-                return BDEWRecord(
-                    bdew_internal_id=company.id,
-                    bdew_company_uid=company.company_uid,
-                    bdew_code=str(item.get("BdewCode", "")),
-                    company_name=company.name,
-                    market_function=item.get("MarketFunctionName"),
-                    contact_name=item.get("ContactName"),
-                    # Note: Street/City/etc not available in this endpoint
-                )
+            return BDEWRecord(
+                bdew_internal_id=company.id,
+                bdew_company_uid=company.company_uid,
+                bdew_code=str(item.get("BdewCode", "")),
+                company_name=company.name,
+                market_function=item.get("MarketFunctionName"),
+                contact_name=item.get("ContactName"),
+                # Note: Street/City/etc not available in this endpoint
+            )
 
         except httpx.HTTPError as e:
             self.log.debug("HTTP error fetching company details", company_id=company.id, error=str(e))
@@ -236,60 +249,59 @@ class BDEWClient:
         self.log.info("Fetching details for companies", count=len(companies))
 
         records = []
-        async with httpx.AsyncClient(timeout=15.0) as client:
-            for i, company in enumerate(companies):
-                url = f"{self.BASE_URL}{self.DETAIL_ENDPOINT}?companyId={company.id}&filter="
+        client = await self._get_client()
+        for i, company in enumerate(companies):
+            url = f"{self.BASE_URL}{self.DETAIL_ENDPOINT}?companyId={company.id}&filter="
 
-                try:
-                    response = await client.post(url, headers=self.HEADERS)
+            try:
+                response = await client.post(url)
 
-                    if response.status_code == 200:
-                        content_type = response.headers.get("content-type", "")
-                        if "json" in content_type:
-                            data = response.json()
+                if response.status_code == 200:
+                    content_type = response.headers.get("content-type", "")
+                    if "json" in content_type:
+                        data = response.json()
 
-                            # Response is {Result: "OK", Records: [...]}
-                            if data.get("Result") != "OK":
-                                continue
+                        if data.get("Result") != "OK":
+                            continue
 
-                            api_records = data.get("Records", [])
-                            if not api_records:
-                                continue
+                        api_records = data.get("Records", [])
+                        if not api_records:
+                            continue
 
-                            # Prefer Netzbetreiber role
-                            preferred_roles = ["Netzbetreiber", "Verteilnetzbetreiber", "Übertragungsnetzbetreiber"]
-                            item = None
+                        # Prefer Netzbetreiber role
+                        preferred_roles = ["Netzbetreiber", "Verteilnetzbetreiber", "Übertragungsnetzbetreiber"]
+                        item = None
 
-                            for role in preferred_roles:
-                                for r in api_records:
-                                    if r.get("MarketFunctionName") == role:
-                                        item = r
-                                        break
-                                if item:
+                        for role in preferred_roles:
+                            for r in api_records:
+                                if r.get("MarketFunctionName") == role:
+                                    item = r
                                     break
+                            if item:
+                                break
 
-                            if not item:
-                                item = api_records[0]
+                        if not item:
+                            item = api_records[0]
 
-                            bdew_code = str(item.get("BdewCode", ""))
-                            if bdew_code:
-                                record = BDEWRecord(
-                                    bdew_internal_id=company.id,
-                                    bdew_company_uid=company.company_uid,
-                                    bdew_code=bdew_code,
-                                    company_name=company.name,
-                                    market_function=item.get("MarketFunctionName"),
-                                    contact_name=item.get("ContactName"),
-                                )
-                                records.append(record)
+                        bdew_code = str(item.get("BdewCode", ""))
+                        if bdew_code:
+                            record = BDEWRecord(
+                                bdew_internal_id=company.id,
+                                bdew_company_uid=company.company_uid,
+                                bdew_code=bdew_code,
+                                company_name=company.name,
+                                market_function=item.get("MarketFunctionName"),
+                                contact_name=item.get("ContactName"),
+                            )
+                            records.append(record)
 
-                    if (i + 1) % 100 == 0:
-                        self.log.info("Progress", processed=i + 1, found=len(records))
+                if (i + 1) % 100 == 0:
+                    self.log.info("Progress", processed=i + 1, found=len(records))
 
-                    await asyncio.sleep(self.request_delay)
+                await asyncio.sleep(self.request_delay)
 
-                except Exception as e:
-                    self.log.debug("Error fetching details", company=company.name, error=str(e))
+            except Exception as e:
+                self.log.debug("Error fetching details", company=company.name, error=str(e))
 
         self._records = records
         self._build_name_index()

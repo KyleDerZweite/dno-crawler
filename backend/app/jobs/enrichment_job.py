@@ -39,7 +39,7 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
     Returns:
         Result dict with status and details
     """
-    from app.db import get_db
+    from app.db import get_db_session
 
     log = logger.bind(dno_id=dno_id)
     log.info("Starting DNO enrichment")
@@ -54,7 +54,7 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
         "error": None,
     }
 
-    async for db in get_db():
+    async with get_db_session() as db:
         try:
             # Mark as processing
             await db.execute(

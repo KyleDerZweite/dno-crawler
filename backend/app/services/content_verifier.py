@@ -703,15 +703,17 @@ class ContentVerifier:
             pdf_file = io.BytesIO(content)
             doc = fitz.open(stream=pdf_file, filetype="pdf")
 
-            text_parts = []
-            for page_num in range(min(3, len(doc))):
-                page = doc[page_num]
-                text = page.get_text()
-                if text:
-                    text_parts.append(text)
+            try:
+                text_parts = []
+                for page_num in range(min(3, len(doc))):
+                    page = doc[page_num]
+                    text = page.get_text()
+                    if text:
+                        text_parts.append(text)
 
-            doc.close()
-            return "\n".join(text_parts) if text_parts else None
+                return "\n".join(text_parts) if text_parts else None
+            finally:
+                doc.close()
         except ImportError:
             self.log.debug("pymupdf_not_installed")
             return None

@@ -116,7 +116,8 @@ export function DNODetailPage() {
             toast({ title: "Updated", description: "DNO metadata saved." });
             setEditDNOOpen(false);
             queryClient.invalidateQueries({ queryKey: ["dno", id] });
-        }
+        },
+        onError: () => { toast({ variant: "destructive", title: "Update Failed", description: "Could not update DNO." }); },
     });
 
     const deleteDNOMutation = useMutation({
@@ -124,7 +125,8 @@ export function DNODetailPage() {
         onSuccess: () => {
             navigate("/dnos");
             toast({ title: "Deleted", description: "DNO removed." });
-        }
+        },
+        onError: () => { toast({ variant: "destructive", title: "Delete Failed", description: "Could not delete DNO." }); },
     });
 
     // Loading/Error states

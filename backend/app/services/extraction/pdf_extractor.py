@@ -37,14 +37,14 @@ def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            log.info(f"PDF has {len(pdf.pages)} pages")
+            log.info("pdf_opened", page_count=len(pdf.pages))
 
             for page_num, page in enumerate(pdf.pages, 1):
                 text = page.extract_text() or ""
 
                 # Look for Netzentgelte data patterns
                 if "netzentgelt" in text.lower() or "leistungspreis" in text.lower():
-                    log.info(f"Found potential data on page {page_num}")
+                    log.info("potential_data_found", page=page_num)
 
                     # Try to extract structured data from text
                     page_records = _parse_netzentgelte_text(text, page_num)
@@ -57,7 +57,7 @@ def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
                         records.extend(table_records)
 
     except Exception as e:
-        log.error(f"Error extracting PDF: {e}")
+        log.error("pdf_extraction_error", error=str(e))
         raise
 
     # Deduplicate records based on voltage_level
@@ -69,7 +69,7 @@ def extract_netzentgelte_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
             seen.add(vl)
             unique_records.append(record)
 
-    log.info(f"Extracted {len(unique_records)} unique Netzentgelte records")
+    log.info("netzentgelte_extracted", record_count=len(unique_records))
     return unique_records
 
 
@@ -290,7 +290,7 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
 
     try:
         with pdfplumber.open(pdf_path) as pdf:
-            log.info(f"PDF has {len(pdf.pages)} pages")
+            log.info("pdf_opened", page_count=len(pdf.pages))
 
             # Find the HLZF table - typically has "Hochlastzeitfenster" header
             full_text = ""
@@ -300,7 +300,7 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
                 full_text += text + "\n"
 
                 if "hochlast" in text.lower() and "zeitfenster" in text.lower():
-                    log.info(f"Found HLZF table on page {page_num}")
+                    log.info("hlzf_table_found", page=page_num)
 
                     # Try to extract table from this page
                     tables = page.extract_tables()
@@ -312,18 +312,18 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
                         hlzf_records = _parse_hlzf_table(table, page_num)
                         if hlzf_records:
                             records.extend(hlzf_records)
-                            log.info(f"Extracted {len(hlzf_records)} HLZF records from table")
+                            log.info("hlzf_records_from_table", count=len(hlzf_records))
 
             # If no table extraction worked, try text-based extraction
             if not records:
-                log.info("Table extraction failed, trying text-based extraction")
+                log.info("table_extraction_failed_trying_text")
                 records = _parse_hlzf_text(full_text)
 
     except Exception as e:
-        log.error(f"Error extracting HLZF from PDF: {e}")
+        log.error("hlzf_extraction_error", error=str(e))
         raise
 
-    log.info(f"Extracted {len(records)} HLZF records")
+    log.info("hlzf_extracted", record_count=len(records))
     return records
 
 

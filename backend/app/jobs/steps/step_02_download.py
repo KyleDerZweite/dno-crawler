@@ -146,7 +146,7 @@ class DownloadStep(BaseStep):
                         "HTML processing failed, saving raw content",
                         encoding=detected_encoding,
                     )
-                    save_path.write_text(html_content, encoding="utf-8")
+                    await asyncio.to_thread(save_path.write_text, html_content, "utf-8")
                     ctx["downloaded_file"] = str(save_path)
                     ctx["file_format"] = "html"
                     ctx["html_processing_failed"] = True
@@ -154,7 +154,7 @@ class DownloadStep(BaseStep):
                     return f"Downloaded HTML (unprocessed): {save_path.name} ({file_size // 1024} KB)"
 
             # Binary file: save directly
-            save_path.write_bytes(content)
+            await asyncio.to_thread(save_path.write_bytes, content)
 
         # Update context
         ctx["downloaded_file"] = str(save_path)
@@ -191,7 +191,10 @@ class DownloadStep(BaseStep):
                     # Handle rate limiting
                     if response.status_code == 429:
                         retry_after = response.headers.get("retry-after", "5")
-                        wait_time = min(float(retry_after), 30.0)
+                        try:
+                            wait_time = min(float(retry_after), 30.0)
+                        except (ValueError, TypeError):
+                            wait_time = 5.0
                         log.warning("Rate limited, waiting", wait_time=wait_time, attempt=attempt)
                         await asyncio.sleep(wait_time)
                         continue

@@ -330,6 +330,7 @@ class NetzentgelteModel(Base, TimestampMixin):
     __tablename__ = "netzentgelte"
     __table_args__ = (
         Index("idx_netzentgelte_dno_year", "dno_id", "year"),
+        Index("uq_netzentgelte_dno_year_vl", "dno_id", "year", "voltage_level", unique=True),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -340,12 +341,12 @@ class NetzentgelteModel(Base, TimestampMixin):
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
 
     # Prices (all in standard units: ct/kWh for arbeit, €/kW for leistung)
-    arbeit: Mapped[float | None] = mapped_column(Float)  # Arbeitspreis ct/kWh
-    leistung: Mapped[float | None] = mapped_column(Float)  # Leistungspreis €/kW
+    arbeit: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))  # Arbeitspreis ct/kWh
+    leistung: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))  # Leistungspreis €/kW
 
     # Optional: prices for < 2500h usage
-    arbeit_unter_2500h: Mapped[float | None] = mapped_column(Float)
-    leistung_unter_2500h: Mapped[float | None] = mapped_column(Float)
+    arbeit_unter_2500h: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    leistung_unter_2500h: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
     # Extraction source tracking
     extraction_source: Mapped[str | None] = mapped_column(String(20))  # ai | html_parser | pdf_regex | manual
@@ -381,6 +382,7 @@ class HLZFModel(Base, TimestampMixin):
     __tablename__ = "hlzf"
     __table_args__ = (
         Index("idx_hlzf_dno_year", "dno_id", "year"),
+        Index("uq_hlzf_dno_year_vl", "dno_id", "year", "voltage_level", unique=True),
     )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)

@@ -20,7 +20,7 @@ Routes:
 from typing import Annotated
 
 import structlog
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -236,7 +236,10 @@ async def update_config(
     )
 
     if not config:
-        return APIResponse(success=False, message="Configuration not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Configuration not found",
+        )
 
     await db.commit()
 
@@ -259,7 +262,10 @@ async def delete_config(
     deleted = await service.delete(config_id)
 
     if not deleted:
-        return APIResponse(success=False, message="Configuration not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Configuration not found",
+        )
 
     await db.commit()
 

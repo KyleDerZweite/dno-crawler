@@ -219,7 +219,7 @@ def _parse_file_info(file_path: Path, dno_slug: str) -> dict | None:
 
     return {
         "name": name,
-        "path": str(file_path),
+        "path": f"{dno_slug}/{name}",
         "dno_slug": dno_slug,
         "data_type": data_type,
         "year": year,
@@ -259,6 +259,31 @@ async def list_cached_files(
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
 
+    # Batch-load all verification statuses upfront (eliminates N+1 queries)
+    netz_status_result = await db.execute(
+        select(
+            NetzentgelteModel.dno_id,
+            NetzentgelteModel.year,
+            NetzentgelteModel.verification_status,
+        )
+    )
+    hlzf_status_result = await db.execute(
+        select(
+            HLZFModel.dno_id,
+            HLZFModel.year,
+            HLZFModel.verification_status,
+        )
+    )
+
+    # Build lookup: (data_type, dno_id, year) -> list of statuses
+    status_lookup: dict[tuple, list[str]] = {}
+    for row in netz_status_result.all():
+        key = ("netzentgelte", row[0], row[1])
+        status_lookup.setdefault(key, []).append(row[2])
+    for row in hlzf_status_result.all():
+        key = ("hlzf", row[0], row[1])
+        status_lookup.setdefault(key, []).append(row[2])
+
     files = []
     by_data_type = {"netzentgelte": 0, "hlzf": 0}
     by_format = {}
@@ -288,24 +313,10 @@ async def list_cached_files(
             file_info["dno_id"] = dno_info["id"]
             file_info["dno_name"] = dno_info["name"]
 
-            # Check extraction status in database
-            if file_info["data_type"] == "netzentgelte":
-                status_query = select(NetzentgelteModel.verification_status).where(
-                    and_(
-                        NetzentgelteModel.dno_id == dno_info["id"],
-                        NetzentgelteModel.year == file_info["year"],
-                    )
-                )
-            else:
-                status_query = select(HLZFModel.verification_status).where(
-                    and_(
-                        HLZFModel.dno_id == dno_info["id"],
-                        HLZFModel.year == file_info["year"],
-                    )
-                )
-
-            status_result = await db.execute(status_query)
-            statuses = [row[0] for row in status_result.all()]
+            # Look up extraction status from batch-loaded data
+            statuses = status_lookup.get(
+                (file_info["data_type"], dno_info["id"], file_info["year"]), []
+            )
 
             if not statuses:
                 file_info["extraction_status"] = "no_data"
@@ -402,6 +413,27 @@ async def preview_bulk_extract(
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
 
+    # Batch-load verification statuses upfront (eliminates N+1)
+    netz_st = await db.execute(
+        select(NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status)
+    )
+    hlzf_st = await db.execute(
+        select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
+    )
+    preview_status_lookup: dict[tuple, list[str]] = {}
+    for row in netz_st.all():
+        preview_status_lookup.setdefault(("netzentgelte", row[0], row[1]), []).append(row[2])
+    for row in hlzf_st.all():
+        preview_status_lookup.setdefault(("hlzf", row[0], row[1]), []).append(row[2])
+
+    # Batch-load failed job markers
+    failed_jobs_result = await db.execute(
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
+            CrawlJobModel.status == "failed"
+        ).distinct()
+    )
+    failed_job_set = {(row[0], row[1], row[2]) for row in failed_jobs_result.all()}
+
     total_files = 0
     will_extract = 0
     protected_verified = 0
@@ -443,39 +475,15 @@ async def preview_bulk_extract(
             file_info["dno_id"] = dno_info["id"]
             file_info["dno_name"] = dno_info["name"]
 
-            # Check extraction status
-            if file_info["data_type"] == "netzentgelte":
-                status_query = select(NetzentgelteModel.verification_status).where(
-                    and_(
-                        NetzentgelteModel.dno_id == dno_info["id"],
-                        NetzentgelteModel.year == file_info["year"],
-                    )
-                )
-            else:
-                status_query = select(HLZFModel.verification_status).where(
-                    and_(
-                        HLZFModel.dno_id == dno_info["id"],
-                        HLZFModel.year == file_info["year"],
-                    )
-                )
-
-            status_result = await db.execute(status_query)
-            statuses = [row[0] for row in status_result.all()]
+            # Look up statuses from batch-loaded data
+            statuses = preview_status_lookup.get(
+                (file_info["data_type"], dno_info["id"], file_info["year"]), []
+            )
 
             has_verified = any(s == "verified" for s in statuses)
             has_flagged = any(s == "flagged" for s in statuses)
             has_data = len(statuses) > 0
-
-            # Check if there's a failed job for this file
-            failed_job_query = select(CrawlJobModel.id).where(
-                and_(
-                    CrawlJobModel.dno_id == dno_info["id"],
-                    CrawlJobModel.year == file_info["year"],
-                    CrawlJobModel.data_type == file_info["data_type"],
-                    CrawlJobModel.status == "failed",
-                )
-            ).limit(1)
-            has_failed_job = await db.scalar(failed_job_query) is not None
+            has_failed_job = (dno_info["id"], file_info["year"], file_info["data_type"]) in failed_job_set
 
             # Determine if this file should be extracted based on mode
             should_extract = False
@@ -573,6 +581,35 @@ async def trigger_bulk_extract(
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name, "website": row.website} for row in dno_result.all()}
 
+    # Batch-load verification statuses upfront (eliminates N+1)
+    bulk_netz_st = await db.execute(
+        select(NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status)
+    )
+    bulk_hlzf_st = await db.execute(
+        select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
+    )
+    bulk_status_lookup: dict[tuple, list[str]] = {}
+    for row in bulk_netz_st.all():
+        bulk_status_lookup.setdefault(("netzentgelte", row[0], row[1]), []).append(row[2])
+    for row in bulk_hlzf_st.all():
+        bulk_status_lookup.setdefault(("hlzf", row[0], row[1]), []).append(row[2])
+
+    # Batch-load failed job markers
+    bulk_failed_result = await db.execute(
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
+            CrawlJobModel.status == "failed"
+        ).distinct()
+    )
+    bulk_failed_set = {(row[0], row[1], row[2]) for row in bulk_failed_result.all()}
+
+    # Batch-load existing pending/running jobs
+    active_jobs_result = await db.execute(
+        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type).where(
+            CrawlJobModel.status.in_(["pending", "running"])
+        ).distinct()
+    )
+    active_jobs_set = {(row[0], row[1], row[2]) for row in active_jobs_result.all()}
+
     jobs_queued = 0
     files_scanned = 0
     jobs_to_enqueue = []
@@ -610,41 +647,14 @@ async def trigger_bulk_extract(
 
                 files_scanned += 1
 
-                # Check extraction status to determine if we should queue
-                if file_info["data_type"] == "netzentgelte":
-                    status_query = select(NetzentgelteModel.verification_status).where(
-                        and_(
-                            NetzentgelteModel.dno_id == dno_info["id"],
-                            NetzentgelteModel.year == file_info["year"],
-                        )
-                    )
-                else:
-                    status_query = select(HLZFModel.verification_status).where(
-                        and_(
-                            HLZFModel.dno_id == dno_info["id"],
-                            HLZFModel.year == file_info["year"],
-                        )
-                    )
-
-                status_result = await db.execute(status_query)
-                statuses = [row[0] for row in status_result.all()]
-
+                # Look up statuses from batch-loaded data
+                statuses = bulk_status_lookup.get(
+                    (file_info["data_type"], dno_info["id"], file_info["year"]), []
+                )
                 has_verified = any(s == "verified" for s in statuses)
                 has_flagged = any(s == "flagged" for s in statuses)
                 has_data = len(statuses) > 0
-
-                # Check if there's a failed job for this file (for no_data_and_failed mode)
-                has_failed_job = False
-                if request.mode == "no_data_and_failed":
-                    failed_job_query = select(CrawlJobModel.id).where(
-                        and_(
-                            CrawlJobModel.dno_id == dno_info["id"],
-                            CrawlJobModel.year == file_info["year"],
-                            CrawlJobModel.data_type == file_info["data_type"],
-                            CrawlJobModel.status == "failed",
-                        )
-                    ).limit(1)
-                    has_failed_job = await db.scalar(failed_job_query) is not None
+                has_failed_job = (dno_info["id"], file_info["year"], file_info["data_type"]) in bulk_failed_set
 
                 # Determine if this file should be extracted based on mode
                 should_extract = False
@@ -661,17 +671,8 @@ async def trigger_bulk_extract(
                 if not should_extract:
                     continue
 
-                # Check if there's already a pending/running job for this DNO+year+type
-                existing_job_query = select(CrawlJobModel.id).where(
-                    and_(
-                        CrawlJobModel.dno_id == dno_info["id"],
-                        CrawlJobModel.year == file_info["year"],
-                        CrawlJobModel.data_type == file_info["data_type"],
-                        CrawlJobModel.status.in_(["pending", "running"]),
-                    )
-                )
-                existing_job = await db.scalar(existing_job_query)
-                if existing_job:
+                # Check if there's already a pending/running job (from batch-loaded set)
+                if (dno_info["id"], file_info["year"], file_info["data_type"]) in active_jobs_set:
                     logger.debug("job_already_exists", dno_id=dno_info["id"], year=file_info["year"])
                     continue
 

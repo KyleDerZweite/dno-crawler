@@ -1,5 +1,7 @@
+import { useEffect } from "react";
 import { Routes, Route, Navigate } from "react-router-dom";
 import { useAuth, AuthCallback, ProtectedRoute } from "./lib";
+import { ErrorBoundary } from "./components/ErrorBoundary";
 import { Layout } from "./components/layout/Layout";
 import { DashboardPage } from "./pages/DashboardPage";
 import { DNOsPage } from "./pages/DNOsPage";
@@ -25,6 +27,12 @@ import {
 function LoginRedirect() {
   const { isAuthenticated, isLoading, login } = useAuth();
 
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      login();
+    }
+  }, [isLoading, isAuthenticated, login]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -37,8 +45,6 @@ function LoginRedirect() {
     return <Navigate to="/dashboard" replace />;
   }
 
-  // Auto-redirect to Zitadel login
-  login();
   return (
     <div className="flex h-screen items-center justify-center">
       <div className="text-lg">Redirecting to login...</div>
@@ -69,25 +75,25 @@ function App() {
           </ProtectedRoute>
         }
       >
-        <Route path="dashboard" element={<DashboardPage />} />
-        <Route path="search" element={<SearchPage />} />
-        <Route path="dnos" element={<DNOsPage />} />
+        <Route path="dashboard" element={<ErrorBoundary inline><DashboardPage /></ErrorBoundary>} />
+        <Route path="search" element={<ErrorBoundary inline><SearchPage /></ErrorBoundary>} />
+        <Route path="dnos" element={<ErrorBoundary inline><DNOsPage /></ErrorBoundary>} />
         {/* DNO Detail with nested routes */}
-        <Route path="dnos/:id" element={<DNODetailPage />}>
+        <Route path="dnos/:id" element={<ErrorBoundary inline><DNODetailPage /></ErrorBoundary>}>
           <Route index element={<Navigate to="overview" replace />} />
-          <Route path="overview" element={<Overview />} />
-          <Route path="data" element={<DataExplorer />} />
-          <Route path="analysis" element={<Analysis />} />
-          <Route path="files" element={<SourceFiles />} />
-          <Route path="jobs" element={<JobHistory />} />
-          <Route path="tools" element={<Tools />} />
-          <Route path="technical" element={<Technical />} />
-          <Route path="sql" element={<SQLExplorer />} />
+          <Route path="overview" element={<ErrorBoundary inline><Overview /></ErrorBoundary>} />
+          <Route path="data" element={<ErrorBoundary inline><DataExplorer /></ErrorBoundary>} />
+          <Route path="analysis" element={<ErrorBoundary inline><Analysis /></ErrorBoundary>} />
+          <Route path="files" element={<ErrorBoundary inline><SourceFiles /></ErrorBoundary>} />
+          <Route path="jobs" element={<ErrorBoundary inline><JobHistory /></ErrorBoundary>} />
+          <Route path="tools" element={<ErrorBoundary inline><Tools /></ErrorBoundary>} />
+          <Route path="technical" element={<ErrorBoundary inline><Technical /></ErrorBoundary>} />
+          <Route path="sql" element={<ErrorBoundary inline><SQLExplorer /></ErrorBoundary>} />
         </Route>
-        <Route path="jobs" element={<JobsPage />} />
-        <Route path="jobs/:id" element={<JobDetailsPage />} />
-        <Route path="admin" element={<AdminPage />} />
-        <Route path="settings" element={<SettingsPage />} />
+        <Route path="jobs" element={<ErrorBoundary inline><JobsPage /></ErrorBoundary>} />
+        <Route path="jobs/:id" element={<ErrorBoundary inline><JobDetailsPage /></ErrorBoundary>} />
+        <Route path="admin" element={<ErrorBoundary inline><AdminPage /></ErrorBoundary>} />
+        <Route path="settings" element={<ErrorBoundary inline><SettingsPage /></ErrorBoundary>} />
       </Route>
 
       {/* Unauthorized page */}

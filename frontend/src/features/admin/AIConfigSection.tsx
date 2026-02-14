@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import DOMPurify from "dompurify";
 import { useToast } from "@/hooks/use-toast";
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
@@ -97,11 +98,13 @@ function ProviderIcon({ iconSvg, iconEmoji, className = "h-4 w-4" }: {
             /^<svg/,
             '<svg style="width:100%;height:100%"'
         );
+        // Sanitize SVG to prevent XSS from backend-provided content
+        const cleanSvg = DOMPurify.sanitize(scaledSvg, { USE_PROFILES: { svg: true, svgFilters: true } });
         return (
             <span
                 className={className}
                 style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center' }}
-                dangerouslySetInnerHTML={{ __html: scaledSvg }}
+                dangerouslySetInnerHTML={{ __html: cleanSvg }}
             />
         );
     }

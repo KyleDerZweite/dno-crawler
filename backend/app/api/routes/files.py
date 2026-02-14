@@ -2,6 +2,7 @@
 File serving routes with rate limiting.
 """
 
+import mimetypes
 import os
 from pathlib import Path
 
@@ -48,8 +49,12 @@ async def serve_download(filepath: str, request: Request) -> FileResponse:
             detail="File not found",
         )
 
+    media_type, _ = mimetypes.guess_type(file_path.name)
+    if not media_type:
+        media_type = "application/octet-stream"
+
     return FileResponse(
         path=file_path,
         filename=file_path.name,
-        media_type="application/pdf",
+        media_type=media_type,
     )

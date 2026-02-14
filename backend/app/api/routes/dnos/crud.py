@@ -6,14 +6,14 @@ import os
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy import case, delete, func, or_, select, text
+from sqlalchemy import case, delete, exists, func, or_, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user
 from app.core.models import APIResponse
-from app.db import CrawlJobModel, DNOModel, get_db
+from app.db import CrawlJobModel, DNOModel, HLZFModel, NetzentgelteModel, get_db
 
 from .schemas import CreateDNORequest, UpdateDNORequest
 from .utils import slugify
@@ -265,8 +265,6 @@ async def get_stats(
 
     Returns counts for DNOs, data points, and active jobs.
     """
-    from app.db.models import HLZFModel, NetzentgelteModel
-
     # Count DNOs
     dno_count = await db.scalar(select(func.count(DNOModel.id)))
 
@@ -388,10 +386,53 @@ async def list_dnos_detailed(
         # Total count without filter
         count_query = select(func.count()).select_from(DNOModel)
 
-    # Apply status filter for "protected" (can be done at DB level)
-    if status_filter == "protected":
-        query = query.filter(DNOModel.crawlable == False)  # noqa: E712
-        count_query = count_query.where(DNOModel.crawlable == False)  # noqa: E712
+    # Apply status filter at SQL level using EXISTS subqueries
+    if status_filter:
+        _running_exists = exists(
+            select(CrawlJobModel.id).where(
+                CrawlJobModel.dno_id == DNOModel.id,
+                CrawlJobModel.status == "running",
+            )
+        )
+        _pending_exists = exists(
+            select(CrawlJobModel.id).where(
+                CrawlJobModel.dno_id == DNOModel.id,
+                CrawlJobModel.status == "pending",
+            )
+        )
+        _netz_exists = exists(
+            select(NetzentgelteModel.id).where(
+                NetzentgelteModel.dno_id == DNOModel.id,
+            )
+        )
+        _hlzf_exists = exists(
+            select(HLZFModel.id).where(
+                HLZFModel.dno_id == DNOModel.id,
+            )
+        )
+
+        if status_filter == "protected":
+            status_clause = DNOModel.crawlable == False  # noqa: E712
+        elif status_filter == "running":
+            status_clause = _running_exists
+        elif status_filter == "pending":
+            status_clause = ~_running_exists & _pending_exists
+        elif status_filter == "crawled":
+            status_clause = ~_running_exists & ~_pending_exists & (_netz_exists | _hlzf_exists)
+        elif status_filter == "uncrawled":
+            status_clause = (
+                ~_running_exists
+                & ~_pending_exists
+                & ~_netz_exists
+                & ~_hlzf_exists
+                & (DNOModel.crawlable == True)  # noqa: E712
+            )
+        else:
+            status_clause = None
+
+        if status_clause is not None:
+            query = query.filter(status_clause)
+            count_query = count_query.where(status_clause)
 
     # Apply sorting (unless searching - then relevance takes priority)
     if q and search_order is not None:
@@ -495,17 +536,6 @@ async def list_dnos_detailed(
         else:
             live_status = "uncrawled"
 
-        # Apply status filter for dynamic statuses (post-fetch filtering)
-        if status_filter and status_filter != "protected":
-            if status_filter == "running" and live_status != "running":
-                continue
-            if status_filter == "pending" and live_status != "pending":
-                continue
-            if status_filter == "crawled" and live_status != "crawled":
-                continue
-            if status_filter == "uncrawled" and live_status != "uncrawled":
-                continue
-
         # Calculate completeness score (percentage)
         # Score is based on having data - max at ~50 data points
         score = min(round((data_points_count / 50) * 100), 100)
@@ -544,14 +574,10 @@ async def list_dnos_detailed(
     elif sort_by == "score_asc":
         data.sort(key=lambda x: x["score"], reverse=False)
 
-    # Note: For status filtering, total count may be inaccurate since we filter post-fetch
-    # For production, this should be done with subqueries
-    actual_count = len(data) if status_filter and status_filter != "protected" else total
-
     return APIResponse(
         success=True,
         data=data,
-        meta={"total": actual_count, "page": page, "per_page": per_page, "total_pages": total_pages},
+        meta={"total": total, "page": page, "per_page": per_page, "total_pages": total_pages},
     )
 
 
@@ -807,7 +833,7 @@ async def delete_dno(
     dno_name = dno.name
 
     # Delete associated data (cascade should handle this, but being explicit)
-    from app.db.models import CrawlJobModel, HLZFModel, LocationModel, NetzentgelteModel
+    from app.db.models import LocationModel
 
     # Delete locations
     await db.execute(delete(LocationModel).where(LocationModel.dno_id == dno_id))

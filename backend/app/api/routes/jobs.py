@@ -29,7 +29,7 @@ async def list_jobs(
     status_filter: str | None = Query(None, alias="status"),
     limit: int = Query(50, ge=1, le=100),
     page: int = Query(1, ge=1),
-) -> dict:
+) -> APIResponse:
     """
     List all crawl jobs with optional filtering.
 
@@ -86,37 +86,40 @@ async def list_jobs(
             extract_position += 1
             pending_order[job_id] = extract_position
 
-    return {
-        "jobs": [
-            {
-                "job_id": str(job.id),
-                "dno_id": str(job.dno_id),
-                "dno_name": dnos.get(job.dno_id).name if dnos.get(job.dno_id) else None,
-                "year": job.year,
-                "data_type": job.data_type,
-                "job_type": getattr(job, 'job_type', 'full'),  # Include job type
-                "status": job.status,
-                "progress": job.progress,
-                "current_step": job.current_step,
-                "error_message": job.error_message,
-                "triggered_by": job.triggered_by,
-                "queue_position": pending_order.get(job.id) if job.status == "pending" else None,
-                "parent_job_id": str(job.parent_job_id) if getattr(job, 'parent_job_id', None) else None,
-                "child_job_id": str(job.child_job_id) if getattr(job, 'child_job_id', None) else None,
-                "started_at": job.started_at.isoformat() if job.started_at else None,
-                "completed_at": job.completed_at.isoformat() if job.completed_at else None,
-                "created_at": job.created_at.isoformat() if job.created_at else None,
-            }
-            for job in jobs
-        ],
-        "queue_length": pending_count,
-        "meta": {
+    return APIResponse(
+        success=True,
+        data={
+            "jobs": [
+                {
+                    "job_id": str(job.id),
+                    "dno_id": str(job.dno_id),
+                    "dno_name": dnos.get(job.dno_id).name if dnos.get(job.dno_id) else None,
+                    "year": job.year,
+                    "data_type": job.data_type,
+                    "job_type": getattr(job, 'job_type', 'full'),
+                    "status": job.status,
+                    "progress": job.progress,
+                    "current_step": job.current_step,
+                    "error_message": job.error_message,
+                    "triggered_by": job.triggered_by,
+                    "queue_position": pending_order.get(job.id) if job.status == "pending" else None,
+                    "parent_job_id": str(job.parent_job_id) if getattr(job, 'parent_job_id', None) else None,
+                    "child_job_id": str(job.child_job_id) if getattr(job, 'child_job_id', None) else None,
+                    "started_at": job.started_at.isoformat() if job.started_at else None,
+                    "completed_at": job.completed_at.isoformat() if job.completed_at else None,
+                    "created_at": job.created_at.isoformat() if job.created_at else None,
+                }
+                for job in jobs
+            ],
+            "queue_length": pending_count,
+        },
+        meta={
             "total": total,
             "page": page,
             "per_page": limit,
             "total_pages": (total + limit - 1) // limit if total > 0 else 0,
         },
-    }
+    )
 
 
 @router.get("/{job_id}")

@@ -5,6 +5,7 @@ These constants are used across multiple modules and should be
 imported from here to ensure consistency.
 """
 
+import re
 from typing import Literal
 
 # =============================================================================
@@ -101,6 +102,11 @@ SMALL_DNO_LEVELS = ["MS", "MS/NS", "NS"]  # 3 levels (no high voltage)
 TSO_LEVELS = ["HöS", "HöS/HS", "HS", "HS/MS", "MS"]  # 5 levels (no low voltage)
 
 
+_RE_WHITESPACE = re.compile(r'\s+')
+_RE_SEPARATOR = re.compile(r'\s*([-/])\s*')
+_RE_PARENS = re.compile(r'[()]')
+
+
 def normalize_voltage_level(level: str) -> str | None:
     """
     Normalize voltage level name to standard abbreviation.
@@ -113,20 +119,18 @@ def normalize_voltage_level(level: str) -> str | None:
     Returns:
         Standardized abbreviation (HS, HS/MS, MS, MS/NS, NS, HöS, HöS/HS) or None
     """
-    import re
-
     if not level:
         return None
 
     # Clean and lowercase for matching
     cleaned = level.strip().lower()
-    cleaned = re.sub(r'\s+', ' ', cleaned)  # Normalize whitespace
+    cleaned = _RE_WHITESPACE.sub(' ', cleaned)  # Normalize whitespace
 
     # Normalize separators: remove spaces around hyphens and slashes
     # e.g. "Hoch - / Mittelspannung" -> "hoch-/mittelspannung"
-    cleaned = re.sub(r'\s*([-/])\s*', r'\1', cleaned)
+    cleaned = _RE_SEPARATOR.sub(r'\1', cleaned)
 
-    cleaned = re.sub(r'[()]', '', cleaned)  # Remove parentheses
+    cleaned = _RE_PARENS.sub('', cleaned)  # Remove parentheses
     cleaned = cleaned.strip()
 
     # Direct match
@@ -143,7 +147,7 @@ def normalize_voltage_level(level: str) -> str | None:
 
     for alias in sorted_aliases:
         # Also clean the alias for comparison (though aliases should be clean in constant)
-        clean_alias = re.sub(r'\s*([-/])\s*', r'\1', alias)
+        clean_alias = _RE_SEPARATOR.sub(r'\1', alias)
         if clean_alias in cleaned:
             return VOLTAGE_LEVEL_ALIASES[alias]
 
@@ -164,6 +168,8 @@ def normalize_voltage_level(level: str) -> str | None:
 
 # =============================================================================
 # Data Types
+# NOTE: Literal types below must stay in sync with Enum classes in core/models.py.
+# Enums are used by SQLAlchemy ORM; Literals are used for Pydantic/type hints.
 # =============================================================================
 
 # Types of data that can be extracted
@@ -192,6 +198,7 @@ BULK_JOB_PRIORITY = 100
 # Verification Statuses
 # =============================================================================
 
+# NOTE: core/models.py VerificationStatus enum also includes "rejected"
 VERIFICATION_STATUSES = ("unverified", "verified", "flagged")
 VerificationStatus = Literal["unverified", "verified", "flagged"]
 

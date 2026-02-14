@@ -61,7 +61,22 @@ class VNBDigitalClient:
         self.request_delay = max(1.0, min(10.0, request_delay))
         self.timeout = timeout
         self._last_request_time: float = 0.0
+        self._client: httpx.AsyncClient | None = None
         self.log = logger.bind(component="VNBDigitalClient")
+
+    async def _get_client(self) -> httpx.AsyncClient:
+        """Get or create the shared httpx client."""
+        if self._client is None or self._client.is_closed:
+            self._client = httpx.AsyncClient(
+                timeout=self.timeout, headers=self.HEADERS
+            )
+        return self._client
+
+    async def close(self) -> None:
+        """Close the shared httpx client."""
+        if self._client and not self._client.is_closed:
+            await self._client.aclose()
+            self._client = None
 
     async def _wait_for_rate_limit(self) -> None:
         """Wait to respect rate limiting."""
@@ -102,11 +117,10 @@ class VNBDigitalClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
                     self.API_URL,
                     json=payload,
-                    headers=self.HEADERS,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -179,11 +193,10 @@ class VNBDigitalClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
                     self.API_URL,
                     json=payload,
-                    headers=self.HEADERS,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -289,11 +302,10 @@ class VNBDigitalClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
                     self.API_URL,
                     json=payload,
-                    headers=self.HEADERS,
                 )
                 response.raise_for_status()
                 data = response.json()
@@ -345,11 +357,10 @@ class VNBDigitalClient:
         }
 
         try:
-            async with httpx.AsyncClient(timeout=self.timeout) as client:
-                response = await client.post(
+            client = await self._get_client()
+            response = await client.post(
                     self.API_URL,
                     json=payload,
-                    headers=self.HEADERS,
                 )
                 response.raise_for_status()
                 data = response.json()

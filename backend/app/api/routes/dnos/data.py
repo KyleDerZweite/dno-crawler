@@ -5,13 +5,13 @@ Data endpoints for Netzentgelte and HLZF management.
 from datetime import UTC, datetime
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user
-from app.core.models import APIResponse, DataType
+from app.core.models import APIResponse
 from app.db import DNOModel, get_db
 
 from .schemas import UpdateHLZFRequest, UpdateNetzentgelteRequest
@@ -24,8 +24,6 @@ async def get_dno_data(
     dno_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
     current_user: Annotated[AuthUser, Depends(get_current_user)],
-    year: int | None = Query(None),
-    data_type: DataType | None = Query(None),
 ) -> APIResponse:
     """Get all data for a specific DNO."""
     # Verify DNO exists
@@ -181,7 +179,7 @@ async def update_netzentgelte(
 
     # Track manual edit
     record.extraction_source = "manual"
-    record.last_edited_by = current_user.sub or current_user.email
+    record.last_edited_by = current_user.id or current_user.email
     record.last_edited_at = datetime.now(UTC)
 
     await db.commit()
@@ -273,7 +271,7 @@ async def update_hlzf(
 
     # Track manual edit
     record.extraction_source = "manual"
-    record.last_edited_by = current_user.sub or current_user.email
+    record.last_edited_by = current_user.id or current_user.email
     record.last_edited_at = datetime.now(UTC)
 
     await db.commit()
