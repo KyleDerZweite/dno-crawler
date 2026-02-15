@@ -14,6 +14,7 @@ from app.db.database import (
 )
 from app.db.models import (
     AIProviderConfigModel,
+    APIKeyModel,
     CrawlJobModel,
     CrawlJobStepModel,
     DataSourceModel,
@@ -34,6 +35,8 @@ from app.db.source_models import (
 __all__ = [
     # Models - AI Provider
     "AIProviderConfigModel",
+    # Models - API Keys
+    "APIKeyModel",
     # Database
     "Base",
     "CrawlJobModel",

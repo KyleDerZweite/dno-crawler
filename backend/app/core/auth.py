@@ -9,7 +9,9 @@ Features:
 """
 
 import asyncio
+import hashlib
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 
 import httpx
@@ -30,6 +32,143 @@ _jwks_cache: dict = {}
 _jwks_cache_time: float = 0
 _jwks_lock = asyncio.Lock()
 JWKS_CACHE_TTL = 3600  # 1 hour
+
+# Userinfo cache: avoids HTTP call to Zitadel userinfo on every request.
+# Keyed by truncated SHA-256 of the access token.
+_userinfo_cache: OrderedDict[str, tuple[dict, float]] = OrderedDict()
+USERINFO_CACHE_TTL = 300  # 5 minutes
+USERINFO_CACHE_MAX_SIZE = 500
+USERINFO_HTTP_TIMEOUT = 5.0
+USERINFO_RETRY_DELAY = 0.3
+
+
+# API key cache: avoids DB lookup on every request for machine API keys.
+# Keyed by full SHA-256 hash of the API key. Values are (User, timestamp) tuples.
+_apikey_cache: OrderedDict[str, tuple] = OrderedDict()
+APIKEY_CACHE_TTL = 300  # 5 minutes
+APIKEY_CACHE_MAX_SIZE = 200
+
+
+def invalidate_api_key_cache(key_hash: str) -> None:
+    """Remove a specific API key from the auth cache."""
+    _apikey_cache.pop(key_hash, None)
+
+
+async def _authenticate_api_key(token: str) -> "User":
+    """Authenticate a request using a dno_ prefixed API key."""
+    from datetime import UTC, datetime
+
+    from sqlalchemy import select
+
+    from app.db.database import async_session_maker
+    from app.db.models import APIKeyModel
+
+    key_hash = hashlib.sha256(token.encode()).hexdigest()
+
+    # Check cache
+    entry = _apikey_cache.get(key_hash)
+    if entry is not None:
+        user, cached_at = entry
+        if time.time() - cached_at <= APIKEY_CACHE_TTL:
+            _apikey_cache.move_to_end(key_hash)
+            return user
+        _apikey_cache.pop(key_hash, None)
+
+    # DB lookup (own session, not request-scoped)
+    async with async_session_maker() as session:
+        result = await session.execute(
+            select(APIKeyModel).where(
+                APIKeyModel.key_hash == key_hash,
+                APIKeyModel.is_active.is_(True),
+            )
+        )
+        api_key = result.scalar_one_or_none()
+
+        if api_key is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or inactive API key",
+            )
+
+        user = User(
+            id=f"apikey:{api_key.id}",
+            email="",
+            name=api_key.name,
+            roles=api_key.roles,
+        )
+
+        # Update usage metrics
+        api_key.request_count = api_key.request_count + 1
+        api_key.last_used_at = datetime.now(UTC)
+        await session.commit()
+
+    # Cache the user
+    _apikey_cache[key_hash] = (user, time.time())
+    _apikey_cache.move_to_end(key_hash)
+    while len(_apikey_cache) > APIKEY_CACHE_MAX_SIZE:
+        _apikey_cache.popitem(last=False)
+
+    return user
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+
+def _get_cached_userinfo(token: str) -> dict | None:
+    """Return cached userinfo dict if present and not expired."""
+    key = _token_hash(token)
+    entry = _userinfo_cache.get(key)
+    if entry is None:
+        return None
+    userinfo, cached_at = entry
+    if time.time() - cached_at > USERINFO_CACHE_TTL:
+        _userinfo_cache.pop(key, None)
+        return None
+    _userinfo_cache.move_to_end(key)
+    return userinfo
+
+
+def _set_cached_userinfo(token: str, userinfo: dict) -> None:
+    """Store userinfo in the cache, evicting oldest entries if needed."""
+    key = _token_hash(token)
+    _userinfo_cache[key] = (userinfo, time.time())
+    _userinfo_cache.move_to_end(key)
+    while len(_userinfo_cache) > USERINFO_CACHE_MAX_SIZE:
+        _userinfo_cache.popitem(last=False)
+
+
+async def _fetch_userinfo(token: str) -> dict | None:
+    """Fetch userinfo from Zitadel with retry for transient failures."""
+    userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
+    async with httpx.AsyncClient(timeout=USERINFO_HTTP_TIMEOUT) as client:
+        last_error: Exception | None = None
+        for attempt in range(2):
+            try:
+                response = await client.get(
+                    userinfo_url, headers={"Authorization": f"Bearer {token}"}
+                )
+                if response.status_code == 200:
+                    userinfo = response.json()
+                    _set_cached_userinfo(token, userinfo)
+                    return userinfo
+                _auth_logger.warning(
+                    "Userinfo request failed",
+                    status_code=response.status_code,
+                    attempt=attempt + 1,
+                )
+                return None
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                last_error = exc
+                if attempt == 0:
+                    _auth_logger.debug(
+                        "Userinfo connect error, retrying",
+                        error=str(exc),
+                    )
+                    await asyncio.sleep(USERINFO_RETRY_DELAY)
+                    continue
+        _auth_logger.warning("Userinfo unavailable after retries", error=str(last_error))
+        return None
 
 
 @dataclass
@@ -58,6 +197,11 @@ class User:
     def can_manage_flags(self) -> bool:
         """Check if user can remove flags (Maintainer or Admin)."""
         return self.is_admin or self.is_maintainer
+
+    @property
+    def is_service_account(self) -> bool:
+        """Check if this user represents an API key service account."""
+        return self.id.startswith("apikey:")
 
 
 async def fetch_jwks() -> dict:
@@ -150,6 +294,10 @@ async def get_current_user(
 
     token = credentials.credentials
 
+    # API key authentication (dno_ prefix)
+    if token.startswith("dno_"):
+        return await _authenticate_api_key(token)
+
     try:
         # Fetch JWKS and get signing key
         jwks = await fetch_jwks()
@@ -176,19 +324,17 @@ async def get_current_user(
 
         # If email or roles missing from access token, fetch from userinfo endpoint
         if not email or not roles:
-            userinfo_url = f"{auth_settings.issuer}/oidc/v1/userinfo"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(
-                    userinfo_url, headers={"Authorization": f"Bearer {token}"}
-                )
-                if response.status_code == 200:
-                    userinfo = response.json()
-                    if not roles:
-                        roles = extract_roles(userinfo)
-                    if not email:
-                        email = userinfo.get("email", "")
-                    if not name:
-                        name = userinfo.get("name", userinfo.get("preferred_username", ""))
+            # Check cache first to avoid HTTP call
+            userinfo = _get_cached_userinfo(token)
+            if userinfo is None:
+                userinfo = await _fetch_userinfo(token)
+            if userinfo:
+                if not roles:
+                    roles = extract_roles(userinfo)
+                if not email:
+                    email = userinfo.get("email", "")
+                if not name:
+                    name = userinfo.get("name", userinfo.get("preferred_username", ""))
 
         return User(
             id=claims.get("sub", ""),
@@ -248,6 +394,13 @@ async def get_optional_user(
         return None
 
     token = credentials.credentials
+
+    # API key authentication (dno_ prefix)
+    if token.startswith("dno_"):
+        try:
+            return await _authenticate_api_key(token)
+        except HTTPException:
+            return None
 
     try:
         jwks = await fetch_jwks()

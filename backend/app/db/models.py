@@ -682,6 +682,29 @@ class SystemLogModel(Base):
 # ==============================================================================
 
 
+class APIKeyModel(Base, TimestampMixin):
+    """API key for machine-to-machine authentication.
+
+    Keys are stored as SHA-256 hashes. The plaintext key is only shown once at creation.
+    Prefix (first 12 chars) is stored for display purposes.
+    """
+
+    __tablename__ = "api_keys"
+    __table_args__ = (
+        Index("idx_api_keys_active", "is_active"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    name: Mapped[str] = mapped_column(String(255), nullable=False)
+    key_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True, nullable=False)
+    key_prefix: Mapped[str] = mapped_column(String(12), nullable=False)
+    roles: Mapped[list] = mapped_column(JSON, nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    request_count: Mapped[int] = mapped_column(Integer, default=0)
+    last_used_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    created_by: Mapped[str] = mapped_column(String(255), nullable=False)
+
+
 class AIProviderConfigModel(Base, TimestampMixin):
     """AI provider configuration for multi-provider support.
 

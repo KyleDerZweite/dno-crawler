@@ -14,7 +14,19 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import Response
 
 from app.api.middleware import WideEventMiddleware
-from app.api.routes import admin, ai, auth, dnos, files, health, jobs, oauth, search, verification
+from app.api.routes import (
+    admin,
+    ai,
+    api_keys,
+    auth,
+    dnos,
+    files,
+    health,
+    jobs,
+    oauth,
+    search,
+    verification,
+)
 from app.core.config import settings
 from app.core.exceptions import (
     AuthenticationError,
@@ -162,6 +174,7 @@ def create_app() -> FastAPI:
     app.include_router(jobs.router, prefix="/api/v1/jobs", tags=["Jobs"])
     app.include_router(verification.router, prefix="/api/v1/verification", tags=["Verification"])
     app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])  # New AI routes
+    app.include_router(api_keys.router, prefix="/api/v1/api-keys", tags=["API Keys"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
     app.include_router(oauth.router, prefix="/api/v1/admin", tags=["OAuth"])
 

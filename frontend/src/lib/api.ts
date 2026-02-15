@@ -505,6 +505,32 @@ export interface JobDetails extends Job {
   };
 }
 
+// API Key Types
+export interface APIKeyInfo {
+  id: number;
+  name: string;
+  key_prefix: string;
+  roles: string[];
+  is_active: boolean;
+  request_count: number;
+  last_used_at: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+export interface APIKeyCreateRequest {
+  name: string;
+  roles: string[];
+}
+
+export interface APIKeyCreateResponse {
+  id: number;
+  name: string;
+  key: string;
+  key_prefix: string;
+  roles: string[];
+}
+
 // User info response from /auth/me endpoint
 export interface UserInfo {
   id: string;
@@ -1013,6 +1039,22 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.delete("/admin/extract/bulk");
+      return data;
+    },
+
+    // API Key Management
+    async getAPIKeys(): Promise<{ keys: APIKeyInfo[] }> {
+      const { data } = await apiClient.get("/api-keys");
+      return data;
+    },
+
+    async createAPIKey(request: APIKeyCreateRequest): Promise<APIKeyCreateResponse> {
+      const { data } = await apiClient.post("/api-keys", request);
+      return data;
+    },
+
+    async deleteAPIKey(id: number): Promise<{ message: string }> {
+      const { data } = await apiClient.delete(`/api-keys/${id}`);
       return data;
     },
 

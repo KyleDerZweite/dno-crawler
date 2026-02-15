@@ -32,6 +32,7 @@ class RateLimiter:
         ip_window: int = 60,  # Window in seconds
         vnb_global_rate: int = 50,  # VNB API calls per window (ALL users)
         vnb_window: int = 60,
+        authenticated_rate: int = 100,  # Requests per IP per window for authenticated users
     ):
         """
         Initialize rate limiter.
@@ -42,21 +43,28 @@ class RateLimiter:
             ip_window: Window in seconds for IP limiting
             vnb_global_rate: Max VNB API calls globally per window
             vnb_window: Window in seconds for VNB limiting
+            authenticated_rate: Max requests per IP per window for authenticated users
         """
         self.redis = redis
         self.ip_rate = ip_rate
         self.ip_window = ip_window
         self.vnb_global_rate = vnb_global_rate
         self.vnb_window = vnb_window
+        self.authenticated_rate = authenticated_rate
         self.log = logger.bind(component="RateLimiter")
 
-    async def check_ip_limit(self, ip: str) -> None:
+    async def check_ip_limit(self, ip: str, authenticated: bool = False) -> None:
         """
         Check and increment IP rate limit.
+
+        Args:
+            ip: Client IP address.
+            authenticated: If True, use the higher authenticated rate limit.
 
         Raises:
             HTTPException: 429 if rate limit exceeded
         """
+        limit = self.authenticated_rate if authenticated else self.ip_rate
         key = f"rate_limit:ip:{ip}"
 
         try:
@@ -66,11 +74,11 @@ class RateLimiter:
                 results = await pipe.execute()
             count = results[0]
 
-            if count > self.ip_rate:
-                self.log.warning("IP rate limit exceeded", ip=ip, count=count)
+            if count > limit:
+                self.log.warning("IP rate limit exceeded", ip=ip, count=count, authenticated=authenticated)
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
-                    detail=f"Rate limit exceeded. Max {self.ip_rate} requests per minute.",
+                    detail=f"Rate limit exceeded. Max {limit} requests per minute.",
                     headers={"Retry-After": str(self.ip_window)},
                 )
         except Exception as e:
@@ -157,8 +165,14 @@ _rate_limiter: RateLimiter | None = None
 
 def init_rate_limiter(redis: Redis) -> RateLimiter:
     """Initialize the global rate limiter with Redis connection."""
+    from app.core.config import settings
+
     global _rate_limiter
-    _rate_limiter = RateLimiter(redis)
+    _rate_limiter = RateLimiter(
+        redis,
+        ip_rate=settings.rate_limit_public,
+        authenticated_rate=settings.rate_limit_authenticated,
+    )
     return _rate_limiter
 
 

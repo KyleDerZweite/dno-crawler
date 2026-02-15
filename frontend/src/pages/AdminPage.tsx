@@ -58,6 +58,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { AIConfigSection } from "@/features/admin/AIConfigSection";
+import { APIKeysSection } from "@/features/admin/APIKeysSection";
 
 export function AdminPage() {
   const { isAdmin } = useAuth();
@@ -248,6 +249,9 @@ export function AdminPage() {
 
       {/* AI Configuration */}
       <AIConfigSection />
+
+      {/* API Keys */}
+      <APIKeysSection />
 
       {/* Cached Files & Bulk Extraction */}
       <CachedFilesSection />
