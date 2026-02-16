@@ -60,8 +60,12 @@ def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
             "closed_distribution_network": mastr.closed_distribution_network,
         },
         "installed_capacity_mw": {
-            "total": float(mastr.total_capacity_mw) if mastr.total_capacity_mw is not None else None,
-            "solar": float(mastr.solar_capacity_mw) if mastr.solar_capacity_mw is not None else None,
+            "total": float(mastr.total_capacity_mw)
+            if mastr.total_capacity_mw is not None
+            else None,
+            "solar": float(mastr.solar_capacity_mw)
+            if mastr.solar_capacity_mw is not None
+            else None,
             "wind": float(mastr.wind_capacity_mw) if mastr.wind_capacity_mw is not None else None,
             "storage": float(mastr.storage_capacity_mw)
             if mastr.storage_capacity_mw is not None
@@ -69,7 +73,9 @@ def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
             "biomass": float(mastr.biomass_capacity_mw)
             if mastr.biomass_capacity_mw is not None
             else None,
-            "hydro": float(mastr.hydro_capacity_mw) if mastr.hydro_capacity_mw is not None else None,
+            "hydro": float(mastr.hydro_capacity_mw)
+            if mastr.hydro_capacity_mw is not None
+            else None,
         },
         "unit_counts": {
             "solar": mastr.solar_units,

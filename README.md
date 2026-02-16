@@ -243,9 +243,8 @@ pytest
 
 For detailed technical documentation, see the [docs](docs/) directory:
 
-- [Architecture](docs/ARCHITECTURE.md) - System design, data flow diagrams, database schema
-- [Project Overview](docs/PROJECT.md) - Directory structure, API reference
-- [File Naming Conventions](docs/FILE_NAMING_CONVENTIONS.md) - Code style guidelines
+- [Architecture](docs/ARCHITECTURE.md) - System design, data flow diagrams, database schema, API reference
+- [File Naming Conventions](docs/conventions/FILE_NAMING.md) - Code style guidelines
 
 ## Maintenance
 

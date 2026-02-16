@@ -510,3 +510,101 @@ All services in `docker-compose.yml` include health checks.
 | PostgreSQL | `pg_isready` |
 | Redis | `redis-cli ping` |
 | Backend | `curl /api/health` |
+
+## 9. API Reference
+
+### Public Endpoints
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/health` | Health check (service status) |
+| `GET /api/ready` | Readiness check (database and Redis connectivity) |
+| `POST /api/v1/search` | Address, coordinate, and name based DNO lookup |
+| `GET /api/v1/files/downloads/{path}` | Download cached files (rate limited) |
+
+### Protected Endpoints (Authenticated User)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/auth/me` | Current user info from OIDC token |
+| `GET /api/v1/dnos` | List DNOs with pagination, search, and filtering, optional `stats.mastr` when `include_stats=true` |
+| `GET /api/v1/dnos/stats` | Dashboard statistics (DNO and data counts) |
+| `GET /api/v1/dnos/search-vnb` | Search VNB Digital for DNO name autocomplete |
+| `GET /api/v1/dnos/search-vnb/{vnb_id}/details` | Get extended VNB details |
+| `POST /api/v1/dnos` | Create a new DNO |
+| `GET /api/v1/dnos/{id}` | DNO details with all associated data, including MaStR `stats` payload when available |
+| `PATCH /api/v1/dnos/{id}` | Update DNO metadata (admin only) |
+| `DELETE /api/v1/dnos/{id}` | Delete DNO and all associated data (admin only) |
+| `POST /api/v1/dnos/{id}/crawl` | Trigger crawl, extract, or full pipeline job |
+| `GET /api/v1/dnos/{id}/jobs` | Get recent crawl jobs for a DNO |
+| `GET /api/v1/dnos/{id}/data` | Get all Netzentgelte and HLZF data |
+| `PATCH /api/v1/dnos/{id}/netzentgelte/{record_id}` | Update a Netzentgelte record (admin only) |
+| `DELETE /api/v1/dnos/{id}/netzentgelte/{record_id}` | Delete a Netzentgelte record (admin only) |
+| `PATCH /api/v1/dnos/{id}/hlzf/{record_id}` | Update an HLZF record (admin only) |
+| `DELETE /api/v1/dnos/{id}/hlzf/{record_id}` | Delete an HLZF record (admin only) |
+| `GET /api/v1/dnos/{id}/files` | List source files for a DNO |
+| `POST /api/v1/dnos/{id}/upload` | Upload a file for a DNO |
+| `GET /api/v1/dnos/{id}/export` | Export DNO data as JSON download |
+| `POST /api/v1/dnos/{id}/import` | Import JSON data (merge or replace mode) |
+| `GET /api/v1/jobs` | List all jobs with filtering and pagination |
+| `GET /api/v1/jobs/{id}` | Job details with individual step records |
+| `DELETE /api/v1/jobs/{id}` | Delete a job |
+| `POST /api/v1/verification/netzentgelte/{id}/verify` | Mark Netzentgelte record as verified |
+| `POST /api/v1/verification/netzentgelte/{id}/flag` | Flag Netzentgelte record as incorrect |
+| `DELETE /api/v1/verification/netzentgelte/{id}/flag` | Remove flag (maintainer or admin) |
+| `POST /api/v1/verification/hlzf/{id}/verify` | Mark HLZF record as verified |
+| `POST /api/v1/verification/hlzf/{id}/flag` | Flag HLZF record as incorrect |
+| `DELETE /api/v1/verification/hlzf/{id}/flag` | Remove flag (maintainer or admin) |
+
+### Admin Endpoints (Require Admin Role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/admin/dashboard` | Admin dashboard statistics |
+| `GET /api/v1/admin/flagged` | List all flagged data records for review |
+| `GET /api/v1/admin/files` | List cached files with extraction status |
+| `POST /api/v1/admin/extract/preview` | Preview bulk extraction (dry run) |
+| `POST /api/v1/admin/extract/bulk` | Trigger bulk extraction jobs |
+| `GET /api/v1/admin/extract/bulk/status` | Get bulk extraction job status |
+| `POST /api/v1/admin/extract/bulk/cancel` | Cancel pending bulk extraction jobs |
+| `DELETE /api/v1/admin/extract/bulk` | Delete all bulk extraction jobs (reset) |
+
+### AI Provider Endpoints (Require Admin Role)
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/ai/providers` | List available AI provider types |
+| `GET /api/v1/ai/providers/{type}` | Get provider details and available models |
+| `GET /api/v1/ai/configs` | List all saved AI configurations |
+| `POST /api/v1/ai/configs` | Create a new AI configuration |
+| `PATCH /api/v1/ai/configs/{id}` | Update an AI configuration |
+| `DELETE /api/v1/ai/configs/{id}` | Delete an AI configuration |
+| `POST /api/v1/ai/configs/reorder` | Reorder configurations (fallback priority) |
+| `POST /api/v1/ai/configs/{id}/test` | Test a saved AI configuration |
+| `POST /api/v1/ai/configs/test` | Test configuration before saving |
+| `GET /api/v1/ai/status` | Get overall AI system status |
+
+## 10. Frontend Routes
+
+| Route | Component | Description |
+|-------|-----------|-------------|
+| `/` | LandingPage | Public landing page |
+| `/login` | LoginRedirect | Redirects to OIDC provider |
+| `/callback` | AuthCallback | OIDC callback handler |
+| `/logout` | LogoutPage | Logout confirmation |
+| `/dashboard` | DashboardPage | Main dashboard |
+| `/search` | SearchPage | Address search |
+| `/dnos` | DNOsPage | DNO list with filters |
+| `/dnos/:id` | DNODetailPage | DNO detail with tabs |
+| `/dnos/:id/overview` | Overview | DNO overview tab |
+| `/dnos/:id/data` | DataExplorer | Data explorer tab |
+| `/dnos/:id/analysis` | Analysis | Analysis tab |
+| `/dnos/:id/files` | SourceFiles | Source files tab |
+| `/dnos/:id/jobs` | JobHistory | Job history tab |
+| `/dnos/:id/tools` | Tools | Tools tab |
+| `/dnos/:id/technical` | Technical | Technical info (sitemap, robots.txt) |
+| `/dnos/:id/sql` | SQLExplorer | Raw SQL query explorer |
+| `/jobs` | JobsPage | Jobs list |
+| `/jobs/:id` | JobDetailsPage | Job details |
+| `/admin` | AdminPage | Admin dashboard |
+| `/settings` | SettingsPage | User settings |

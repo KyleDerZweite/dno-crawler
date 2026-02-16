@@ -355,7 +355,9 @@ def main() -> int:
 
     client.close()
 
-    print(f"\nDone: {created} created, {skipped} skipped, {failed} failed, {len(not_found)} not found")
+    print(
+        f"\nDone: {created} created, {skipped} skipped, {failed} failed, {len(not_found)} not found"
+    )
     return 0
 
 

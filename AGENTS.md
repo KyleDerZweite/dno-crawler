@@ -8,17 +8,51 @@ This is the single source of truth for all AI coding agents working in this repo
 
 | Document | Purpose |
 |----------|---------|
-| `docs/PROJECT.md` | Project scope, API reference, and directory structure |
-| `docs/ARCHITECTURE.md` | System design, data flow diagrams, and database schema |
-| `docs/FILE_NAMING_CONVENTIONS.md` | Files, classes, variables, functions, and directory structure |
-| `docs/LOGGING_CONVENTIONS.md` | Structured logging, log levels, and Wide Events patterns |
+| `docs/ARCHITECTURE.md` | System design, data flow diagrams, database schema, API reference, and frontend routes |
 | `README.md` | Installation guide and available development commands |
 
-## 2. Project Overview
+## 2. Conventions (`docs/conventions/`)
+
+These files are **always loaded** at the start of every session. They contain short, dense, project-agnostic rules.
+
+| File | Content |
+|------|---------|
+| `docs/conventions/FILE_NAMING.md` | File, directory, and variable naming rules for frontend and backend |
+| `docs/conventions/LOGGING.md` | Wide Events pattern, log levels, field naming, best practices |
+| `docs/conventions/CODING.md` | Python and TypeScript style rules, validation, error handling |
+
+Apply project-specific overrides from section 7 of this file on top of these base rules.
+
+## 3. Knowledge Base (`docs/knowledge/`)
+
+The `docs/knowledge/` directory contains topic-specific reference files written for AI agents. These files capture operational knowledge (pipelines, processes, non-obvious context) that does not belong in user-facing `docs/`.
+
+**Reading**: Before working on a task, check if a relevant `docs/knowledge/` file exists. If it does, read it first. These files contain verified context that prevents repeated discovery of the same information.
+
+**Writing**: When you complete a task that involved non-trivial discovery (multi-step processes, workarounds, data flow understanding, integration details), check if a matching `docs/knowledge/` file exists:
+- If yes, update it with the new information.
+- If no, create a new file for the topic.
+
+**Rules**:
+- One file per topic. Use `UPPER_SNAKE_CASE.md` naming (e.g., `SEEDING.md`, `DEPLOYMENT.md`).
+- Write for a future AI agent that has zero prior context. Include exact commands, file paths, and expected outputs.
+- Keep content factual and verified. Do not write speculative or aspirational content.
+- Update files when the underlying code or process changes. Stale knowledge is worse than no knowledge.
+- Do not duplicate content from `docs/`. Reference `docs/` files where appropriate instead of copying.
+
+**Current files**:
+
+| File | Topic |
+|------|-------|
+| `docs/knowledge/SEEDING.md` | Seed data pipeline: scripts, data files, stages, regeneration, runtime seeding |
+| `docs/knowledge/FRONTEND_PATTERNS.md` | TanStack Query v5 key factory, react-router-dom v7 routes, import patterns, abbreviations |
+| `docs/knowledge/LOGGING_DOMAIN.md` | DNO Crawler domain fields, complete wide event example, tail sampling, file references |
+
+## 4. Project Overview
 
 DNO Crawler is a full-stack app for automated extraction of regulatory data (Netzentgelte and HLZF) from German Distribution Network Operators. It resolves addresses to grid operators via the VNB Digital GraphQL API, then crawls operator websites to discover, download, and parse pricing documents.
 
-## 3. Commands
+## 5. Commands
 
 ### Backend (run from `backend/`)
 ```bash
@@ -57,7 +91,7 @@ npm run test:watch # Run tests in watch mode
 podman-compose up -d --build    # Start all 7 services
 ```
 
-## 4. Architecture
+## 6. Architecture
 
 ### Backend (Python/FastAPI)
 ```
@@ -124,7 +158,7 @@ frontend/src/
 - **Hub-and-spoke data model**: `DNOModel` is the central hub; source data (MaStR, VNB, BDEW) in separate spoke tables.
 - **MaStR stats pipeline**: MaStR XML exports are transformed offline into DNO statistics, then imported into `dno_mastr_data` and denormalized quick-access fields in `dnos`.
 - **Alembic migrations**: Database schema changes are managed via Alembic. In development, `USE_ALEMBIC_MIGRATIONS=false` (default) uses `create_all()` for auto-creation. In production, set `USE_ALEMBIC_MIGRATIONS=true` and run `alembic upgrade head`.
-- **Wide Events logging**: One canonical structured JSON log line per request via structlog middleware. See `docs/LOGGING_CONVENTIONS.md`.
+- **Wide Events logging**: One canonical structured JSON log line per request via structlog middleware. See `docs/conventions/LOGGING.md` and `docs/knowledge/LOGGING_DOMAIN.md`.
 
 ### Infrastructure
 - **Database**: PostgreSQL 16 (async via asyncpg, pool size 20)
@@ -132,32 +166,20 @@ frontend/src/
 - **Auth**: Zitadel OIDC with role-based access (ADMIN, MEMBER, MAINTAINER). Set `ZITADEL_DOMAIN=auth.example.com` for mock mode.
 - **Frontend proxy**: Vite dev server proxies `/api` to `http://backend:8000`
 
-## 5. Coding Conventions
+## 7. Coding Conventions (Project Overrides)
 
-### Python (Backend)
-- **Line length**: 100 (ruff + black)
+Base rules are in `docs/conventions/`. The overrides below are specific to this project.
+
+### Python
 - **Target**: Python 3.11
+- **Line length**: 100 (ruff + black)
 - **Ruff ignores**: E501, B008 (FastAPI Depends), ARG001/ARG002, RUF001/RUF003 (German text), RUF012 (SQLAlchemy patterns)
-- **snake_case** for all Python files, functions, variables
 
-### TypeScript (Frontend)
-- **Components**: PascalCase.tsx (`DNOHeader.tsx`)
-- **Hooks**: `use-{name}.ts` kebab-case (`use-auth.ts`)
-- **Utilities**: kebab-case.ts (`data-utils.ts`)
-- **Pages**: `{Name}Page.tsx` (`DashboardPage.tsx`)
-- **shadcn/ui**: Keep original lowercase naming (`button.tsx`, `dialog.tsx`)
-- **Path alias**: `@/*` maps to `src/*`
+### TypeScript
+- **shadcn/ui exception**: Keep original lowercase naming (`button.tsx`, `dialog.tsx`)
 - **Abbreviations**: Keep `DNO`, `HLZF`, `API` uppercase in names
 
-### Validation
-- Zod for frontend, Pydantic for backend
-
-### Logging
-- Use structlog with Wide Events pattern (one event per request)
-- snake_case field names, ISO 8601 timestamps
-- See `docs/LOGGING_CONVENTIONS.md` for field conventions
-
-## 6. Tech Stack Autonomy
+## 8. Tech Stack Autonomy
 
 Do not rely on text descriptions of the stack. Determine the active versioning and dependencies by inspecting the live configuration files.
 
@@ -167,20 +189,20 @@ Do not rely on text descriptions of the stack. Determine the active versioning a
 | Frontend | `frontend/package.json` and `frontend/vite.config.ts` |
 | Infrastructure | `docker-compose.yml` |
 
-## 7. Development Workflow
+## 9. Development Workflow
 
 When assigned a task, follow this loop.
 
-1. **Analysis** Check `docs/PROJECT.md` for context and `README.md` for available scripts.
+1. **Analysis** Check `docs/ARCHITECTURE.md` for context and `README.md` for available scripts.
 2. **Plan** Briefly outline proposed changes. Check `docs/ARCHITECTURE.md` to ensure architectural consistency.
 3. **Implementation**
    - Apply the KISS principle (Keep It Simple, Stupid).
-   - Follow naming rules in `docs/FILE_NAMING_CONVENTIONS.md`.
-   - Implement observability per `docs/LOGGING_CONVENTIONS.md`.
+   - Follow naming rules in `docs/conventions/FILE_NAMING.md`.
+   - Implement observability per `docs/conventions/LOGGING.md`.
    - Do not hard code secrets.
 4. **Verification** Ensure new code passes linting and tests.
 
-## 8. Interaction Guidelines
+## 10. Interaction Guidelines
 
 | Guideline | Description |
 |-----------|-------------|

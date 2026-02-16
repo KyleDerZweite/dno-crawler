@@ -192,6 +192,8 @@ class BaseProvider(ABC):
                 )
             for i, record in enumerate(parsed["data"]):
                 if not isinstance(record, dict):
-                    raise ValueError(f"AI response record [{i}] must be a dict, got {type(record).__name__}")
+                    raise ValueError(
+                        f"AI response record [{i}] must be a dict, got {type(record).__name__}"
+                    )
 
         return parsed

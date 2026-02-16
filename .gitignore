@@ -147,3 +147,8 @@ data/samples/extraction/
 data/samples/crawl/
 data/samples/debug/
 data/samples/training/
+
+marktstammdatenregister/data/
+marktstammdatenregister/archive/
+marktstammdatenregister/*.csv
+marktstammdatenregister/*.json

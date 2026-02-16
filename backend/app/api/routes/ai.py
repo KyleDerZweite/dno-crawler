@@ -166,7 +166,6 @@ async def list_configs(
                 "is_enabled": config.is_enabled,
                 "priority": config.priority,
                 "status": config.status_display,
-                "is_subscription": config.is_subscription,
                 "model_parameters": config.model_parameters,
                 "last_success_at": config.last_success_at.isoformat()
                 if config.last_success_at
@@ -356,12 +355,10 @@ async def test_config_preview(
             api_key_encrypted=request.api_key,
             api_url=request.api_url,
             auth_type=request.auth_type,
-            is_subscription=False,
             supports_vision=True,
             supports_files=True,
             supports_text=True,
             is_enabled=True,
-            oauth_refresh_token_encrypted=None,
             model_parameters=request.model_parameters,
         )
 

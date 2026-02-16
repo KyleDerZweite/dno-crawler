@@ -75,7 +75,9 @@ class RateLimiter:
             count = results[0]
 
             if count > limit:
-                self.log.warning("IP rate limit exceeded", ip=ip, count=count, authenticated=authenticated)
+                self.log.warning(
+                    "IP rate limit exceeded", ip=ip, count=count, authenticated=authenticated
+                )
                 raise HTTPException(
                     status_code=status.HTTP_429_TOO_MANY_REQUESTS,
                     detail=f"Rate limit exceeded. Max {limit} requests per minute.",

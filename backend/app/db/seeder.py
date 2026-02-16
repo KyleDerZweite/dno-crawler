@@ -62,7 +62,7 @@ def parse_decimal(value: Any) -> Decimal | None:
         return None
 
 
-def _normalize_connection_points(connection_points: dict[str, Any]) -> dict[str, int | None]:
+def _normalize_connection_points(connection_points: dict[str, Any]) -> dict[str, Any]:
     """Normalize MaStR connection-point buckets from legacy or canonical formats."""
     by_voltage = connection_points.get("by_voltage") or {}
     by_canonical = connection_points.get("by_canonical_level") or {}
@@ -188,7 +188,8 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int]:
             continue
 
         try:
-            result = await upsert_dno_from_seed(db, record)
+            async with db.begin_nested():
+                result = await upsert_dno_from_seed(db, record)
             if result == "inserted":
                 inserted += 1
             elif result == "updated":

@@ -311,7 +311,8 @@ class DNOModel(Base, TimestampMixin):
             "wind_mw": float(self.mastr_data.wind_capacity_mw or 0),
             "storage_mw": float(self.mastr_data.storage_capacity_mw or 0),
             "other_mw": float(
-                (self.mastr_data.biomass_capacity_mw or 0) + (self.mastr_data.hydro_capacity_mw or 0)
+                (self.mastr_data.biomass_capacity_mw or 0)
+                + (self.mastr_data.hydro_capacity_mw or 0)
             ),
         }
 
@@ -725,9 +726,7 @@ class APIKeyModel(Base, TimestampMixin):
     """
 
     __tablename__ = "api_keys"
-    __table_args__ = (
-        Index("idx_api_keys_active", "is_active"),
-    )
+    __table_args__ = (Index("idx_api_keys_active", "is_active"),)
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     name: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -743,13 +742,10 @@ class APIKeyModel(Base, TimestampMixin):
 class AIProviderConfigModel(Base, TimestampMixin):
     """AI provider configuration for multi-provider support.
 
-    Supports multiple authentication methods:
-    - OAuth (for subscription plans: ChatGPT Plus, Claude Pro, Google AI Pro)
-    - API Key (for OpenRouter, direct API access)
+    Authentication via API key (for OpenRouter, LiteLLM, direct API access).
 
     Features:
     - Priority-based fallback ordering (drag-and-drop in admin UI)
-    - Subscription preference (OAuth configs prioritized over API keys)
     - Health tracking (consecutive failures, rate limit detection)
     - Model capability tracking (text, vision, file support)
     """
@@ -764,23 +760,17 @@ class AIProviderConfigModel(Base, TimestampMixin):
     # -------------------------------------------------------------------------
     name: Mapped[str] = mapped_column(String(100), nullable=False)  # "My ChatGPT Plus"
     provider_type: Mapped[str] = mapped_column(String(50), nullable=False)
-    # Allowed: "openai" | "google" | "anthropic" | "openrouter" | "litellm" | "custom"
+    # Allowed: "openrouter" | "litellm" | "custom"
 
     # -------------------------------------------------------------------------
     # Authentication
     # -------------------------------------------------------------------------
     auth_type: Mapped[str] = mapped_column(String(20), nullable=False)
-    # "oauth" | "api_key"
+    # "api_key"
 
     # For API Key auth
     api_url: Mapped[str | None] = mapped_column(String(500))  # Custom endpoint URL
     api_key_encrypted: Mapped[str | None] = mapped_column(Text)  # Fernet encrypted
-
-    # For OAuth auth (encrypted tokens)
-    oauth_access_token_encrypted: Mapped[str | None] = mapped_column(Text)
-    oauth_refresh_token_encrypted: Mapped[str | None] = mapped_column(Text)
-    oauth_expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    oauth_scope: Mapped[str | None] = mapped_column(Text)  # Granted scopes
 
     # -------------------------------------------------------------------------
     # Model Configuration
@@ -821,11 +811,6 @@ class AIProviderConfigModel(Base, TimestampMixin):
     # -------------------------------------------------------------------------
     created_by: Mapped[str | None] = mapped_column(String(255))  # Admin user sub
     last_modified_by: Mapped[str | None] = mapped_column(String(255))
-
-    @property
-    def is_subscription(self) -> bool:
-        """Check if this config uses a subscription (OAuth-based)."""
-        return self.auth_type == "oauth"
 
     @property
     def is_healthy(self) -> bool:

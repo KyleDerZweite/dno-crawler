@@ -1,7 +1,7 @@
 """
 Encryption utilities for AI provider secrets.
 
-Uses Fernet symmetric encryption for API keys and OAuth tokens.
+Uses Fernet symmetric encryption for API keys.
 The encryption key is derived from SESSION_SECRET or a dedicated AI_ENCRYPTION_KEY
 using HKDF for proper key derivation.
 """
@@ -69,7 +69,7 @@ def _get_fernet() -> Fernet:
 
 
 def encrypt_secret(plaintext: str) -> str:
-    """Encrypt a secret (API key, OAuth token, etc.).
+    """Encrypt a secret (API key, etc.).
 
     Args:
         plaintext: The secret to encrypt

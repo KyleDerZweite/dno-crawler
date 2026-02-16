@@ -109,14 +109,12 @@ export interface AIProviderConfig {
   model: string;
   api_url: string | null;
   has_api_key: boolean;
-  has_oauth: boolean;
   supports_text: boolean;
   supports_vision: boolean;
   supports_files: boolean;
   is_enabled: boolean;
   priority: number;
   status: "active" | "disabled" | "rate_limited" | "unhealthy" | "untested";
-  is_subscription: boolean;
   model_parameters: Record<string, unknown> | null;
   last_success_at: string | null;
   last_error_at: string | null;
@@ -1259,76 +1257,6 @@ export const api = {
       return data;
     },
 
-    // OAuth credential detection
-    async detectCredentials(): Promise<
-      ApiResponse<{
-        credentials: Record<string, {
-          available: boolean;
-          source?: string | null;
-          email?: string | null;
-          name?: string | null;
-          has_refresh_token?: boolean;
-          instructions?: string;
-          error?: string;
-        }>;
-        any_available: boolean;
-      }>
-    > {
-      const { data } = await apiClient.get("/admin/oauth/detect-credentials");
-      return data;
-    },
-
-    async getGoogleOAuthStatus(): Promise<
-      ApiResponse<{
-        authenticated: boolean;
-        user: { email: string | null; name: string | null } | null;
-        gemini_cli_available: boolean;
-        gemini_cli_email: string | null;
-      }>
-    > {
-      const { data } = await apiClient.get("/admin/oauth/google/status");
-      return data;
-    },
-
-    async useGeminiCliCredentials(): Promise<
-      ApiResponse<{ email: string | null }>
-    > {
-      const { data } = await apiClient.post(
-        "/admin/oauth/google/use-gemini-cli"
-      );
-      return data;
-    },
-
-    async startGoogleOAuth(redirectUri?: string): Promise<
-      ApiResponse<{
-        auth_url: string;
-        state: string;
-      }>
-    > {
-      const { data } = await apiClient.post("/admin/oauth/google/start", {
-        redirect_uri: redirectUri,
-      });
-      return data;
-    },
-
-    async completeGoogleOAuth(code: string, state: string): Promise<
-      ApiResponse<{
-        email: string | null;
-        name: string | null;
-        expires_at: string | null;
-      }>
-    > {
-      const { data } = await apiClient.post("/admin/oauth/google/callback", {
-        code,
-        state,
-      });
-      return data;
-    },
-
-    async logoutGoogleOAuth(): Promise<ApiResponse<null>> {
-      const { data } = await apiClient.post("/admin/oauth/google/logout");
-      return data;
-    },
   },
 
   // Verification API - Data quality management

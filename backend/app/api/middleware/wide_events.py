@@ -96,7 +96,6 @@ class WideEventMiddleware(BaseHTTPMiddleware):
             emit_wide_event(event)
 
 
-
 def add_user_to_wide_event(
     user_id: str | None = None,
     email: str | None = None,

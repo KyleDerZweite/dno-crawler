@@ -23,7 +23,6 @@ from app.api.routes import (
     files,
     health,
     jobs,
-    oauth,
     search,
     verification,
 )
@@ -148,7 +147,9 @@ def create_app() -> FastAPI:
             response.headers["X-Frame-Options"] = "DENY"
             response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
             if settings.is_production:
-                response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+                response.headers["Strict-Transport-Security"] = (
+                    "max-age=31536000; includeSubDomains"
+                )
             return response
 
     app.add_middleware(SecurityHeadersMiddleware)
@@ -176,7 +177,6 @@ def create_app() -> FastAPI:
     app.include_router(ai.router, prefix="/api/v1/ai", tags=["AI"])  # New AI routes
     app.include_router(api_keys.router, prefix="/api/v1/api-keys", tags=["API Keys"])
     app.include_router(admin.router, prefix="/api/v1/admin", tags=["Admin"])
-    app.include_router(oauth.router, prefix="/api/v1/admin", tags=["OAuth"])
 
     # Exception Handlers
     @app.exception_handler(RequestValidationError)

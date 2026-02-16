@@ -68,9 +68,7 @@ async def list_api_keys(
     db: AsyncSession = Depends(get_db),
 ):
     """List all API keys (metadata only, never the secret)."""
-    result = await db.execute(
-        select(APIKeyModel).order_by(APIKeyModel.created_at.desc())
-    )
+    result = await db.execute(select(APIKeyModel).order_by(APIKeyModel.created_at.desc()))
     keys = result.scalars().all()
 
     return APIKeyListResponse(
@@ -146,9 +144,7 @@ async def delete_api_key(
     db: AsyncSession = Depends(get_db),
 ):
     """Delete an API key and invalidate its cache entry."""
-    result = await db.execute(
-        select(APIKeyModel).where(APIKeyModel.id == key_id)
-    )
+    result = await db.execute(select(APIKeyModel).where(APIKeyModel.id == key_id))
     api_key = result.scalar_one_or_none()
 
     if api_key is None:
