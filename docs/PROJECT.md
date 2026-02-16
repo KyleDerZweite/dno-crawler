@@ -19,7 +19,7 @@ Full stack web application for automated extraction of regulatory data from Germ
 | Source | Integration | Data |
 |--------|-------------|------|
 | VNB Digital | GraphQL API | Address resolution, DNO contact info |
-| Marktstammdatenregister (MaStR) | Manual XML/CSV import | Market roles, ACER codes, legal names |
+| Marktstammdatenregister (MaStR) | Manual XML export, offline transform, backend import | Market roles, ACER codes, legal names, connection-point and capacity statistics |
 | BDEW Codes Registry | JTables POST interception | BDEW identification codes |
 
 ## Key Directories
@@ -111,8 +111,13 @@ frontend/
 │   ├── types/              # TypeScript type definitions
 │   └── constants/          # Application constants
 data/
-├── seed-data/              # MaStR exports, enriched DNO JSON
+├── seed-data/              # Seed and enriched DNO artifacts
 └── downloads/              # Crawled PDFs and HTML files
+marktstammdatenregister/
+├── transform_mastr.py      # MaStR XML to dno_stats.json transformation
+├── import_mastr_stats.py   # Compatibility wrapper to backend import script
+├── mastr/                  # Parsers, models, and aggregators for MaStR export processing
+└── README.md               # Operational workflow for transformation/import
 ```
 
 ## Database Schema
@@ -121,8 +126,8 @@ data/
 
 | Table | Purpose |
 |-------|---------|
-| `dnos` | Hub entity with resolved fields, external IDs (MaStR, VNB, BDEW), crawlability status, robots.txt metadata |
-| `dno_mastr_data` | Raw MaStR data (market roles, addresses, ACER codes) |
+| `dnos` | Hub entity with resolved fields, external IDs (MaStR, VNB, BDEW), denormalized MaStR quick-access stats (`connection_points_count`, `total_capacity_mw`), crawlability status, robots.txt metadata |
+| `dno_mastr_data` | MaStR source data plus computed MaStR statistics (canonical connection levels, compatibility buckets, networks, capacities, unit counts, quality metadata) |
 | `dno_vnb_data` | VNB Digital API data (official names, contact info) |
 | `dno_bdew_data` | BDEW codes (one to many relationship) |
 | `locations` | Address hash to DNO mapping for O(1) lookups |
@@ -180,12 +185,12 @@ npm run dev
 | Endpoint | Purpose |
 |----------|---------|
 | `GET /api/v1/auth/me` | Current user info from OIDC token |
-| `GET /api/v1/dnos` | List DNOs with pagination, search, and filtering |
+| `GET /api/v1/dnos` | List DNOs with pagination, search, and filtering, optional `stats.mastr` when `include_stats=true` |
 | `GET /api/v1/dnos/stats` | Dashboard statistics (DNO and data counts) |
 | `GET /api/v1/dnos/search-vnb` | Search VNB Digital for DNO name autocomplete |
 | `GET /api/v1/dnos/search-vnb/{vnb_id}/details` | Get extended VNB details |
 | `POST /api/v1/dnos` | Create a new DNO |
-| `GET /api/v1/dnos/{id}` | DNO details with all associated data |
+| `GET /api/v1/dnos/{id}` | DNO details with all associated data, including MaStR `stats` payload when available |
 | `PATCH /api/v1/dnos/{id}` | Update DNO metadata (admin only) |
 | `DELETE /api/v1/dnos/{id}` | Delete DNO and all associated data (admin only) |
 | `POST /api/v1/dnos/{id}/crawl` | Trigger crawl, extract, or full pipeline job |

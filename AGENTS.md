@@ -32,6 +32,14 @@ ruff format .                              # Format (or: black .)
 mypy app                                   # Type check (strict mode)
 alembic revision --autogenerate -m "msg"   # Generate migration
 alembic upgrade head                       # Apply migrations
+python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json --dry-run  # Validate MaStR stats import
+python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json            # Import MaStR stats
+```
+
+### MaStR Offline Pipeline (run from repo root)
+```bash
+python marktstammdatenregister/transform_mastr.py --data-dir ./marktstammdatenregister/data --output ./marktstammdatenregister/dno_stats.json
+python marktstammdatenregister/import_mastr_stats.py --file ./marktstammdatenregister/dno_stats.json --dry-run
 ```
 
 ### Frontend (run from `frontend/`)
@@ -82,6 +90,14 @@ backend/app/
     extraction/          # Data extraction (PDF/HTML extractors, AI prompts)
     ai/                  # AI provider gateway (OpenRouter, LiteLLM, encryption)
     web_crawler.py       # BFS web crawler engine
+
+marktstammdatenregister/
+  transform_mastr.py     # MaStR XML to DNO statistics JSON
+  import_mastr_stats.py  # Compatibility wrapper for backend import
+  mastr/
+    models.py            # Transformation data classes and catalogs
+    parsers.py           # Iterative XML parsers
+    aggregators.py       # DNO-level statistics aggregation
 ```
 
 ### Frontend (React 19 + TypeScript + Vite)
@@ -106,6 +122,7 @@ frontend/src/
 - **Deterministic-first extraction**: Regex/HTML parsing first, AI fallback only when validation fails (cost-aware).
 - **Pattern learning**: Successful URL patterns with `{year}` placeholders stored in `crawl_path_patterns` table, reused across DNOs.
 - **Hub-and-spoke data model**: `DNOModel` is the central hub; source data (MaStR, VNB, BDEW) in separate spoke tables.
+- **MaStR stats pipeline**: MaStR XML exports are transformed offline into DNO statistics, then imported into `dno_mastr_data` and denormalized quick-access fields in `dnos`.
 - **Alembic migrations**: Database schema changes are managed via Alembic. In development, `USE_ALEMBIC_MIGRATIONS=false` (default) uses `create_all()` for auto-creation. In production, set `USE_ALEMBIC_MIGRATIONS=true` and run `alembic upgrade head`.
 - **Wide Events logging**: One canonical structured JSON log line per request via structlog middleware. See `docs/LOGGING_CONVENTIONS.md`.
 

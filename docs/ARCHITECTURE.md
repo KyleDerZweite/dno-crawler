@@ -199,7 +199,7 @@ sequenceDiagram
     end
     
     Frontend->>API: GET /api/v1/dnos/{id}
-    API->>DB: Fetch DNO with Netzentgelte and HLZF
+    API->>DB: Fetch DNO with MaStR source data, stats, Netzentgelte and HLZF
     DB-->>API: Return Data
     API-->>Frontend: Display Data Tables
 ```
@@ -221,14 +221,28 @@ erDiagram
         string mastr_nr UK "Quick lookup"
         string vnb_id UK "Quick lookup"
         string primary_bdew_code "Quick lookup"
+        int connection_points_count "Denormalized MaStR stats"
+        decimal total_capacity_mw "Denormalized MaStR stats"
     }
     
     DNOMastrData {
         int id PK
         int dno_id FK
-        string mastr_nummer UK
-        string firmenname
-        json raw_data "Full MaStR export"
+        string mastr_nr UK
+        string registered_name
+        json marktrollen
+        int connection_points_total
+        json connection_points_by_level "Canonical 7-level distribution"
+        int connection_points_ns "Compatibility bucket"
+        int connection_points_ms "Compatibility bucket"
+        int connection_points_hs "Compatibility bucket"
+        int connection_points_hoe "Compatibility bucket"
+        decimal total_capacity_mw
+        decimal solar_capacity_mw
+        decimal wind_capacity_mw
+        decimal storage_capacity_mw
+        string stats_data_quality
+        datetime stats_computed_at
     }
     
     DNOVnbData {
@@ -253,7 +267,7 @@ erDiagram
 | Source | Method | Update Frequency | Data Provided |
 |--------|--------|------------------|---------------|
 | VNB Digital | GraphQL API queries | Real time | Address resolution, official names, homepage URLs, contact info |
-| Marktstammdatenregister | Manual XML/CSV export | Periodic (manual) | Market roles (Marktrollen), ACER codes, legal names, registered addresses |
+| Marktstammdatenregister | Manual XML export, local transformation, backend import | Periodic (manual) | Market roles (Marktrollen), ACER codes, legal names, registered addresses, canonical connection-point distribution, compatibility voltage buckets, network and installed-capacity statistics |
 | BDEW Codes Registry | JTables POST interception | On demand | BDEW identification codes, grid operator function codes |
 
 ## 4. Database Schema
@@ -278,6 +292,8 @@ erDiagram
         string mastr_nr UK
         string vnb_id UK
         string primary_bdew_code
+        int connection_points_count
+        decimal total_capacity_mw
         string status "uncrawled|crawled|error"
         bool crawlable
         string crawl_blocked_reason
@@ -397,8 +413,8 @@ erDiagram
 
 | Entity | Description |
 |--------|-------------|
-| DNOModel (`dnos`) | Hub entity in a hub and spoke pattern. Contains resolved display fields (best values from MaStR/VNB/BDEW), quick access external IDs, and crawlability metadata including robots.txt and sitemap data. |
-| Source Data Tables | `dno_mastr_data`, `dno_vnb_data`, `dno_bdew_data` store raw data from each external source. |
+| DNOModel (`dnos`) | Hub entity in a hub and spoke pattern. Contains resolved display fields (best values from MaStR/VNB/BDEW), quick access external IDs, denormalized MaStR statistics, and crawlability metadata including robots.txt and sitemap data. |
+| Source Data Tables | `dno_mastr_data`, `dno_vnb_data`, `dno_bdew_data` store source data from each external system. `dno_mastr_data` also stores computed MaStR statistics used by API responses. |
 | LocationModel (`locations`) | Maps addresses and coordinates to DNOs. Uses `address_hash` for O(1) cache lookups. |
 | Data Tables (`netzentgelte`, `hlzf`) | Extracted pricing and time window data with provenance tracking (extraction source, model used) and verification status. |
 | Source Profiles (`dno_source_profiles`) | Per DNO learned patterns for fast re crawling. |

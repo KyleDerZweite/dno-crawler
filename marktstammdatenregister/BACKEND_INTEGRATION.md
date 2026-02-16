@@ -1,8 +1,8 @@
 # Backend Integration Guide
 
-This document describes the changes needed in the DNO Crawler backend to support MaStR statistics.
+This document describes the current backend implementation for MaStR statistics.
 
-## Files to Modify
+## Implemented Files
 
 Canonical voltage levels used for MaStR connection points are:
 
@@ -12,7 +12,7 @@ For backward compatibility, API and import paths still expose/accept aggregated 
 
 ### 1. `backend/app/db/source_models.py`
 
-Add the following fields to the `DNOMastrData` class:
+`DNOMastrData` includes the following MaStR statistics fields:
 
 ```python
 # ============================================================================
@@ -52,7 +52,7 @@ stats_data_quality: Mapped[str | None] = mapped_column(String(20))  # full, part
 
 ### 2. `backend/app/db/models.py`
 
-Add denormalized quick-access fields to `DNOModel`:
+`DNOModel` includes denormalized quick-access fields:
 
 ```python
 # -------------------------------------------------------------------------
@@ -62,7 +62,7 @@ connection_points_count: Mapped[int | None] = mapped_column(Integer)
 total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 ```
 
-Add convenience properties:
+`DNOModel` exposes convenience properties:
 
 ```python
 @property
@@ -102,7 +102,7 @@ def display_voltage_distribution(self) -> dict | None:
 
 ### 3. `backend/app/db/seeder.py`
 
-Update `upsert_mastr_data()` function:
+`upsert_mastr_data()` handles MaStR statistics mapping:
 
 ```python
 async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:
@@ -151,8 +151,9 @@ async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, A
     mastr.storage_units = units_data.get("storage")
     
     # Metadata
-    mastr.stats_computed_at = datetime.now(UTC)
-    mastr.stats_data_quality = stats.get("has_full_data") and "full" or "partial"
+    # Prefer explicit data_quality from payload, fallback to has_full_data
+    mastr.stats_computed_at = parse_date(stats.get("computed_at")) or datetime.now(UTC)
+    mastr.stats_data_quality = stats.get("data_quality")
 
 
 async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
@@ -164,26 +165,24 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         dno.total_capacity_mw = dno.mastr_data.total_capacity_mw
 ```
 
-### 4. `backend/app/api/routes/dnos/schemas.py`
+### 4. `backend/app/api/routes/dnos/crud.py`
 
-Add statistics to DNO response schema:
+Build and expose MaStR statistics payload in list and detail responses:
 
 ```python
-class DNOStatsSchema(BaseModel):
-    """MaStR statistics for a DNO."""
-    connection_points: dict | None
-    networks: dict | None
-    installed_capacity_mw: dict | None
-    unit_counts: dict | None
-    data_quality: str | None
-    computed_at: datetime | None
+def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
+  # Returns payload with:
+  # - connection_points.total, by_canonical_level, by_voltage
+  # - networks.count, has_customers, closed_distribution_network
+  # - installed_capacity_mw totals and source categories
+  # - unit_counts
+  # - data_quality, computed_at
 
+# GET /api/v1/dnos?include_stats=true
+#   data[].stats.mastr = _build_mastr_stats_payload(dno)
 
-class DNODetailSchema(BaseModel):
-    # ... existing fields ...
-    
-    # Add statistics
-    stats: DNOStatsSchema | None
+# GET /api/v1/dnos/{id}
+#   data.stats = _build_mastr_stats_payload(dno)
 ```
 
 ### 5. Database Migration
@@ -198,7 +197,7 @@ alembic upgrade head
 
 ## API Response Example
 
-After integration, the DNO detail API (`GET /api/v1/dnos/{id}`) includes canonical and compatibility fields:
+The DNO detail API (`GET /api/v1/dnos/{id}`) includes canonical and compatibility fields:
 
 ```json
 {

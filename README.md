@@ -75,10 +75,10 @@ The system aggregates DNO metadata from three authoritative sources:
 | Source | Integration Method | Data Provided |
 |--------|-------------------|---------------|
 | **VNB Digital** | GraphQL API queries | Address-to-DNO resolution, official names, homepage URLs, contact information |
-| **Marktstammdatenregister (MaStR)** | Manual XML/CSV export import | Market roles, ACER codes, legal names, registered addresses |
+| **Marktstammdatenregister (MaStR)** | Manual XML export, offline transform, database import | Market roles, ACER codes, legal names, connection-point statistics, network statistics, installed capacity statistics |
 | **BDEW Codes Registry** | JTables endpoint via POST request interception | BDEW identification codes, grid operator function codes |
 
-VNB Digital provides real-time lookups. MaStR data requires periodic manual export from the Bundesnetzagentur portal due to API access restrictions. BDEW codes are retrieved by reverse-engineering the JTables jQuery plugin requests used by the BDEW public registry interface.
+VNB Digital provides real-time lookups. MaStR data requires periodic manual export from the Bundesnetzagentur portal due to API access restrictions, then local transformation before import. BDEW codes are retrieved by reverse-engineering the JTables jQuery plugin requests used by the BDEW public registry interface.
 
 ## MaStR Pipeline (Current Workflow)
 
@@ -109,8 +109,8 @@ Notes:
 
 | Table | Purpose |
 |-------|---------|
-| `dnos` | Hub entity for DNOs. Contains resolved display fields, external IDs (MaStR, VNB, BDEW), crawlability status, and robots.txt metadata. |
-| `dno_mastr_data` | Raw Marktstammdatenregister data (market roles, addresses, ACER codes). |
+| `dnos` | Hub entity for DNOs. Contains resolved display fields, external IDs (MaStR, VNB, BDEW), denormalized MaStR quick-access stats (`connection_points_count`, `total_capacity_mw`), crawlability status, and robots.txt metadata. |
+| `dno_mastr_data` | Marktstammdatenregister source data and computed MaStR statistics (canonical connection-point levels, compatibility buckets, network flags, capacity and unit totals, quality metadata). |
 | `dno_vnb_data` | VNB Digital API data (official names, homepage URLs, contact info). |
 | `dno_bdew_data` | BDEW identification codes and market function codes (one to many). |
 | `locations` | Geographic lookups. Maps address hashes and coordinates to DNO IDs for O(1) cache hits. |
