@@ -8,6 +8,7 @@ from collections.abc import AsyncGenerator, Generator
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.main import app
@@ -22,25 +23,35 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop.close()
 
 
-@pytest_asyncio.fixture(scope="function")
-async def db_session() -> AsyncGenerator[AsyncSession, None]:
-    """Create a fresh database session for each test."""
+async def _create_tables() -> None:
+    """Create pg_trgm extension and all tables."""
     async with engine.begin() as conn:
+        await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)
 
-    async with async_session_maker() as session:
-        yield session
-        await session.rollback()
 
+async def _drop_tables() -> None:
+    """Drop all tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest_asyncio.fixture(scope="function")
+async def db_session() -> AsyncGenerator[AsyncSession, None]:
+    """Create a fresh database session for each test."""
+    await _create_tables()
+
+    async with async_session_maker() as session:
+        yield session
+        await session.rollback()
+
+    await _drop_tables()
+
+
+@pytest_asyncio.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
     """Create async HTTP client for testing with a fresh database."""
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    await _create_tables()
 
     async with AsyncClient(
         transport=ASGITransport(app=app),
@@ -48,8 +59,7 @@ async def client() -> AsyncGenerator[AsyncClient, None]:
     ) as ac:
         yield ac
 
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
+    await _drop_tables()
 
 
 @pytest.fixture
