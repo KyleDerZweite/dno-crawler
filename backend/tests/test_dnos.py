@@ -11,7 +11,7 @@ pytestmark = pytest.mark.asyncio
 class TestDNOEndpoints:
     async def test_list_dnos_empty(self, client: AsyncClient) -> None:
         """Test listing DNOs returns empty list initially."""
-        response = await client.get("/api/v1/dnos")
+        response = await client.get("/api/v1/dnos/")
         assert response.status_code == 200
         data = response.json()
         assert "data" in data
@@ -20,7 +20,7 @@ class TestDNOEndpoints:
 
     async def test_list_dnos_pagination_params(self, client: AsyncClient) -> None:
         """Test DNO listing accepts pagination parameters."""
-        response = await client.get("/api/v1/dnos?page=1&page_size=10")
+        response = await client.get("/api/v1/dnos/?page=1&page_size=10")
         assert response.status_code == 200
         data = response.json()
         assert "meta" in data

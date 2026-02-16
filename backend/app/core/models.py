@@ -7,7 +7,7 @@ This module contains:
 """
 
 from datetime import UTC, datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -17,7 +17,7 @@ from pydantic import BaseModel, ConfigDict, Field
 # ==============================================================================
 
 
-class JobStatus(str, Enum):
+class JobStatus(StrEnum):
     """Status of a crawl job."""
 
     PENDING = "pending"
@@ -27,7 +27,7 @@ class JobStatus(str, Enum):
     CANCELLED = "cancelled"
 
 
-class DataType(str, Enum):
+class DataType(StrEnum):
     """Types of data to extract."""
 
     NETZENTGELTE = "netzentgelte"
@@ -35,7 +35,7 @@ class DataType(str, Enum):
     ALL = "all"  # Both netzentgelte and hlzf
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     """User roles (for Zitadel integration)."""
 
     PENDING = "pending"
@@ -44,7 +44,7 @@ class UserRole(str, Enum):
     ADMIN = "admin"
 
 
-class Season(str, Enum):
+class Season(StrEnum):
     """Seasons for HLZF data."""
 
     WINTER = "winter"
@@ -53,7 +53,7 @@ class Season(str, Enum):
     AUTUMN = "herbst"
 
 
-class ContentFormat(str, Enum):
+class ContentFormat(StrEnum):
     """Content format types."""
 
     HTML = "html"
@@ -63,7 +63,7 @@ class ContentFormat(str, Enum):
     API = "api"
 
 
-class DNOStatus(str, Enum):
+class DNOStatus(StrEnum):
     """DNO crawl status."""
 
     UNCRAWLED = "uncrawled"
@@ -72,7 +72,7 @@ class DNOStatus(str, Enum):
     FAILED = "failed"
 
 
-class EnrichmentStatus(str, Enum):
+class EnrichmentStatus(StrEnum):
     """DNO enrichment status (for background data enrichment)."""
 
     PENDING = "pending"
@@ -81,14 +81,14 @@ class EnrichmentStatus(str, Enum):
     FAILED = "failed"
 
 
-class DNOSource(str, Enum):
+class DNOSource(StrEnum):
     """How the DNO record was created."""
 
     SEED = "seed"  # From MaStR seed data
     USER_DISCOVERY = "user_discovery"  # Created via user search/skeleton service
 
 
-class SourceFormat(str, Enum):
+class SourceFormat(StrEnum):
     """Source document formats."""
 
     PDF = "pdf"
@@ -101,7 +101,7 @@ class SourceFormat(str, Enum):
     PPTX = "pptx"
 
 
-class VerificationStatus(str, Enum):
+class VerificationStatus(StrEnum):
     """Verification status of extracted data."""
 
     UNVERIFIED = "unverified"
@@ -110,7 +110,7 @@ class VerificationStatus(str, Enum):
     FLAGGED = "flagged"  # User reported as potentially incorrect
 
 
-class CrawlStrategy(str, Enum):
+class CrawlStrategy(StrEnum):
     """Strategy for finding data."""
 
     USE_CACHE = "use_cache"  # File already downloaded locally
@@ -119,7 +119,7 @@ class CrawlStrategy(str, Enum):
     BFS_CRAWL = "bfs_crawl"  # Full BFS website crawl
 
 
-class AIProvider(str, Enum):
+class AIProvider(StrEnum):
     """Supported AI providers for extraction."""
 
     GEMINI = "gemini"  # Google Gemini (gemini-2.0-flash, gemini-1.5-pro)

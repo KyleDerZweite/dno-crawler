@@ -137,6 +137,7 @@ ignore_missing_imports = true
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
+norecursedirs = ["tests/manual"]
 
 [[tool.mypy.overrides]]
 module = ["app.services.*", "app.jobs.*", "app.core.*", "app.api.*"]

@@ -5,10 +5,10 @@ Shared types used across discovery strategies.
 """
 
 from dataclasses import dataclass, field
-from enum import Enum
+from enum import StrEnum
 
 
-class DiscoveryStrategy(str, Enum):
+class DiscoveryStrategy(StrEnum):
     """How the data was discovered."""
 
     SITEMAP = "sitemap"  # Found via sitemap.xml
@@ -17,7 +17,7 @@ class DiscoveryStrategy(str, Enum):
     MANUAL = "manual"  # Manually provided URL
 
 
-class FileType(str, Enum):
+class FileType(StrEnum):
     """Detected file types."""
 
     PDF = "pdf"

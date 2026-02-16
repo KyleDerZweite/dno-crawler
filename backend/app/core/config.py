@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Application
     app_name: str = "DNO Crawler"
     app_version: str = "0.1.0"
-    environment: Literal["development", "staging", "production"] = "development"
+    environment: Literal["development", "staging", "production", "test"] = "development"
     debug: bool = False
 
     # Server

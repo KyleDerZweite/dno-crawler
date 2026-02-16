@@ -16,7 +16,7 @@ Features:
 import io
 import re
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 
 import httpx
@@ -30,7 +30,7 @@ logger = structlog.get_logger()
 # =============================================================================
 
 
-class DataType(str, Enum):
+class DataType(StrEnum):
     NETZENTGELTE = "netzentgelte"
     HLZF = "hlzf"
 

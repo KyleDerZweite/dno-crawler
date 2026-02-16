@@ -2,13 +2,13 @@
 Pydantic schemas for DNO API endpoints.
 """
 
-from enum import Enum
+from enum import StrEnum
 from typing import Literal
 
 from pydantic import BaseModel, Field, field_validator
 
 
-class JobType(str, Enum):
+class JobType(StrEnum):
     """Job types for crawl triggering."""
 
     FULL = "full"  # Full pipeline (crawl + extract)
