@@ -101,9 +101,13 @@ docker-compose.yml.local
 
 ### Data Storage
 # Ignore downloaded files but keep directory structure
-data/downloads/**
-data/strategies/**
-data/extracted/**
+data/redis/
+data/postgres/
+data/frontend/
+data/downloads/
+data/samples/
+# exclude the raw Marktstammdatenregister dump (keep the rest of seed-data in git)
+data/bulk/
 !data/.gitkeep
 !data/**/.gitkeep
 
@@ -135,6 +139,7 @@ data/auth/*
 # Seed data - only keep parquet files, ignore large JSON/CSV
 data/seed-data/*.json
 data/seed-data/*.csv
+data/seed-data/merge_enriched_with_stats.py
 data/seed-data/convert.py
 
 # Sample/debug data - generated during extraction and crawl debugging

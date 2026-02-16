@@ -1,7 +1,7 @@
 """
 Database seeder for DNO data.
 
-Loads seed data from dnos_enriched.parquet and upserts into the database
+Loads seed data from parquet and upserts into the database
 using the hub-and-spoke model structure.
 
 This runs on application/worker startup.
@@ -25,7 +25,18 @@ logger = structlog.get_logger()
 
 # Path to seed data (relative to backend root)
 SEED_DATA_DIR = Path(__file__).parent.parent.parent.parent / "data" / "seed-data"
-SEED_PARQUET_PATH = SEED_DATA_DIR / "dnos_enriched.parquet"
+SEED_PARQUET_CANDIDATES = [
+    SEED_DATA_DIR / "dnos_enriched_with_stats.parquet",
+    SEED_DATA_DIR / "dnos_enriched.parquet",
+]
+
+
+def get_seed_parquet_path() -> Path | None:
+    """Get preferred existing seed parquet path (with-stats first)."""
+    for candidate in SEED_PARQUET_CANDIDATES:
+        if candidate.exists():
+            return candidate
+    return None
 
 
 def parse_date(date_str: str | None) -> datetime | None:
@@ -111,10 +122,11 @@ def load_seed_data() -> list[dict[str, Any]] | None:
     """
     import math
 
-    if not SEED_PARQUET_PATH.exists():
+    seed_parquet_path = get_seed_parquet_path()
+    if seed_parquet_path is None:
         return None
 
-    df = pd.read_parquet(SEED_PARQUET_PATH)
+    df = pd.read_parquet(seed_parquet_path)
     # Convert DataFrame to list of dicts
     records = df.to_dict("records")
 
@@ -155,10 +167,14 @@ async def seed_dnos(db: AsyncSession) -> tuple[int, int, int]:
     """
     seed_data = load_seed_data()
     if not seed_data:
-        logger.warning("No seed data file found", path=str(SEED_PARQUET_PATH))
+        logger.warning(
+            "No seed data file found",
+            candidates=[str(path) for path in SEED_PARQUET_CANDIDATES],
+        )
         return 0, 0, 0
 
-    logger.info("Loading seed data", path=str(SEED_PARQUET_PATH), count=len(seed_data))
+    seed_parquet_path = get_seed_parquet_path()
+    logger.info("Loading seed data", path=str(seed_parquet_path), count=len(seed_data))
 
     inserted = 0
     updated = 0

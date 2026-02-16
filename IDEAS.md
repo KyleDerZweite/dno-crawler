@@ -93,10 +93,69 @@ This document consolidates research, strategies, and improvement ideas for the D
 
 ---
 
-New Ideas, that need refinining:
-1. Markstadammdatenregister (see marktstammdatenregister/README.md)
-2. Add a multi year option, that shows how the Markstadammdaten change / develop over the years, so that the user can get insights into that. So never override, only extend
-3. In general maybe a versioning so that even after manually editing or rerunning a job u can see previous versions, like a git just in postgre db (need to check and refine how that could work)
-4. OpenStreetMap, for Geo-Location, without relying on the VNB digital API for this step!? Therefore reduce relience on other services and buildup a geo-map in the db (maybe even pre-calculate a bit so the lookup is faster then, gotta see)
-5. Automatic Crawler, a job that if the service is idle queues a new crawl job for a DNO that is the most relevant (and hase not full coverage), relevance can / will be able to be calculated via the Markstammdaten. Goal would be to after time, get most dno's crawler and then accessible, without overloading the service host and without getting the IP flagged (/blocked, because of spam/bot what ever)
+## 6. Refined Backlog Tasks
+
+### Completed
+
+- [x] **TASK-001 MaStR Baseline Integration**
+	- **Status:** Done
+	- **Outcome:** MaStR source import and backend linkage are implemented.
+	- **Reference:** `marktstammdatenregister/README.md`
+
+### Planned
+
+- [ ] **TASK-002 MaStR Multi-Year History (Append-Only)**
+	- **Goal:** Track MaStR changes over time without overwriting historical records.
+	- **Scope:**
+		- Introduce snapshot/version fields for MaStR imports.
+		- Store each import batch as append-only records.
+		- Add frontend comparison view for year-over-year deltas.
+	- **Deliverables:**
+		- DB migration for versioned MaStR snapshots.
+		- Import pipeline update preserving historical entries.
+		- API endpoint for historical series per DNO.
+	- **Acceptance Criteria:**
+		- Re-importing MaStR data does not delete prior versions.
+		- User can compare at least two periods for one DNO.
+
+- [ ] **TASK-003 Data Versioning for Manual Edits and Re-Runs**
+	- **Goal:** Provide auditable history for extracted and manually edited records.
+	- **Scope:**
+		- Version netzentgelte and HLZF records on edit and re-extraction.
+		- Persist change metadata (who, when, source, reason).
+		- Add API support for viewing and diffing record versions.
+	- **Deliverables:**
+		- Version tables and triggers or application-level version writes.
+		- UI panel showing change history and rollback candidate selection.
+	- **Acceptance Criteria:**
+		- Every update creates an immutable version entry.
+		- Version history is queryable and visible in UI.
+
+- [ ] **TASK-004 OpenStreetMap-Based Geo Resolution**
+	- **Goal:** Reduce dependency on VNB Digital for geolocation and lookup.
+	- **Scope:**
+		- Build optional OSM-based geospatial lookup path.
+		- Cache/precompute lookup artifacts for fast runtime queries.
+		- Keep VNB Digital as fallback/validation source.
+	- **Deliverables:**
+		- Geospatial ingestion job and indexed lookup table.
+		- Resolver service abstraction with provider strategy.
+		- Benchmark report for lookup latency and coverage.
+	- **Acceptance Criteria:**
+		- System can resolve addresses through OSM path for supported regions.
+		- Fallback to VNB path works when OSM resolution confidence is low.
+
+- [ ] **TASK-005 Idle-Time Autonomous Crawl Scheduler**
+	- **Goal:** Automatically crawl highest-value DNOs when workers are idle.
+	- **Scope:**
+		- Define relevance score (coverage gap, data staleness, MaStR priority signals).
+		- Queue jobs only within safe concurrency/rate limits.
+		- Include anti-abuse protections to avoid IP blocking.
+	- **Deliverables:**
+		- Scheduler worker/cron job.
+		- Priority scoring module with explainable factors.
+		- Guardrails for host budget and crawl politeness.
+	- **Acceptance Criteria:**
+		- Scheduler enqueues jobs only when idle threshold is met.
+		- Crawl throughput increases without elevated block/protection incidents.
  
