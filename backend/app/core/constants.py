@@ -13,17 +13,19 @@ from typing import Literal
 # =============================================================================
 
 # Standard German grid voltage levels in order from highest to lowest
-VOLTAGE_LEVELS = ("HS", "HS/MS", "MS", "MS/NS", "NS")
+VOLTAGE_LEVELS = ("HöS", "HöS/HS", "HS", "HS/MS", "MS", "MS/NS", "NS")
 
 # Type for voltage level
-VoltageLevel = Literal["HS", "HS/MS", "MS", "MS/NS", "NS"]
+VoltageLevel = Literal["HöS", "HöS/HS", "HS", "HS/MS", "MS", "MS/NS", "NS"]
 
 # Display labels for voltage levels
 VOLTAGE_LEVEL_LABELS = {
+    "HöS": "Höchstspannung",
+    "HöS/HS": "Umspannung HS/HöS",
     "HS": "Hochspannung",
-    "HS/MS": "Hochspannung / Mittelspannung",
+    "HS/MS": "Umspannung MS/HS",
     "MS": "Mittelspannung",
-    "MS/NS": "Mittelspannung / Niederspannung",
+    "MS/NS": "Umspannung NS/MS",
     "NS": "Niederspannung",
 }
 
@@ -63,6 +65,8 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "umspannung hoch-/mittelspannung": "HS/MS",
     "umspannung hoch -/mittelspannung": "HS/MS",
     "umspannung hs/ms": "HS/MS",
+    "umspannung ms/hs": "HS/MS",
+    "ms/hs": "HS/MS",
     "umspannung zur mittelspannung": "HS/MS",
     "aushs": "HS/MS",
     "hs/ms": "HS/MS",
@@ -74,6 +78,8 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "umspannung mittel-/niederspannung": "MS/NS",
     "umspannung mittel -/niederspannung": "MS/NS",
     "umspannung ms/ns": "MS/NS",
+    "umspannung ns/ms": "MS/NS",
+    "ns/ms": "MS/NS",
     "umspannung zur niederspannung": "MS/NS",
     "ausms": "MS/NS",
     "ms/ns": "MS/NS",
@@ -86,8 +92,10 @@ VOLTAGE_LEVEL_ALIASES: dict[str, str] = {
     "hös": "HöS",
     "umspannung höchst-/hochspannung": "HöS/HS",
     "umspannung hös/hs": "HöS/HS",
+    "umspannung hs/hös": "HöS/HS",
     "aushös": "HöS/HS",
     "hös/hs": "HöS/HS",
+    "hs/hös": "HöS/HS",
 }
 
 # Standard voltage levels for validation

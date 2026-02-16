@@ -15,6 +15,7 @@ that choose the best value from available sources.
 """
 
 from datetime import datetime
+from decimal import Decimal
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
@@ -23,6 +24,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    Numeric,
     String,
 )
 from sqlalchemy.dialects.postgresql import JSON
@@ -101,6 +103,32 @@ class DNOMastrData(Base, TimestampMixin):
     last_synced_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    # MaStR statistics
+    connection_points_total: Mapped[int | None] = mapped_column(Integer)
+    connection_points_by_level: Mapped[dict | None] = mapped_column(JSON)
+    connection_points_ns: Mapped[int | None] = mapped_column(Integer)
+    connection_points_ms: Mapped[int | None] = mapped_column(Integer)
+    connection_points_hs: Mapped[int | None] = mapped_column(Integer)
+    connection_points_hoe: Mapped[int | None] = mapped_column(Integer)
+
+    networks_count: Mapped[int | None] = mapped_column(Integer)
+    has_customers: Mapped[bool | None] = mapped_column(Boolean)
+    closed_distribution_network: Mapped[bool | None] = mapped_column(Boolean)
+
+    total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    solar_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    wind_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    storage_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    biomass_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    hydro_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+    solar_units: Mapped[int | None] = mapped_column(Integer)
+    wind_units: Mapped[int | None] = mapped_column(Integer)
+    storage_units: Mapped[int | None] = mapped_column(Integer)
+
+    stats_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    stats_data_quality: Mapped[str | None] = mapped_column(String(20))
 
     # Relationship
     dno: Mapped["DNOModel"] = relationship(back_populates="mastr_data")

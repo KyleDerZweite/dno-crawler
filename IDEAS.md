@@ -90,3 +90,13 @@ This document consolidates research, strategies, and improvement ideas for the D
 | Netztransparenz.de | All 800 DNOs, modern UX |
 
 **Our Moat:** Open source + AI extraction + community
+
+---
+
+New Ideas, that need refinining:
+1. Markstadammdatenregister (see marktstammdatenregister/README.md)
+2. Add a multi year option, that shows how the Markstadammdaten change / develop over the years, so that the user can get insights into that. So never override, only extend
+3. In general maybe a versioning so that even after manually editing or rerunning a job u can see previous versions, like a git just in postgre db (need to check and refine how that could work)
+4. OpenStreetMap, for Geo-Location, without relying on the VNB digital API for this step!? Therefore reduce relience on other services and buildup a geo-map in the db (maybe even pre-calculate a bit so the lookup is faster then, gotta see)
+5. Automatic Crawler, a job that if the service is idle queues a new crawl job for a DNO that is the most relevant (and hase not full coverage), relevance can / will be able to be calculated via the Markstammdaten. Goal would be to after time, get most dno's crawler and then accessible, without overloading the service host and without getting the IP flagged (/blocked, because of spam/bot what ever)
+ 

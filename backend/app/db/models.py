@@ -119,6 +119,8 @@ class DNOModel(Base, TimestampMixin):
     primary_bdew_code: Mapped[str | None] = mapped_column(
         String(20), index=True
     )  # Netzbetreiber code
+    connection_points_count: Mapped[int | None] = mapped_column(Integer)
+    total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
     # -------------------------------------------------------------------------
     # Operational Status
@@ -292,6 +294,39 @@ class DNOModel(Base, TimestampMixin):
         if self.has_bdew:
             sources.append("bdew")
         return sources
+
+    @property
+    def stats_available(self) -> bool:
+        """Check if MaStR statistics are available."""
+        return self.mastr_data is not None and self.mastr_data.connection_points_total is not None
+
+    @property
+    def display_capacity(self) -> dict[str, float] | None:
+        """Get capacity breakdown for display."""
+        if not self.mastr_data or self.mastr_data.total_capacity_mw is None:
+            return None
+        return {
+            "total_mw": float(self.mastr_data.total_capacity_mw),
+            "solar_mw": float(self.mastr_data.solar_capacity_mw or 0),
+            "wind_mw": float(self.mastr_data.wind_capacity_mw or 0),
+            "storage_mw": float(self.mastr_data.storage_capacity_mw or 0),
+            "other_mw": float(
+                (self.mastr_data.biomass_capacity_mw or 0) + (self.mastr_data.hydro_capacity_mw or 0)
+            ),
+        }
+
+    @property
+    def display_voltage_distribution(self) -> dict[str, int] | None:
+        """Get voltage level distribution for display."""
+        if not self.mastr_data or self.mastr_data.connection_points_total is None:
+            return None
+        return {
+            "total": self.mastr_data.connection_points_total,
+            "ns": self.mastr_data.connection_points_ns or 0,
+            "ms": self.mastr_data.connection_points_ms or 0,
+            "hs": self.mastr_data.connection_points_hs or 0,
+            "hoe": self.mastr_data.connection_points_hoe or 0,
+        }
 
 
 # ==============================================================================

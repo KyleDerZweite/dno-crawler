@@ -32,6 +32,7 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.constants import normalize_voltage_level
 from app.db.models import CrawlJobModel, DNOSourceProfile, HLZFModel, NetzentgelteModel
 from app.jobs.steps.base import BaseStep
 from app.services.pattern_learner import PatternLearner
@@ -183,64 +184,13 @@ class FinalizeStep(BaseStep):
             return None
 
     def _normalize_voltage_level(self, raw: str) -> str:
-        """
-        Normalize voltage level names to a consistent abbreviated format.
-
-        Mappings:
-        - Hochspannung, HöS, HS -> HS
-        - Hochspannung mit Umspannung auf MS, HS/MS, Umspannung Hoch-/Mittelspannung, Umspannung zur Mittelspannung -> HS/MS
-        - Mittelspannung, MS -> MS
-        - Mittelspannung mit Umspannung auf NS, MS/NS, Umspannung Mittel-/Niederspannung, Umspannung zur Niederspannung -> MS/NS
-        - Niederspannung, NS -> NS
-        - Höchstspannung -> HöS (rarely used, keep as is)
-        """
-        raw = raw.strip()
-        # Normalize newlines to spaces (pdfplumber sometimes splits across lines)
-        raw = raw.replace("\n", " ").replace("\r", " ")
-        raw = " ".join(raw.split())  # Normalize whitespace
-        raw_lower = raw.lower()
-
-        # Already abbreviated - clean up spaces
-        if raw in ("HS", "MS", "NS", "HöS"):
-            return raw
-        if raw in ("HS/MS", "MS/NS"):
-            return raw
-
-        # Check for Umspannung (Transformer) levels first (most specific)
-        # "Umspannung zur X" means the transformation FROM the higher level TO X
-        # So "Umspannung zur Mittelspannung" = HS/MS (from HS to MS)
-        # And "Umspannung zur Niederspannung" = MS/NS (from MS to NS)
-        if "umspannung" in raw_lower:
-            # "Umspannung zur Mittelspannung" - transformation ending at MS = HS/MS
-            if "zur mittelspannung" in raw_lower or "zur ms" in raw_lower:
-                return "HS/MS"
-            # "Umspannung zur Niederspannung" - transformation ending at NS = MS/NS
-            if "zur niederspannung" in raw_lower or "zur ns" in raw_lower:
-                return "MS/NS"
-            # Generic Umspannung with both levels mentioned
-            if ("hoch" in raw_lower and "mittel" in raw_lower) or "hs/ms" in raw_lower:
-                return "HS/MS"
-            if ("mittel" in raw_lower and "nieder" in raw_lower) or "ms/ns" in raw_lower:
-                return "MS/NS"
-
-        # Check for slash notation (explicit transformation levels)
-        if "/" in raw_lower or "hs/ms" in raw_lower or "ms/ns" in raw_lower:
-            if ("hoch" in raw_lower and "mittel" in raw_lower) or "hs/ms" in raw_lower:
-                return "HS/MS"
-            if ("mittel" in raw_lower and "nieder" in raw_lower) or "ms/ns" in raw_lower:
-                return "MS/NS"
-
-        # Check for single levels (HS, MS, NS) - only if NOT Umspannung
-        if "hoch" in raw_lower or "hs" in raw_lower.split():
-            return "HS"
-        if "mittel" in raw_lower or "ms" in raw_lower.split():
-            return "MS"
-        if "nieder" in raw_lower or "ns" in raw_lower.split():
-            return "NS"
-
-        # Fallback: return cleaned up version
-        logger.warning("unknown_voltage_level", raw=raw)
-        return raw.strip()
+        """Normalize voltage level via shared canonical backend mapping."""
+        cleaned = " ".join(raw.replace("\n", " ").replace("\r", " ").split()).strip()
+        normalized = normalize_voltage_level(cleaned)
+        if normalized:
+            return normalized
+        logger.warning("unknown_voltage_level", raw=cleaned)
+        return cleaned
 
     def _normalize_hlzf_time(self, value: str | None) -> str | None:
         """

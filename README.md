@@ -80,6 +80,31 @@ The system aggregates DNO metadata from three authoritative sources:
 
 VNB Digital provides real-time lookups. MaStR data requires periodic manual export from the Bundesnetzagentur portal due to API access restrictions. BDEW codes are retrieved by reverse-engineering the JTables jQuery plugin requests used by the BDEW public registry interface.
 
+## MaStR Pipeline (Current Workflow)
+
+The current MaStR module lives in `marktstammdatenregister/` and is used as an offline transformation/import pipeline.
+
+Detailed instructions: `marktstammdatenregister/README.md`
+
+Quick start:
+
+```bash
+# 1) Transform MaStR XML export to JSON stats (from repo root)
+python marktstammdatenregister/transform_mastr.py \
+   --data-dir ./marktstammdatenregister/data \
+   --output ./marktstammdatenregister/dno_stats.json
+
+# 2) Apply DB migration and import (from backend/)
+cd backend
+alembic upgrade head
+python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json --dry-run
+python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json
+```
+
+Notes:
+- `dno_stats.json`, `.csv`, and raw export files are local artifacts and not meant to be committed.
+- MaStR connection points are stored with canonical 7-level distribution and legacy aggregate compatibility fields.
+
 ### Database Schema (Core Entities)
 
 | Table | Purpose |

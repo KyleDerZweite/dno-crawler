@@ -8,6 +8,7 @@ This runs on application/worker startup.
 """
 
 from datetime import UTC, datetime
+from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,68 @@ def parse_date(date_str: str | None) -> datetime | None:
         return datetime.fromisoformat(date_str)
     except ValueError:
         return None
+
+
+def parse_decimal(value: Any) -> Decimal | None:
+    """Parse numeric values to Decimal."""
+    if value is None or value == "":
+        return None
+    try:
+        return Decimal(str(value))
+    except (ArithmeticError, ValueError, TypeError):
+        return None
+
+
+def _normalize_connection_points(connection_points: dict[str, Any]) -> dict[str, int | None]:
+    """Normalize MaStR connection-point buckets from legacy or canonical formats."""
+    by_voltage = connection_points.get("by_voltage") or {}
+    by_canonical = connection_points.get("by_canonical_level") or {}
+
+    if by_canonical:
+        level_ns = by_canonical.get("NS") or 0
+        level_ns_ms = by_canonical.get("Umspannung NS/MS") or by_canonical.get("MS/NS") or 0
+        level_ms = by_canonical.get("MS") or 0
+        level_ms_hs = by_canonical.get("Umspannung MS/HS") or by_canonical.get("HS/MS") or 0
+        level_hs = by_canonical.get("HS") or 0
+        level_hs_hoe = by_canonical.get("Umspannung HS/HöS") or by_canonical.get("HöS/HS") or 0
+        level_hoe = by_canonical.get("HöS") or 0
+        ns = level_ns + level_ns_ms
+        ms = level_ms + level_ms_hs
+        hs = level_hs + level_hs_hoe
+        hoe = level_hoe
+        return {
+            "total": connection_points.get("total"),
+            "by_level": {
+                "NS": level_ns,
+                "Umspannung NS/MS": level_ns_ms,
+                "MS": level_ms,
+                "Umspannung MS/HS": level_ms_hs,
+                "HS": level_hs,
+                "Umspannung HS/HöS": level_hs_hoe,
+                "HöS": level_hoe,
+            },
+            "ns": ns,
+            "ms": ms,
+            "hs": hs,
+            "hoe": hoe,
+        }
+
+    return {
+        "total": connection_points.get("total"),
+        "by_level": {
+            "NS": by_voltage.get("ns") or 0,
+            "Umspannung NS/MS": 0,
+            "MS": by_voltage.get("ms") or 0,
+            "Umspannung MS/HS": 0,
+            "HS": by_voltage.get("hs") or 0,
+            "Umspannung HS/HöS": 0,
+            "HöS": by_voltage.get("hoe") or 0,
+        },
+        "ns": by_voltage.get("ns"),
+        "ms": by_voltage.get("ms"),
+        "hs": by_voltage.get("hs"),
+        "hoe": by_voltage.get("hoe"),
+    }
 
 
 def load_seed_data() -> list[dict[str, Any]] | None:
@@ -151,11 +214,8 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     existing_dno = result.scalar_one_or_none()
 
     if existing_dno:
-        # For existing DNOs with MaStR data, we still want to update VNB/BDEW
-        # We only skip the full update if everything is already present
         dno = existing_dno
         action = "updated"
-        skip_mastr = existing_dno.mastr_data is not None
     else:
         # Create new DNO
         dno = DNOModel(
@@ -169,7 +229,6 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         db.add(dno)
         await db.flush()  # Get the ID
         action = "inserted"
-        skip_mastr = False
 
     # Update core fields (resolved values)
     dno.name = record["name"]
@@ -177,9 +236,8 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     dno.region = record.get("region")
     dno.is_active = record.get("is_active", True)
 
-    # Create/update MaStR source data (skip if already exists)
-    if not skip_mastr:
-        await upsert_mastr_data(db, dno, record)
+    # Create/update MaStR source data
+    await upsert_mastr_data(db, dno, record)
 
     # Create VNB data if present in enriched record
     if record.get("vnb_id"):
@@ -253,6 +311,51 @@ async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, A
     mastr.activity_start = parse_date(record.get("activity_start"))
     mastr.activity_end = parse_date(record.get("activity_end"))
     mastr.last_synced_at = datetime.now(UTC)
+
+    stats = record.get("stats")
+    if isinstance(stats, dict):
+        connection_points = stats.get("connection_points") or {}
+        normalized_cp = _normalize_connection_points(connection_points)
+
+        mastr.connection_points_total = normalized_cp.get("total")
+        mastr.connection_points_by_level = normalized_cp.get("by_level")
+        mastr.connection_points_ns = normalized_cp.get("ns")
+        mastr.connection_points_ms = normalized_cp.get("ms")
+        mastr.connection_points_hs = normalized_cp.get("hs")
+        mastr.connection_points_hoe = normalized_cp.get("hoe")
+
+        networks = stats.get("networks") or {}
+        mastr.networks_count = networks.get("count")
+        mastr.has_customers = networks.get("has_customers")
+        mastr.closed_distribution_network = networks.get("closed_distribution_network")
+
+        capacity = stats.get("installed_capacity_mw") or {}
+        mastr.total_capacity_mw = parse_decimal(capacity.get("total"))
+        mastr.solar_capacity_mw = parse_decimal(capacity.get("solar"))
+        mastr.wind_capacity_mw = parse_decimal(capacity.get("wind"))
+        mastr.storage_capacity_mw = parse_decimal(capacity.get("storage"))
+        mastr.biomass_capacity_mw = parse_decimal(capacity.get("biomass"))
+        mastr.hydro_capacity_mw = parse_decimal(capacity.get("hydro"))
+
+        units = stats.get("unit_counts") or {}
+        mastr.solar_units = units.get("solar")
+        mastr.wind_units = units.get("wind")
+        mastr.storage_units = units.get("storage")
+
+        stats_quality = stats.get("data_quality")
+        if isinstance(stats_quality, str) and stats_quality:
+            mastr.stats_data_quality = stats_quality
+        else:
+            has_full_data = stats.get("has_full_data")
+            if has_full_data is True:
+                mastr.stats_data_quality = "full"
+            elif has_full_data is False:
+                mastr.stats_data_quality = "partial"
+
+        mastr.stats_computed_at = parse_date(stats.get("computed_at")) or datetime.now(UTC)
+
+        dno.connection_points_count = mastr.connection_points_total
+        dno.total_capacity_mw = mastr.total_capacity_mw
 
 
 async def upsert_vnb_data(db: AsyncSession, dno: DNOModel, record: dict[str, Any]) -> None:

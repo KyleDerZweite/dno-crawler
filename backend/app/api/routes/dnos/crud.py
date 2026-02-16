@@ -21,6 +21,66 @@ from .utils import slugify
 router = APIRouter()
 
 
+def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
+    """Build MaStR statistics payload for API responses."""
+    mastr = dno.mastr_data
+    if not mastr:
+        return None
+
+    has_stats = any(
+        value is not None
+        for value in (
+            mastr.connection_points_total,
+            mastr.networks_count,
+            mastr.total_capacity_mw,
+            mastr.solar_units,
+            mastr.wind_units,
+            mastr.storage_units,
+            mastr.stats_data_quality,
+            mastr.stats_computed_at,
+        )
+    )
+    if not has_stats:
+        return None
+
+    return {
+        "connection_points": {
+            "total": mastr.connection_points_total,
+            "by_canonical_level": mastr.connection_points_by_level,
+            "by_voltage": {
+                "ns": mastr.connection_points_ns,
+                "ms": mastr.connection_points_ms,
+                "hs": mastr.connection_points_hs,
+                "hoe": mastr.connection_points_hoe,
+            },
+        },
+        "networks": {
+            "count": mastr.networks_count,
+            "has_customers": mastr.has_customers,
+            "closed_distribution_network": mastr.closed_distribution_network,
+        },
+        "installed_capacity_mw": {
+            "total": float(mastr.total_capacity_mw) if mastr.total_capacity_mw is not None else None,
+            "solar": float(mastr.solar_capacity_mw) if mastr.solar_capacity_mw is not None else None,
+            "wind": float(mastr.wind_capacity_mw) if mastr.wind_capacity_mw is not None else None,
+            "storage": float(mastr.storage_capacity_mw)
+            if mastr.storage_capacity_mw is not None
+            else None,
+            "biomass": float(mastr.biomass_capacity_mw)
+            if mastr.biomass_capacity_mw is not None
+            else None,
+            "hydro": float(mastr.hydro_capacity_mw) if mastr.hydro_capacity_mw is not None else None,
+        },
+        "unit_counts": {
+            "solar": mastr.solar_units,
+            "wind": mastr.wind_units,
+            "storage": mastr.storage_units,
+        },
+        "data_quality": mastr.stats_data_quality,
+        "computed_at": mastr.stats_computed_at.isoformat() if mastr.stats_computed_at else None,
+    }
+
+
 @router.get("/search-vnb")
 async def search_vnb(
     db: Annotated[AsyncSession, Depends(get_db)],
@@ -341,7 +401,7 @@ async def list_dnos_detailed(
         per_page = 50  # Default to 50 if invalid
 
     # Base query
-    query = select(DNOModel)
+    query = select(DNOModel).options(selectinload(DNOModel.mastr_data))
 
     # Apply search filter if provided
     if q:
@@ -586,6 +646,7 @@ async def list_dnos_detailed(
             dno_data["stats"] = {
                 "years_available": [],
                 "last_crawl": None,
+                "mastr": _build_mastr_stats_payload(dno),
             }
 
         data.append(dno_data)
@@ -787,6 +848,7 @@ async def get_dno_details(
             "mastr_data": mastr_data,
             "vnb_data": vnb_data,
             "bdew_data": bdew_data,
+            "stats": _build_mastr_stats_payload(dno),
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },
