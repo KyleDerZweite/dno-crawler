@@ -38,12 +38,18 @@ async def db_session() -> AsyncGenerator[AsyncSession, None]:
 
 @pytest_asyncio.fixture(scope="function")
 async def client() -> AsyncGenerator[AsyncClient, None]:
-    """Create async HTTP client for testing."""
+    """Create async HTTP client for testing with a fresh database."""
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+
     async with AsyncClient(
         transport=ASGITransport(app=app),
         base_url="http://test",
     ) as ac:
         yield ac
+
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
 
 
 @pytest.fixture
