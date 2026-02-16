@@ -15,6 +15,7 @@ import LandingPage from "./pages/LandingPage";
 import LogoutPage from "./pages/LogoutPage";
 import {
   Overview,
+  Mastr,
   DataExplorer,
   Analysis,
   SourceFiles,
@@ -86,6 +87,7 @@ function App() {
         <Route path="dnos/:id" element={<ErrorBoundary inline><DNODetailPage /></ErrorBoundary>}>
           <Route index element={<Navigate to="overview" replace />} />
           <Route path="overview" element={<ErrorBoundary inline><Overview /></ErrorBoundary>} />
+          <Route path="mastr" element={<ErrorBoundary inline><Mastr /></ErrorBoundary>} />
           <Route path="data" element={<ErrorBoundary inline><DataExplorer /></ErrorBoundary>} />
           <Route path="analysis" element={<ErrorBoundary inline><Analysis /></ErrorBoundary>} />
           <Route path="files" element={<ErrorBoundary inline><SourceFiles /></ErrorBoundary>} />

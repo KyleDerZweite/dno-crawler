@@ -211,6 +211,47 @@ export interface BdewData {
   last_synced_at?: string;
 }
 
+export interface MastrConnectionPointsStats {
+  total?: number | null;
+  by_canonical_level?: Record<string, number | null> | null;
+  by_voltage?: {
+    ns?: number | null;
+    ms?: number | null;
+    hs?: number | null;
+    hoe?: number | null;
+  } | null;
+}
+
+export interface MastrNetworksStats {
+  count?: number | null;
+  has_customers?: boolean | null;
+  closed_distribution_network?: boolean | null;
+}
+
+export interface MastrInstalledCapacityStats {
+  total?: number | null;
+  solar?: number | null;
+  wind?: number | null;
+  storage?: number | null;
+  biomass?: number | null;
+  hydro?: number | null;
+}
+
+export interface MastrUnitCountsStats {
+  solar?: number | null;
+  wind?: number | null;
+  storage?: number | null;
+}
+
+export interface MastrStats {
+  connection_points?: MastrConnectionPointsStats | null;
+  networks?: MastrNetworksStats | null;
+  installed_capacity_mw?: MastrInstalledCapacityStats | null;
+  unit_counts?: MastrUnitCountsStats | null;
+  data_quality?: string | null;
+  computed_at?: string | null;
+}
+
 export interface DNO {
   id: string;
   slug: string;
@@ -274,6 +315,7 @@ export interface DNO {
   mastr_data?: MastrData;
   vnb_data?: VnbData;
   bdew_data?: BdewData[];
+  stats?: MastrStats | null;
   // Stats
   data_points_count?: number;
   netzentgelte_count?: number;

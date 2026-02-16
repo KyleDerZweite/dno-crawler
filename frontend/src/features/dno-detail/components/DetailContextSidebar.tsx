@@ -69,6 +69,7 @@ export function DetailContextSidebar({
 }: DetailContextSidebarProps) {
     const navItems: NavItem[] = [
         { id: "overview", label: "Overview", icon: LayoutDashboard, path: `${basePath}/overview` },
+        { id: "mastr", label: "MaStR", icon: Database, path: `${basePath}/mastr` },
         { id: "data", label: "Data Explorer", icon: TableIcon, path: `${basePath}/data` },
         { id: "analysis", label: "Analysis", icon: BarChart3, path: `${basePath}/analysis` },
         { id: "files", label: "Source Files", icon: FileText, path: `${basePath}/files`, count: filesCount },

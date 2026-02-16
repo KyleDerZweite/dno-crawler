@@ -29,6 +29,7 @@ import type { DNODetailContext } from "@/features/dno-detail/views";
 // Nav item labels for breadcrumbs
 const navLabels: Record<string, string> = {
     overview: "Overview",
+    mastr: "MaStR",
     data: "Data Explorer",
     analysis: "Analysis",
     files: "Source Files",

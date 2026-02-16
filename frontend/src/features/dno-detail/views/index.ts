@@ -3,6 +3,7 @@
  */
 
 export { Overview } from "./Overview";
+export { Mastr } from "./Mastr";
 export { DataExplorer } from "./DataExplorer";
 export { Analysis } from "./Analysis";
 export { SourceFiles } from "./SourceFiles";

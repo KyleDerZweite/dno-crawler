@@ -82,6 +82,8 @@ function getStatusDisplay(status: string, blockedReason?: string | null) {
 
 export function Overview() {
     const { dno, numericId } = useOutletContext<DNODetailContext>();
+    const mastrStats = dno.stats;
+    const hasMastrSummary = !!dno.mastr_data || !!mastrStats;
 
     // Lightweight data for overview stats
     const { data: dataResponse } = useQuery({
@@ -241,6 +243,54 @@ export function Overview() {
                     </div>
                 </Card>
             </div>
+
+            {/* Compact MaStR Summary */}
+            <Card className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                    <div>
+                        <h3 className="text-sm font-semibold">MaStR Summary</h3>
+                        <p className="text-xs text-muted-foreground">Key MaStR KPIs at a glance</p>
+                    </div>
+                    <Badge variant={hasMastrSummary ? "default" : "secondary"} className={cn(hasMastrSummary && "bg-purple-500") }>
+                        {hasMastrSummary ? "Available" : "Not Available"}
+                    </Badge>
+                </div>
+
+                {hasMastrSummary ? (
+                    <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                        <div className="rounded-md border bg-muted/20 p-3">
+                            <dt className="text-xs text-muted-foreground">MaStR Number</dt>
+                            <dd className="font-medium mt-1">{dno.mastr_data?.mastr_nr || dno.mastr_nr || "-"}</dd>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 p-3">
+                            <dt className="text-xs text-muted-foreground">Connection Points</dt>
+                            <dd className="font-medium mt-1">
+                                {mastrStats?.connection_points?.total?.toLocaleString("de-DE") || "-"}
+                            </dd>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 p-3">
+                            <dt className="text-xs text-muted-foreground">Installed Capacity</dt>
+                            <dd className="font-medium mt-1">
+                                {mastrStats?.installed_capacity_mw?.total !== undefined &&
+                                mastrStats?.installed_capacity_mw?.total !== null
+                                    ? `${mastrStats.installed_capacity_mw.total.toLocaleString("de-DE", {
+                                        minimumFractionDigits: 2,
+                                        maximumFractionDigits: 2,
+                                    })} MW`
+                                    : "-"}
+                            </dd>
+                        </div>
+                        <div className="rounded-md border bg-muted/20 p-3">
+                            <dt className="text-xs text-muted-foreground">Data Quality</dt>
+                            <dd className="font-medium mt-1">{mastrStats?.data_quality || "-"}</dd>
+                        </div>
+                    </dl>
+                ) : (
+                    <p className="text-sm text-muted-foreground">
+                        No MaStR source or computed statistics linked to this DNO yet.
+                    </p>
+                )}
+            </Card>
 
             {/* Source Info */}
             <Card>
