@@ -47,6 +47,7 @@ The `docs/knowledge/` directory contains topic-specific reference files written 
 | `docs/knowledge/SEEDING.md` | Seed data pipeline: scripts, data files, stages, regeneration, runtime seeding |
 | `docs/knowledge/FRONTEND_PATTERNS.md` | TanStack Query v5 key factory, react-router-dom v7 routes, import patterns, abbreviations |
 | `docs/knowledge/LOGGING_DOMAIN.md` | DNO Crawler domain fields, complete wide event example, tail sampling, file references |
+| `docs/knowledge/DEPLOYMENT.md` | Production deploy: prerequisites, Podman quirks, Alembic migration generation, startup order, teardown |
 
 ## 4. Project Overview
 

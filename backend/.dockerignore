@@ -7,4 +7,4 @@ tests/
 *.md
 .git/
 data/
-alembic/versions/
+.venv/

@@ -1,0 +1,172 @@
+services:
+  # PostgreSQL Database
+  db:
+    image: postgres:16-alpine
+    container_name: dno-crawler-db-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dno}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-dno_crawler}
+      POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256"
+    volumes:
+      - ./data/postgres:/var/lib/postgresql/data:Z
+      - ./backend/scripts/init.sql:/docker-entrypoint-initdb.d/init.sql:ro,Z
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-dno} -d ${POSTGRES_DB:-dno_crawler}" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dno-crawler-prod
+
+  # Redis Cache & Job Queue
+  redis:
+    image: redis:7-alpine
+    container_name: dno-crawler-redis-prod
+    restart: unless-stopped
+    command: redis-server --appendonly yes
+    volumes:
+      - ./data/redis:/data:Z
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - dno-crawler-prod
+
+  # FastAPI Backend
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: dno-crawler-backend-prod
+    restart: unless-stopped
+    user: "0:0"  # Maps to host user in rootless Podman
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_PATH=/data
+      - ENVIRONMENT=production
+      - DEBUG=False
+      - CONTACT_EMAIL=${CONTACT_EMAIL}
+      - ZITADEL_CLIENT_ID=${ZITADEL_CLIENT_ID}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./data:/data:rw,z
+    healthcheck:
+      test: [ "CMD", "curl", "-f", "http://localhost:8000/api/health" ]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    networks:
+      - dno-crawler-prod
+
+  # Crawl Worker
+  worker-crawl:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: dno-crawler-worker-crawl-prod
+    restart: unless-stopped
+    user: "0:0"  # Maps to host user in rootless Podman
+    command: arq app.jobs.CrawlWorkerSettings
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_PATH=/data
+      - ENVIRONMENT=production
+      - USE_ALEMBIC_MIGRATIONS=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./data:/data:rw,z
+    networks:
+      - dno-crawler-prod
+
+  # Extract Worker
+  worker-extract:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.prod
+    container_name: dno-crawler-worker-extract-prod
+    restart: unless-stopped
+    user: "0:0"  # Maps to host user in rootless Podman
+    command: arq app.jobs.ExtractWorkerSettings
+    stop_signal: SIGINT
+    stop_grace_period: 30s
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://${POSTGRES_USER:-dno}:${POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-dno_crawler}
+      - REDIS_URL=redis://redis:6379/0
+      - STORAGE_PATH=/data
+      - ENVIRONMENT=production
+      - USE_ALEMBIC_MIGRATIONS=true
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./data:/data:rw,z
+    networks:
+      - dno-crawler-prod
+
+  # React Frontend + Nginx
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - VITE_API_URL=/api/v1
+        - VITE_ZITADEL_AUTHORITY=${VITE_ZITADEL_AUTHORITY}
+        - VITE_ZITADEL_CLIENT_ID=${VITE_ZITADEL_CLIENT_ID}
+        - VITE_ZITADEL_REDIRECT_URI=${VITE_ZITADEL_REDIRECT_URI}
+        - VITE_ZITADEL_POST_LOGOUT_URI=${VITE_ZITADEL_POST_LOGOUT_URI}
+    container_name: dno-crawler-frontend-prod
+    restart: unless-stopped
+    depends_on:
+      - backend
+    networks:
+      - dno-crawler-prod
+
+  # Newt / Pangolin Integration
+  newt:
+    image: fosrl/newt
+    container_name: dno-crawler-newt-prod
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      - PANGOLIN_ENDPOINT=${PANGOLIN_ENDPOINT}
+      - NEWT_ID=${NEWT_ID}
+      - NEWT_SECRET=${NEWT_SECRET}
+    depends_on:
+      - frontend
+    networks:
+      - dno-crawler-prod
+
+networks:
+  dno-crawler-prod:
+    driver: bridge

@@ -87,7 +87,7 @@ public/dist/
 ### Docker
 # Local override files often aren't meant to be checked in
 docker-compose.override.yml
-docker-compose.*.yml
+docker-compose.local.yml
 Dockerfile*~
 
 # Ignore container metadata
