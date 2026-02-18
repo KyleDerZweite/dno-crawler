@@ -158,4 +158,18 @@ This document consolidates research, strategies, and improvement ideas for the D
 	- **Acceptance Criteria:**
 		- Scheduler enqueues jobs only when idle threshold is met.
 		- Crawl throughput increases without elevated block/protection incidents.
- 
+
+- [ ] **TASK-006 Automatic Metadata Gap Filler**
+	- **Goal:** Automatically discover and fill missing DNO metadata (website, domain, robots.txt status, sitemap URLs).
+	- **Scope:**
+		- Scan DNOs with missing website field.
+		- Use web search/MaStR data to find official domains.
+		- Pre-fetch and cache robots.txt, sitemap, Cloudflare status for all known domains.
+		- Run as background enrichment job during idle time.
+	- **Deliverables:**
+		- Background job/scheduler for metadata discovery.
+		- Integration with existing enrichment pipeline.
+		- Dashboard showing metadata completeness per DNO.
+	- **Acceptance Criteria:**
+		- DNOs with missing websites are flagged and auto-discovered where possible.
+		- robots.txt and sitemap data pre-cached for all crawlable DNOs.

@@ -1,43 +1,32 @@
 """
-Step 01: Discover
+Step 01: Discover (Data-Type Agnostic)
 
-Combined strategy and discovery step. Finds data sources via:
-1. Cached file (if exists) → Skip crawling
-2. Exact URL from profile → Try known URL with year substitution
-2.5. Sitemap discovery → Fast sitemap-based discovery via DiscoveryManager
-    - Uses DB-cached sitemap URLs when available (from DNO.sitemap_parsed_urls)
-    - Falls back to fetching fresh sitemap if cache is stale
-3. Learned patterns → Try top patterns on DNO domain
-4. BFS crawl → Full website crawl with keyword scoring
+Combined discovery step that finds candidate URLs for BOTH data types.
+No ContentVerifier gate: collects URLs purely by URL scoring.
 
-Content verification before accepting a candidate:
-- Verifies content matches expected data_type (netzentgelte vs hlzf)
-- Tries multiple candidates if first doesn't verify
-- Stores verification confidence and rejected candidates
+Strategy order:
+1. Cached files -- note existing files, still proceed for fresh data
+2. Exact URLs from profiles -- try patterns for both netzentgelte and hlzf
+3. Sitemap discovery -- combined keywords, identify parent pages
+4. Learned patterns -- try top patterns from PatternLearner
+5. BFS crawl -- start from sitemap-identified parent pages or root
 
 Output stored in job.context:
-- strategy: "use_cache" | "exact_url" | "sitemap_*" | "pattern_match" | "bfs_crawl"
-- found_url: URL of discovered data source
-- discovered_via_pattern: Which pattern found it (if pattern_match)
-- pages_crawled: Number of pages crawled (for metrics)
-- sitemap_urls_checked: Number of URLs checked from sitemap
-- verification_confidence: Confidence score from content verification
-- rejected_candidates: List of URLs that failed verification
+- candidate_urls: list of {url, score, source, file_type}
+- pages_crawled: number of pages crawled (for metrics)
+- parent_pages: sitemap-identified parent pages used as BFS seeds
 """
 
 import asyncio
-from pathlib import Path
-from urllib.parse import urljoin, urlparse
+from urllib.parse import urlparse
 
 import httpx
 import structlog
-from bs4 import BeautifulSoup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
 from app.db.models import CrawlJobModel, DNOModel
 from app.jobs.steps.base import BaseStep, StepError
-from app.services.content_verifier import ContentVerifier
 from app.services.discovery import DiscoveryManager
 from app.services.pattern_learner import PatternLearner
 from app.services.url_utils import DOCUMENT_EXTENSIONS, UrlProber
@@ -46,56 +35,49 @@ from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 
 logger = structlog.get_logger()
 
-# Maximum candidates to try before giving up
-MAX_CANDIDATES_TO_TRY = 5
+# Maximum candidates to collect across all strategies
+MAX_CANDIDATES = 30
 
-# Minimum confidence required to accept a candidate
-MIN_VERIFICATION_CONFIDENCE = 0.4
-
-# Timeout for BFS crawl (5 minutes) - prevents crawler from hanging indefinitely
+# Timeout for BFS crawl (5 minutes)
 BFS_CRAWL_TIMEOUT_SECONDS = 300
+
+# Parent page keywords for identifying BFS seed pages from sitemap
+_PARENT_PAGE_KEYWORDS = [
+    "downloads",
+    "veroeffentlichung",
+    "dokumente",
+    "service",
+    "netz",
+    "netzzugang",
+    "publikationen",
+]
 
 
 class DiscoverStep(BaseStep):
-    """Discover data source via BFS crawling or cached patterns."""
+    """Discover candidate URLs via data-type agnostic crawling."""
 
-    label = "Discovering Source"
-    description = "Finding data source via web crawling..."
+    label = "Discovering Sources"
+    description = "Finding candidate URLs for all data types..."
 
     async def run(self, db: AsyncSession, job: CrawlJobModel) -> str:
         ctx = job.context or {}
-        log = logger.bind(dno=ctx.get("dno_name"), data_type=job.data_type, year=job.year)
+        log = logger.bind(dno=ctx.get("dno_name"), year=job.year)
 
         # Initialize context fields
         ctx["pages_crawled"] = 0
-        ctx["needs_headless_review"] = False
-        ctx["discovered_via_pattern"] = None
-        ctx["verification_confidence"] = None
-        ctx["rejected_candidates"] = []
+        ctx["candidate_urls"] = []
+        ctx["parent_pages"] = []
 
-        # =========================================================================
-        # Strategy 1: Use cached file
-        # =========================================================================
-        if ctx.get("cached_file"):
-            ctx["strategy"] = "use_cache"
-            ctx["file_to_process"] = ctx["cached_file"]
-            job.context = ctx
-            await db.commit()
-            log.info("Using cached file", path=ctx["cached_file"])
-            return f"Strategy: USE_CACHE → {ctx['cached_file']}"
+        # Read crawl pass settings (for deepening support)
+        max_depth = ctx.get("max_depth", 3)
+        max_pages = ctx.get("max_pages", getattr(settings, "crawler_max_pages", 50))
+        crawl_pass = ctx.get("crawl_pass", 1)
 
-        # =========================================================================
-        # Check: If DNO is protected and no cached file, cancel gracefully
-        # =========================================================================
-        dno_crawlable = ctx.get("dno_crawlable", True)
-        if not dno_crawlable:
-            blocked_reason = ctx.get("crawl_blocked_reason", "unknown protection")
-            raise StepError(
-                f"Cancelled: Site is protected ({blocked_reason}) and no local file found "
-                f"for {job.data_type} {job.year}. Please upload the file manually."
-            )
+        dno_website = ctx.get("dno_website")
+        if not dno_website:
+            raise StepError(f"No website known for DNO {ctx.get('dno_name')}")
 
-        # Load DNO from DB to access cached sitemap data
+        # Load DNO from DB for sitemap cache
         dno = await db.get(DNOModel, job.dno_id)
 
         # Check sitemap cache with TTL (120 days)
@@ -105,26 +87,14 @@ class DiscoverStep(BaseStep):
 
             sitemap_ttl_days = 120
             cache_age = datetime.now(UTC) - dno.sitemap_fetched_at.replace(tzinfo=UTC)
-
             if cache_age < timedelta(days=sitemap_ttl_days):
                 cached_sitemap_urls = dno.sitemap_parsed_urls
-                log.info(
-                    "Using cached sitemap URLs",
-                    count=len(cached_sitemap_urls),
-                    age_days=cache_age.days,
-                )
-            else:
-                log.info(
-                    "Sitemap cache expired",
-                    age_days=cache_age.days,
-                    ttl_days=sitemap_ttl_days,
-                )
+                log.info("using_cached_sitemap", count=len(cached_sitemap_urls))
 
-        # Build User-Agent for non-BFS strategies (sitemap, pattern match)
+        # Build HTTP client
         initiator_ip = ctx.get("initiator_ip")
         user_agent = build_user_agent(initiator_ip)
 
-        # Create HTTP client with connection limits for all strategies
         async with httpx.AsyncClient(
             timeout=httpx.Timeout(connect=10.0, read=30.0, write=10.0, pool=10.0),
             headers={"User-Agent": user_agent},
@@ -138,569 +108,200 @@ class DiscoverStep(BaseStep):
         ) as client:
             prober = UrlProber(client)
             learner = PatternLearner()
-            verifier = ContentVerifier(client)
-
-            # Get allowed domains from DNO website
             allowed_domains = self._get_allowed_domains(ctx)
+            candidates: list[dict] = []
+            seen_urls: set[str] = set()
 
-            # =====================================================================
-            # Strategy 2: Try exact URL from profile (with year substitution)
-            # =====================================================================
-            if ctx.get("profile_url_pattern"):
-                pattern = ctx["profile_url_pattern"]
-                exact_url = pattern.replace("{year}", str(job.year))
-
-                log.info("Trying exact URL from profile", url=exact_url[:80])
-
-                is_valid, content_type, final_url, _ = await prober.probe(
-                    exact_url,
-                    allowed_domains=allowed_domains,
+            def _add_candidate(url: str, score: float, source: str, file_type: str = "unknown"):
+                """Add a candidate URL if not already seen."""
+                if url in seen_urls or len(candidates) >= MAX_CANDIDATES:
+                    return
+                seen_urls.add(url)
+                candidates.append(
+                    {
+                        "url": url,
+                        "score": score,
+                        "source": source,
+                        "file_type": file_type,
+                    }
                 )
 
+            # =================================================================
+            # Strategy 1: Note cached files (don't skip, we want fresh data too)
+            # =================================================================
+            cached_files = ctx.get("cached_files", {})
+            if cached_files:
+                log.info("cached_files_noted", types=list(cached_files.keys()))
+
+            # =================================================================
+            # Strategy 2: Exact URLs from profiles (both types)
+            # =================================================================
+            profiles = ctx.get("profiles", {})
+            for dt, profile in profiles.items():
+                url_pattern = profile.get("url_pattern")
+                if not url_pattern:
+                    continue
+
+                exact_url = url_pattern.replace("{year}", str(job.year))
+                log.debug("trying_profile_url", data_type=dt, url=exact_url[:80])
+
+                is_valid, _ct, final_url, _ = await prober.probe(
+                    exact_url, allowed_domains=allowed_domains
+                )
                 if is_valid and final_url:
-                    # Verify content matches expected data type
-                    verification = await verifier.verify_url(final_url, job.data_type, job.year)
+                    ft = self._detect_file_type(final_url)
+                    _add_candidate(final_url, 80.0, f"profile_{dt}", ft)
 
-                    if verification.is_verified:
-                        ctx["strategy"] = "exact_url"
-                        ctx["found_url"] = final_url
-                        ctx["found_content_type"] = content_type
-                        ctx["verification_confidence"] = verification.confidence
-                        job.context = ctx
-                        await db.commit()
-                        return f"Strategy: EXACT_URL → {final_url} (verified: {verification.confidence:.0%})"
-                    else:
-                        log.warning(
-                            "Exact URL failed verification",
-                            url=final_url[:60],
-                            detected=verification.detected_data_type,
-                            expected=job.data_type,
-                            confidence=verification.confidence,
-                        )
-                        ctx["rejected_candidates"].append(
-                            {
-                                "url": final_url,
-                                "reason": "content_verification_failed",
-                                "detected": verification.detected_data_type,
-                                "confidence": verification.confidence,
-                            }
-                        )
-                else:
-                    log.info("Exact URL failed, trying sitemap")
+            # =================================================================
+            # Strategy 3: Sitemap discovery (combined keywords)
+            # =================================================================
+            discovery = DiscoveryManager(client)
+            discovery_result = await discovery.discover(
+                base_url=dno_website,
+                data_type="all",
+                target_year=job.year,
+                sitemap_urls=cached_sitemap_urls,
+                max_candidates=20,
+            )
 
-            # =====================================================================
-            # Strategy 2.5: Sitemap-based discovery (fast, low-impact)
-            # =====================================================================
-            dno_website = ctx.get("dno_website")
-            if dno_website:
-                discovery = DiscoveryManager(client)
-
-                # Use DB-cached sitemap URLs if available
-                if cached_sitemap_urls:
-                    log.info(
-                        "Using cached sitemap URLs from DB",
-                        count=len(cached_sitemap_urls),
-                        website=dno_website[:50],
-                    )
-                else:
-                    log.info("Fetching fresh sitemap", website=dno_website[:50])
-
-                discovery_result = await discovery.discover(
-                    base_url=dno_website,
-                    data_type=job.data_type,
-                    target_year=job.year,
-                    sitemap_urls=cached_sitemap_urls,  # Pass cached URLs
-                    max_candidates=10,
+            parent_pages = []
+            if discovery_result.documents:
+                log.info(
+                    "sitemap_candidates",
+                    count=len(discovery_result.documents),
+                    strategy=discovery_result.strategy.value,
                 )
+                for doc in discovery_result.documents:
+                    ft = self._detect_file_type(doc.url)
+                    _add_candidate(doc.url, doc.score, "sitemap", ft)
 
-                if discovery_result.documents:
-                    log.info(
-                        "Sitemap discovered candidates",
-                        count=len(discovery_result.documents),
-                        strategy=discovery_result.strategy.value,
-                    )
+                    # Identify parent pages for BFS seeding
+                    url_lower = doc.url.lower()
+                    if ft in ("html", "unknown") and any(
+                        kw in url_lower for kw in _PARENT_PAGE_KEYWORDS
+                    ):
+                        parent_pages.append(doc.url)
 
-                    # Try top candidates with verification
-                    for doc in discovery_result.documents[:MAX_CANDIDATES_TO_TRY]:
-                        verification = await verifier.verify_url(doc.url, job.data_type, job.year)
+            ctx["parent_pages"] = parent_pages[:5]
 
-                        if verification.is_verified:
-                            ctx["strategy"] = f"sitemap_{discovery_result.strategy.value}"
-                            ctx["found_url"] = doc.url
-                            ctx["found_content_type"] = (
-                                doc.file_type.value if doc.file_type else None
-                            )
-                            ctx["verification_confidence"] = verification.confidence
-                            ctx["sitemap_urls_checked"] = discovery_result.sitemap_urls_checked
-                            job.context = ctx
-                            await db.commit()
-                            return f"Strategy: SITEMAP → {doc.url} (verified: {verification.confidence:.0%})"
-                        else:
-                            ctx["rejected_candidates"].append(
-                                {
-                                    "url": doc.url,
-                                    "reason": "content_verification_failed",
-                                    "source": "sitemap",
-                                    "detected": verification.detected_data_type,
-                                }
-                            )
-
-                    log.info("Sitemap candidates failed verification, trying patterns")
-                else:
-                    log.info("No sitemap candidates found, trying patterns")
-
-            # =====================================================================
-            # Strategy 3: Try learned path patterns
-            # =====================================================================
-            dno_website = ctx.get("dno_website")
-            if dno_website:
-                patterns = await learner.get_priority_paths(db, job.data_type, limit=5)
-
+            # =================================================================
+            # Strategy 4: Learned path patterns (both types)
+            # =================================================================
+            for dt in ("netzentgelte", "hlzf"):
+                patterns = await learner.get_priority_paths(db, dt, limit=3)
                 for pattern in patterns:
                     expanded = learner.expand_pattern(pattern, job.year)
                     test_url = dno_website.rstrip("/") + expanded
 
-                    log.debug("Trying learned pattern", pattern=pattern, url=test_url[:80])
-
-                    is_valid, content_type, final_url, _ = await prober.probe(
-                        test_url,
-                        allowed_domains=allowed_domains,
+                    is_valid, _ct, final_url, _ = await prober.probe(
+                        test_url, allowed_domains=allowed_domains
                     )
-
                     if is_valid and final_url:
-                        # Verify content
-                        verification = await verifier.verify_url(final_url, job.data_type, job.year)
+                        ft = self._detect_file_type(final_url)
+                        _add_candidate(final_url, 60.0, f"pattern_{dt}", ft)
 
-                        if verification.is_verified:
-                            ctx["strategy"] = "pattern_match"
-                            ctx["found_url"] = final_url
-                            ctx["found_content_type"] = content_type
-                            ctx["discovered_via_pattern"] = pattern
-                            ctx["verification_confidence"] = verification.confidence
-                            job.context = ctx
-                            await db.commit()
-                            log.info(
-                                "Found via learned pattern",
-                                pattern=pattern,
-                                url=final_url[:80],
-                                confidence=verification.confidence,
-                            )
-                            return f"Strategy: PATTERN_MATCH → {pattern} → {final_url} (verified: {verification.confidence:.0%})"
-                        else:
-                            log.debug(
-                                "Pattern URL failed verification",
-                                pattern=pattern,
-                                detected=verification.detected_data_type,
-                            )
-                            ctx["rejected_candidates"].append(
-                                {
-                                    "url": final_url,
-                                    "reason": "content_verification_failed",
-                                    "pattern": pattern,
-                                    "detected": verification.detected_data_type,
-                                }
-                            )
-                            # Record pattern failure
-                            await learner.record_failure(db, pattern)
-                    else:
-                        # Record pattern failure (URL not found)
-                        await learner.record_failure(db, pattern)
+            # =================================================================
+            # Strategy 5: BFS crawl (start from parent pages or root)
+            # =================================================================
+            if len(candidates) < MAX_CANDIDATES:
+                bfs_user_agent = require_contact_for_bfs(initiator_ip)
 
-            # =====================================================================
-            # Strategy 4: Full BFS crawl with multi-candidate verification
-            # =====================================================================
-            if not dno_website:
-                raise ValueError(f"No website known for DNO {ctx.get('dno_name')}")
-
-            log.info("Starting full BFS crawl", website=dno_website)
-
-            # BFS crawling requires contact email in production
-            # This will raise ValueError if in production without CONTACT_EMAIL
-            bfs_user_agent = require_contact_for_bfs(initiator_ip)
-
-            crawler = WebCrawler(
-                client=client,
-                user_agent=bfs_user_agent,
-                max_depth=3,
-                max_pages=getattr(settings, "crawler_max_pages", 50),
-                request_delay=getattr(settings, "crawler_delay", 0.5),
-            )
-
-            keywords = get_keywords_for_data_type(job.data_type)
-            patterns = await learner.get_priority_paths(db, job.data_type, limit=10)
-
-            # Wrap BFS crawl in timeout to prevent hanging indefinitely
-            try:
-                results = await asyncio.wait_for(
-                    crawler.crawl(
-                        start_url=dno_website,
-                        target_keywords=keywords,
-                        priority_paths=patterns,
-                        target_year=job.year,
-                        data_type=job.data_type,
-                    ),
-                    timeout=BFS_CRAWL_TIMEOUT_SECONDS,
-                )
-            except TimeoutError:
-                log.error(
-                    "BFS crawl timed out",
-                    timeout_seconds=BFS_CRAWL_TIMEOUT_SECONDS,
-                    website=dno_website,
-                )
-                # Capture timeout for debugging
-                from app.services.sample_capture import SampleCapture
-
-                sample_capture = SampleCapture()
-                await sample_capture.capture_crawl_error(
-                    dno_slug=ctx.get("dno_slug", "unknown"),
-                    url=dno_website,
-                    error_type="bfs_crawl_timeout",
-                    error_message=f"BFS crawl timed out after {BFS_CRAWL_TIMEOUT_SECONDS} seconds",
-                    status_code=None,
-                    response_headers=None,
-                    response_body_snippet=None,
-                    request_headers={"User-Agent": bfs_user_agent},
-                    job_id=str(job.id),
-                    step="discover",
-                )
-                raise StepError(
-                    f"BFS crawl timed out after {BFS_CRAWL_TIMEOUT_SECONDS // 60} minutes. "
-                    f"The website {dno_website} may be too slow or have too many pages to crawl."
-                ) from None
-
-            ctx["pages_crawled"] = len(results)
-
-            # Try multiple document candidates with verification
-            candidates_tried = 0
-            document_results = [r for r in results if r.is_document]
-
-            log.info(
-                "Evaluating document candidates",
-                total_documents=len(document_results),
-                max_to_try=MAX_CANDIDATES_TO_TRY,
-            )
-
-            for result in document_results[:MAX_CANDIDATES_TO_TRY]:
-                candidates_tried += 1
-
-                # Verify content before accepting
-                verification = await verifier.verify_url(result.final_url, job.data_type, job.year)
-
-                log.debug(
-                    "Candidate verification",
-                    url=result.final_url[:60],
-                    score=round(result.score, 2),
-                    verified=verification.is_verified,
-                    confidence=verification.confidence,
-                    detected=verification.detected_data_type,
-                    keywords=verification.keywords_found[:5],
+                crawler = WebCrawler(
+                    client=client,
+                    user_agent=bfs_user_agent,
+                    max_depth=max_depth,
+                    max_pages=max_pages,
+                    request_delay=getattr(settings, "crawler_delay", 0.5),
                 )
 
-                if verification.is_verified:
-                    ctx["strategy"] = "bfs_crawl"
-                    ctx["found_url"] = result.final_url
-                    ctx["found_content_type"] = result.content_type
-                    ctx["needs_headless_review"] = result.needs_headless
-                    ctx["verification_confidence"] = verification.confidence
-                    ctx["candidates_tried"] = candidates_tried
-                    job.context = ctx
-                    await db.commit()
-                    log.info(
-                        "Found verified document via BFS",
-                        url=result.final_url[:80],
-                        score=round(result.score, 2),
-                        depth=result.depth,
-                        confidence=verification.confidence,
-                        candidates_tried=candidates_tried,
+                keywords = get_keywords_for_data_type("all")
+
+                # Combine learned patterns for both types for BFS priority
+                all_patterns = []
+                for dt in ("netzentgelte", "hlzf"):
+                    all_patterns.extend(await learner.get_priority_paths(db, dt, limit=5))
+
+                # Use parent pages as BFS start points, fall back to root
+                start_url = parent_pages[0] if parent_pages else dno_website
+
+                try:
+                    results = await asyncio.wait_for(
+                        crawler.crawl(
+                            start_url=start_url,
+                            target_keywords=keywords,
+                            priority_paths=all_patterns,
+                            target_year=job.year,
+                            data_type="all",
+                        ),
+                        timeout=BFS_CRAWL_TIMEOUT_SECONDS,
                     )
-                    return (
-                        f"Strategy: BFS_CRAWL → {result.final_url} "
-                        f"(score: {result.score:.1f}, verified: {verification.confidence:.0%}, "
-                        f"tried: {candidates_tried}/{len(document_results)})"
+                except TimeoutError:
+                    log.error(
+                        "bfs_crawl_timeout",
+                        timeout=BFS_CRAWL_TIMEOUT_SECONDS,
+                        website=dno_website,
                     )
-                else:
-                    ctx["rejected_candidates"].append(
-                        {
-                            "url": result.final_url,
-                            "reason": "content_verification_failed",
-                            "score": result.score,
-                            "detected": verification.detected_data_type,
-                            "confidence": verification.confidence,
-                        }
-                    )
+                    results = []
 
-            # If no verified documents, try high-scoring pages as fallback
-            # (might contain tables or embedded content)
-            page_results = [r for r in results if not r.is_document and r.score > 20]
+                ctx["pages_crawled"] = len(results)
 
-            for result in page_results[:3]:
-                verification = await verifier.verify_url(result.final_url, job.data_type, job.year)
+                # Add document results as candidates
+                for result in results:
+                    if result.is_document:
+                        ft = self._detect_file_type(result.final_url)
+                        _add_candidate(result.final_url, result.score, "bfs_crawl", ft)
+                    elif result.score > 20:
+                        # High-scoring HTML pages might contain embedded data
+                        _add_candidate(result.final_url, result.score, "bfs_crawl", "html")
 
-                if verification.is_verified:
-                    # Case 1: Landing Page (Verified keywords but no data tables)
-                    # Try to find PDF links on this page
-                    if not verification.has_data_content:
-                        log.info(
-                            "Potential landing page found, checking for document links",
-                            url=result.final_url,
-                        )
-                        doc_info = await self._check_landing_page_for_documents(
-                            client, result.final_url, verifier, job, allowed_domains
-                        )
+            # Sort candidates by score descending
+            candidates.sort(key=lambda c: c["score"], reverse=True)
+            candidates = candidates[:MAX_CANDIDATES]
 
-                        if doc_info:
-                            doc_url, doc_type, doc_conf, cached_path = doc_info
-                            ctx["strategy"] = "bfs_crawl_landing_link"
-                            ctx["found_url"] = doc_url
-                            ctx["found_content_type"] = doc_type
-                            ctx["verification_confidence"] = doc_conf
-                            ctx["landing_page"] = result.final_url
-                            # Store cached path so download step can skip re-downloading
-                            if cached_path:
-                                ctx["cached_file_path"] = str(cached_path)
-                            job.context = ctx
-                            await db.commit()
-                            log.info(
-                                "Found document via landing page",
-                                landing=result.final_url[:60],
-                                document=doc_url[:80],
-                                confidence=doc_conf,
-                                cached=str(cached_path) if cached_path else None,
-                            )
-                            return (
-                                f"Strategy: BFS_CRAWL (Landing Link) → {doc_url} "
-                                f"(from {result.final_url}, verified: {doc_conf:.0%})"
-                            )
-
-                    # Case 2: Data Page (Verified keywords AND data tables/prices)
-                    # Or Case 3: Landing Page but no better links found (fallback to page itself)
-                    if verification.confidence >= 0.5:
-                        ctx["strategy"] = "bfs_crawl"
-                        ctx["found_url"] = result.final_url
-                        ctx["found_content_type"] = result.content_type
-                        ctx["needs_headless_review"] = result.needs_headless
-                        ctx["verification_confidence"] = verification.confidence
-                        job.context = ctx
-                        await db.commit()
-                        log.info(
-                            "Found verified page via BFS",
-                            url=result.final_url[:80],
-                            score=round(result.score, 2),
-                            confidence=verification.confidence,
-                            has_data=verification.has_data_content,
-                        )
-                        return (
-                            f"Strategy: BFS_CRAWL → {result.final_url} "
-                            f"(landing page, score: {result.score:.1f}, verified: {verification.confidence:.0%})"
-                        )
-
-            # No verified results found - report what was rejected
+            ctx["candidate_urls"] = candidates
             job.context = ctx
             await db.commit()
 
-            rejected_count = len(ctx["rejected_candidates"])
-            error_msg = (
-                f"No verified data source found for {ctx.get('dno_name')} after crawling "
-                f"{ctx['pages_crawled']} pages. "
-                f"Tried {len(document_results)} documents, {rejected_count} failed verification."
+            if not candidates:
+                raise StepError(
+                    f"No candidate URLs found for {ctx.get('dno_name')} "
+                    f"(pass {crawl_pass}, crawled {ctx['pages_crawled']} pages)"
+                )
+
+            doc_count = sum(1 for c in candidates if c["file_type"] not in ("html", "unknown"))
+            return (
+                f"Found {len(candidates)} candidates "
+                f"({doc_count} documents, {len(candidates) - doc_count} pages, "
+                f"pass {crawl_pass})"
             )
-
-            if ctx["rejected_candidates"]:
-                # Log rejected candidates for debugging
-                log.warning(
-                    "All candidates failed verification",
-                    rejected_count=rejected_count,
-                    first_rejected=ctx["rejected_candidates"][0]
-                    if ctx["rejected_candidates"]
-                    else None,
-                )
-
-                # Capture crawl error sample for debugging
-                from app.services.sample_capture import SampleCapture
-
-                sample_capture = SampleCapture()
-                await sample_capture.capture_crawl_error(
-                    dno_slug=ctx.get("dno_slug", "unknown"),
-                    url=dno_website,
-                    error_type="all_candidates_failed_verification",
-                    error_message=error_msg,
-                    status_code=None,
-                    response_headers=None,
-                    response_body_snippet=None,
-                    request_headers={"User-Agent": bfs_user_agent},
-                    job_id=str(job.id),
-                    step="discover",
-                )
-                # Also capture details of what was tried
-                await sample_capture.capture_crawl_log(
-                    dno_slug=ctx.get("dno_slug", "unknown"),
-                    job_id=str(job.id),
-                    step="discover",
-                    action="verification_failed",
-                    success=False,
-                    details={
-                        "pages_crawled": ctx["pages_crawled"],
-                        "documents_found": len(document_results),
-                        "candidates_tried": candidates_tried,
-                        "rejected_candidates": ctx["rejected_candidates"][:10],  # Cap at 10
-                        "data_type": job.data_type,
-                        "year": job.year,
-                    },
-                )
-
-            raise ValueError(error_msg)
-
-        return None
-
-    async def _check_landing_page_for_documents(
-        self,
-        client: httpx.AsyncClient,
-        url: str,
-        verifier: ContentVerifier,
-        job: CrawlJobModel,
-        allowed_domains: set[str] | None,
-    ) -> tuple[str, str, float, Path | None] | None:
-        """Check if a landing page contains links to verified documents.
-
-        Downloads and caches document files for proper verification.
-        Verified files go to downloads/, unverified to bulk-data/.
-
-        Returns:
-            Tuple of (url, content_type, confidence, cached_file_path) if found, else None
-        """
-        from app.core.config import settings
-
-        try:
-            # Fetch page content
-            response = await client.get(url, timeout=10.0)
-            if response.status_code != 200:
-                return None
-
-            soup = BeautifulSoup(response.text, "lxml")
-            base_url = str(response.url)
-
-            # Get DNO info from job context
-            ctx = job.context or {}
-            dno_slug = ctx.get("dno_slug", f"dno_{job.dno_id}")
-            base_data_dir = Path(settings.storage_path)
-
-            # Extract document links
-            doc_links = []
-            for tag in soup.find_all("a", href=True):
-                href = tag["href"]
-                full_url = urljoin(base_url, href)
-
-                # Check if it's a document link
-                if any(full_url.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS):
-                    # Check domain if restricted
-                    if allowed_domains:
-                        domain = urlparse(full_url).hostname
-                        if not domain:
-                            continue
-                        domain = domain.lower()
-                        if domain.startswith("www."):
-                            domain = domain[4:]
-                        if domain not in allowed_domains:
-                            continue
-
-                    # Get link text for scoring
-                    link_text = tag.get_text(strip=True).lower()
-                    doc_links.append((full_url, link_text))
-
-            # Score and sort links by relevance
-            def score_link(link_info: tuple[str, str]) -> int:
-                url, text = link_info
-                score = 0
-                url_lower = url.lower()
-
-                # Year in URL/text
-                if job.year and str(job.year) in url_lower:
-                    score += 10
-                if job.year and str(job.year) in text:
-                    score += 5
-
-                # Data type keywords
-                if job.data_type == "netzentgelte":
-                    if any(
-                        kw in url_lower or kw in text
-                        for kw in ["netzentgelt", "preisblatt", "entgelt"]
-                    ):
-                        score += 10
-                elif job.data_type == "hlzf" and any(
-                    kw in url_lower or kw in text
-                    for kw in ["hlzf", "hochlast", "zeitfenster", "regelung"]
-                ):
-                    score += 10
-
-                # Prefer PDFs for netzentgelte
-                if url_lower.endswith(".pdf"):
-                    score += 3
-
-                return score
-
-            doc_links.sort(key=score_link, reverse=True)
-
-            # Download and verify top candidates
-            for link_url, link_text in doc_links[:5]:
-                logger.info(
-                    "checking_document_link",
-                    url=link_url[:80],
-                    link_text=link_text[:50] if link_text else "",
-                )
-
-                # Use full-file verification with caching
-                verification, cached_path = await verifier.verify_and_cache_document(
-                    url=link_url,
-                    expected_data_type=job.data_type,
-                    expected_year=job.year,
-                    dno_slug=dno_slug,
-                    base_data_dir=base_data_dir,
-                )
-
-                # Accept if verified with data content
-                if verification.is_verified and verification.has_data_content:
-                    logger.info(
-                        "document_verified",
-                        url=link_url[:80],
-                        confidence=verification.confidence,
-                        cached_path=str(cached_path) if cached_path else None,
-                    )
-                    content_type = verifier._detect_content_type(link_url)
-                    return link_url, content_type, verification.confidence, cached_path
-
-                # Log why it wasn't accepted
-                logger.debug(
-                    "document_not_verified",
-                    url=link_url[:80],
-                    is_verified=verification.is_verified,
-                    has_data=verification.has_data_content,
-                    confidence=verification.confidence,
-                    error=verification.error,
-                    cached_path=str(cached_path) if cached_path else None,
-                )
-
-            return None
-
-        except Exception as e:
-            logger.warning("landing_page_check_failed", url=url, error=str(e))
-            return None
 
     def _get_allowed_domains(self, ctx: dict) -> set[str] | None:
         """Extract allowed domains from context."""
         website = ctx.get("dno_website")
         if not website:
             return None
-
         try:
-            from urllib.parse import urlparse
-
             parsed = urlparse(website)
             if parsed.hostname:
                 domain = parsed.hostname.lower()
                 if domain.startswith("www."):
                     domain = domain[4:]
                 return {domain, f"www.{domain}"}
-        except Exception as e:
-            logger.debug("Failed to extract domain from website", website=website, error=str(e))
-
+        except Exception:
+            pass
         return None
+
+    def _detect_file_type(self, url: str) -> str:
+        """Detect file type from URL extension."""
+        url_lower = url.lower().split("?")[0]
+        if url_lower.endswith(".pdf"):
+            return "pdf"
+        elif url_lower.endswith((".xlsx", ".xls")):
+            return "xlsx"
+        elif url_lower.endswith((".docx", ".doc")):
+            return "docx"
+        elif url_lower.endswith((".html", ".htm")):
+            return "html"
+        elif any(url_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS):
+            return "document"
+        return "unknown"

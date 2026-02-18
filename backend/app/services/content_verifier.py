@@ -59,6 +59,11 @@ REQUIRED_KEYWORDS = {
         # At least one of these must appear
         ["hochlastzeitfenster", "hlzf", "hochlast"],
     ],
+    "all": [
+        # Combined: at least one from either type
+        ["netzentgelt", "netznutzungsentgelt", "entgeltblatt", "preisblatt"],
+        ["hochlastzeitfenster", "hlzf", "hochlast"],
+    ],
 }
 
 # Keywords that strongly indicate a specific data type (boosters)
@@ -82,6 +87,42 @@ POSITIVE_KEYWORDS = {
         "arbeitsentgelt",
     ],
     "hlzf": [
+        "hochlastzeitfenster",
+        "hochlast",
+        "zeitfenster",
+        "hlzf",
+        "§19",
+        "stromnev",
+        "spitzenlast",
+        "peak",
+        "hochlastzeit",
+        "winter",
+        "sommer",
+        "herbst",
+        "frühling",
+        "fruehling",
+        "entfällt",
+        "entfaellt",
+        "uhr",
+    ],
+    "all": [
+        # Combined netzentgelte + hlzf positive keywords
+        "leistungspreis",
+        "arbeitspreis",
+        "ct/kwh",
+        "€/kw",
+        "eur/kw",
+        "netznutzung",
+        "netzentgelt",
+        "entgelt",
+        "preisblatt",
+        "netzzugang",
+        "preise",
+        "tarifblatt",
+        "entgeltblatt",
+        "jahresleistungspreis",
+        "leistungsentgelt",
+        "arbeitsentgelt",
         "hochlastzeitfenster",
         "hochlast",
         "zeitfenster",
@@ -150,6 +191,10 @@ NEGATIVE_KEYWORDS = {
         "impressum",
         "datenschutz",
     ],
+    "all": [
+        # When searching for both types, only filter gas (wrong energy type)
+        "gas",
+    ],
 }
 
 # Patterns that indicate document structure
@@ -166,6 +211,18 @@ STRUCTURE_PATTERNS = {
         r"\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}",  # Time window pattern "08:00-20:00"
         r"(winter|sommer|herbst|fr[üu]hling)",  # Seasons
         r"entf[äa]llt",  # "entfällt" pattern
+    ],
+    "all": [
+        # Combined netzentgelte + hlzf structure patterns
+        r"\d+[,\.]\d{2}\s*ct",
+        r"\d+[,\.]\d{2}\s*€",
+        r"\d+[,\.]\d{2}\s*Euro",
+        r"\d+[,\.]\d+\s*€/k[wW]",
+        r"\d+[,\.]\d+\s*ct/k[wW]h",
+        r"(niederspannung|mittelspannung|hochspannung)",
+        r"\d{1,2}:\d{2}\s*[-–]\s*\d{1,2}:\d{2}",
+        r"(winter|sommer|herbst|fr[üu]hling)",
+        r"entf[äa]llt",
     ],
 }
 
@@ -879,6 +936,10 @@ def score_for_data_type(url: str, data_type: str) -> float:
     Returns:
         Score adjustment (positive = boost, negative = penalty)
     """
+    # "all" means data-type agnostic: no cross-type penalties
+    if data_type == "all":
+        return 0.0
+
     url_lower = url.lower()
     score = 0.0
 

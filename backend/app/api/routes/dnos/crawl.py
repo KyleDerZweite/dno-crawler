@@ -105,18 +105,28 @@ async def trigger_crawl(
                     detail=f"A crawl is already in progress for {dno.name}",
                 )
 
-    # Check for existing pending/running job for this year AND data_type
-    existing_query = select(CrawlJobModel).where(
-        CrawlJobModel.dno_id == dno.id,
-        CrawlJobModel.year == request.year,
-        CrawlJobModel.data_type == request.data_type.value,
-        CrawlJobModel.status.in_(["pending", "running"]),
-    )
+    # Check for existing pending/running job
+    if job_type in ("full", "crawl"):
+        # For crawl/full jobs: check for any pending/running crawl for same dno+year
+        existing_query = select(CrawlJobModel).where(
+            CrawlJobModel.dno_id == dno.id,
+            CrawlJobModel.year == request.year,
+            CrawlJobModel.job_type.in_(["full", "crawl"]),
+            CrawlJobModel.status.in_(["pending", "running"]),
+        )
+    else:
+        # For extract jobs: check for same dno+year+data_type
+        existing_query = select(CrawlJobModel).where(
+            CrawlJobModel.dno_id == dno.id,
+            CrawlJobModel.year == request.year,
+            CrawlJobModel.data_type == request.data_type.value,
+            CrawlJobModel.status.in_(["pending", "running"]),
+        )
     result = await db.execute(existing_query)
     if result.scalar_one_or_none():
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
-            detail="A job for this DNO, year, and data type is already in progress",
+            detail="A job for this DNO and year is already in progress",
         )
 
     # Update DNO status for crawl/full jobs
@@ -137,11 +147,14 @@ async def trigger_crawl(
         job_context["dno_website"] = dno.website
         job_context["strategy"] = "use_cache"  # Indicate we're using existing file
 
+    # For crawl/full jobs, always store data_type="all" (data-type agnostic crawling)
+    effective_data_type = "all" if job_type in ("full", "crawl") else request.data_type.value
+
     # Create job in database
     job = CrawlJobModel(
         dno_id=dno.id,
         year=request.year,
-        data_type=request.data_type.value,
+        data_type=effective_data_type,
         job_type=job_type,
         priority=request.priority,
         current_step=f"Triggered by {current_user.email}",
@@ -186,7 +199,7 @@ async def trigger_crawl(
             "dno_name": dno.name,
             "dno_status": dno.status,
             "year": request.year,
-            "data_type": request.data_type.value,
+            "data_type": effective_data_type,
             "job_type": job_type,
             "status": job.status,
         },

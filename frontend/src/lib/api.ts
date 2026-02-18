@@ -656,7 +656,7 @@ export const api = {
       };
     }> {
       const { data } = await apiClient.get("/jobs/", { params });
-      return data;
+      return data.data;
     },
 
     async get(jobId: string): Promise<ApiResponse<JobDetails>> {

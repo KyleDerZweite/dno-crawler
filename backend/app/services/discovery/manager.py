@@ -105,8 +105,8 @@ class DiscoveryManager:
         result.sitemap_urls_checked = sitemap_result.sitemap_urls_checked
         result.errors.extend(sitemap_result.errors)
 
-        # Strategy 2: For HLZF, also check HTML pages for embedded tables
-        if data_type == "hlzf" and sitemap_result.documents:
+        # Strategy 2: For HLZF (or "all"), also check HTML pages for embedded tables
+        if data_type in ("hlzf", "all") and sitemap_result.documents:
             # Check if any top results are HLZF-specific
             hlzf_keywords = ["hlzf", "hochlast", "zeitfenster"]
             has_hlzf_specific = any(

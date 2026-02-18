@@ -162,6 +162,9 @@ NEGATIVE_KEYWORDS = {
         # Note: Don't penalize "netzentgelte" - HLZF is often on the same page!
         ("preisblatt", -15),  # Price sheets (soft penalty, could still have HLZF)
     ],
+    "all": [
+        ("gas", -100),  # Only filter gas when searching for both types
+    ],
 }
 
 # Irrelevant path segments to skip
@@ -545,8 +548,8 @@ class WebCrawler:
                 if neg_kw.lower() in url_lower:
                     score += penalty  # penalty is already negative
 
-        # Data-type-specific scoring
-        if data_type:
+        # Data-type-specific scoring (skip for "all" to avoid cross-type penalties)
+        if data_type and data_type != "all":
             score += score_for_data_type(url, data_type)
 
         return score
@@ -650,7 +653,17 @@ class WebCrawler:
 
 
 def get_keywords_for_data_type(data_type: str) -> list[str]:
-    """Get relevant keywords for a data type."""
+    """Get relevant keywords for a data type.
+
+    For "all", returns the union of netzentgelte + hlzf + both keywords (deduplicated).
+    """
+    if data_type == "all":
+        combined = set()
+        combined.update(KEYWORDS.get("netzentgelte", []))
+        combined.update(KEYWORDS.get("hlzf", []))
+        combined.update(KEYWORDS.get("both", []))
+        return list(combined)
+
     keywords = KEYWORDS.get(data_type, []).copy()
     keywords.extend(KEYWORDS.get("both", []))
     return keywords

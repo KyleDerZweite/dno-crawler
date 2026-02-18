@@ -32,9 +32,9 @@ def get_extract_steps():
     """Lazy load extract steps to avoid circular imports."""
     global EXTRACT_STEPS
     if EXTRACT_STEPS is None:
-        from app.jobs.steps.step_03_extract import ExtractStep
-        from app.jobs.steps.step_04_validate import ValidateStep
-        from app.jobs.steps.step_05_finalize import FinalizeStep
+        from app.jobs.steps.step_04_extract import ExtractStep
+        from app.jobs.steps.step_05_validate import ValidateStep
+        from app.jobs.steps.step_06_finalize import FinalizeStep
 
         EXTRACT_STEPS = [
             ExtractStep(),

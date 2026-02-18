@@ -104,9 +104,9 @@ class CrawlWorkerSettings:
     # CRITICAL: Only process one job at a time for polite crawling
     max_jobs = 1
 
-    # Job timeout: 10 minutes for crawl jobs (BFS crawling can take time)
+    # Job timeout: 20 minutes for crawl jobs (bulk download + potential deeper pass)
     # Prevents jobs from hanging indefinitely
-    job_timeout = 600
+    job_timeout = 1200
 
 
 class ExtractWorkerSettings:

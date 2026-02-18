@@ -76,7 +76,7 @@ def score_url(
             if kw not in keywords_found:
                 keywords_found.append(kw)
 
-    # Negative keywords
+    # Negative keywords (for "all", only gas penalty applies via NEGATIVE_KEYWORDS["all"])
     neg_keywords = NEGATIVE_KEYWORDS.get(data_type, [])
     for neg_kw, penalty in neg_keywords:
         if neg_kw.lower() in url_lower or neg_kw.lower() in link_text_lower:

@@ -169,6 +169,13 @@ def main() -> int:
         help="Job priority 1-10 (default: 5)",
     )
     parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        metavar="N",
+        help="Only process the first N DNOs from the file (0 = all)",
+    )
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Show what would be enqueued without creating jobs",
@@ -205,6 +212,11 @@ def main() -> int:
     # Deduplicate preserving order
     dno_names = list(dict.fromkeys(dno_names))
     print(f"Parsed {len(dno_names)} unique DNO names from {args.file.name}")
+
+    # Apply limit if specified
+    if args.limit > 0:
+        dno_names = dno_names[: args.limit]
+        print(f"Limited to first {len(dno_names)} DNOs")
 
     if not dno_names:
         print("No DNO names found in file")

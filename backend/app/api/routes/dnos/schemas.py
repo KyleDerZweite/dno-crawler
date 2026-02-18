@@ -21,12 +21,28 @@ from app.core.models import DataType  # noqa: E402
 
 
 class TriggerCrawlRequest(BaseModel):
-    """Request model for triggering a crawl job."""
+    """Request model for triggering a crawl job.
+
+    For crawl/full jobs: data_type is ignored (always "all" internally).
+    For extract jobs: data_type must be "netzentgelte" or "hlzf" (not "all").
+    """
 
     year: int
     data_type: DataType = DataType.ALL
     priority: int = 5
     job_type: JobType = JobType.FULL
+
+    @field_validator("data_type")
+    @classmethod
+    def validate_data_type_for_extract(cls, v: DataType, info) -> DataType:
+        """Ensure extract jobs specify a concrete data type."""
+        # This validator runs before model_post_init, so we check via info.data
+        job_type = info.data.get("job_type")
+        if job_type == JobType.EXTRACT and v == DataType.ALL:
+            raise ValueError(
+                "Extract jobs require a specific data_type ('netzentgelte' or 'hlzf'), not 'all'."
+            )
+        return v
 
 
 class CreateDNORequest(BaseModel):
