@@ -64,6 +64,7 @@ This document consolidates research, strategies, and improvement ideas for the D
 - `POST /api/v1/webhooks` - Price change notifications
 - Bulk export (CSV/JSON)
 - GraphQL endpoint
+- **MaStR Nr in Search API** - Use MaStR Nr as filter parameter in search endpoint; always return MaStR Nr in results since it's the official unique identifier for DNOs in Germany
 
 ---
 
