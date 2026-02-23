@@ -91,60 +91,24 @@
 | 86 | MEDIUM | `useToast` re-subscribes on every state change | Changed `useEffect` dependency from `[state]` to `[]` |
 | 87 | MEDIUM | Regex patterns recompiled per call in web crawler | Pre-compiled `_TOKEN_URL_PATTERNS` and `_YEAR_PATTERNS` at module level |
 | 90 | LOW | Duplicate coordinate regex in LandingPage | Extracted shared `COORD_PATTERN` constant |
+| 82 | MEDIUM | Missing rate limiting on expensive admin endpoints | Added per-user Redis-backed rate limiting for expensive admin scan/bulk operations |
+| 85 | MEDIUM | Import rolls back all progress on partial failure | Split import into per-record-type transactional phases with intermediate commits |
+| 46 | LOW | No idempotency guarantees for jobs | Added shared job orchestration guards and skip-on-finalized/running semantics |
+| 48 | LOW | Duplicate type definitions drift (frontend) | Refactored major frontend domain type imports to use centralized `types/` exports |
+| 49 | LOW | LandingPage and SearchPage ~80% identical | Extracted shared `PublicSearchPanel` and reused it in both pages |
+| 51 | LOW | Duplicate validation logic between extract and validate steps | Introduced shared extraction validation module used by both extract and validate steps |
+| 52 | LOW | Three different job orchestration patterns | Consolidated common orchestration into shared helpers (`mark_job_running/completed`) |
+| 57 | LOW | No ARIA attributes on custom interactive elements | Added keyboard and ARIA semantics to `SmartDropdown` interactive trigger |
+| 80 | LOW | AI prompt injection via DNO names | Sanitized DNO name inputs before interpolation in AI extraction prompts |
+| 88 | LOW | German number regex silently skips thousands-separator values | Added structured warning logs for malformed numeric values in PDF extraction |
+| 89 | LOW | HTML stripper year pattern is overly specific | Expanded year detection regex to support broader real-world heading variants |
+| 91 | LOW | Enrichment job doesn't check for concurrent crawl | Added enrichment skip guard when DNO crawl is active |
+| 92 | LOW | OAuth state fallback to `"null"` string when `cors_origins` empty | Hardened CORS origin parsing to ignore empty/`"null"` entries with safe fallback |
 
 ---
 
 ## Open Issues
-
-### MEDIUM
-
-- [ ] **82. Missing rate limiting on expensive admin endpoints**
-  `api/routes/admin.py` -- Filesystem scans and bulk operations have no rate limiting.
-  **Fix:** Per-user rate limiting on expensive admin operations.
-
-- [ ] **85. Import rolls back all progress on partial failure**
-  `api/routes/dnos/import_export.py:225-365` -- Single transaction for Netzentgelte + HLZF; HLZF failure discards all Netzentgelte progress.
-  **Fix:** Commit per record type, use savepoints, or pre-validate all records.
-
-### LOW
-
-- [ ] **46. No idempotency guarantees for jobs**
-  Pipeline re-executes fully on ARQ retry after worker crash.
-  **Status:** TODO for v1.1.
-
-- [ ] **48. Duplicate type definitions drift (frontend)**
-  `api.ts` vs `types/` directory.
-  **Status:** POSTPONED for v1.1.
-
-- [ ] **49. LandingPage and SearchPage ~80% identical**
-  Should extract shared `SearchForm` component.
-  **Status:** POSTPONED for v1.1.
-
-- [ ] **51. Duplicate validation logic between extract and validate steps**
-  `step_03_extract.py` + `step_04_validate.py` -- slightly different rules.
-  **Status:** POSTPONED for v1.1.
-
-- [ ] **52. Three different job orchestration patterns**
-  Nearly identical logic across `crawl_job.py`, `extract_job.py`, `search_job.py`.
-  **Status:** POSTPONED for v1.1.
-
-- [ ] **57. No ARIA attributes on custom interactive elements**
-  **Status:** POSTPONED for v1.1.
-
-- [ ] **80. AI prompt injection via DNO names**
-  `services/extraction/prompts/__init__.py:14, 77` -- VNB API names interpolated into AI prompts. **Downgraded:** AI is OpenRouter-only with max tokens, no tools. Worst case is malformed output, mitigated by #79 validation.
-
-- [ ] **88. German number regex silently skips thousands-separator values**
-  `services/extraction/pdf_extractor.py:97` -- `float("1.234.56")` raises ValueError, caught but not logged.
-
-- [ ] **89. HTML stripper year pattern is overly specific**
-  `services/extraction/html_stripper.py:42` -- Only matches `"gültig ab 01.01.XXXX"`.
-
-- [ ] **91. Enrichment job doesn't check for concurrent crawl**
-  `jobs/enrichment_job.py:66-67` -- Could update shared fields simultaneously.
-
-- [ ] **92. OAuth state fallback to `"null"` string when `cors_origins` empty**
-  `api/routes/oauth.py` -- Invalid `postMessage` origin on misconfigured deployment.
+- None at this time.
 
 ---
 
