@@ -1,5 +1,7 @@
 # MaStR Data Transformation Pipeline
 
+> Documentation note: The executable scripts and current code are authoritative. This document captures stable pipeline intent and operational flow.
+
 This directory contains scripts for transforming Marktstammdatenregister (MaStR) XML exports into pre-computed DNO statistics for the DNO Crawler application.
 
 ## Overview

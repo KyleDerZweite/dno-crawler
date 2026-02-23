@@ -1,5 +1,7 @@
 # Data Directory
 
+> Documentation note: The codebase and runtime configuration are authoritative. This document summarizes stable data layout and usage intent.
+
 Persistent storage for seed data, downloaded files, and database volumes.
 
 ## Structure

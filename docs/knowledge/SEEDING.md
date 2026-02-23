@@ -1,5 +1,7 @@
 # Seed Data Pipeline
 
+> Documentation note: The active scripts and code paths are authoritative. This document describes stable seed pipeline behavior.
+
 The database is seeded on worker startup from a parquet file. The pipeline transforms raw source files through several stages to produce that parquet. Only the final two steps (merge + convert) need to run regularly; the earlier stages are one-time or infrequent data preparation.
 
 ## Data files (`data/seed-data/`)
@@ -123,7 +125,7 @@ python data/seed-data/convert.py \
 
 Expected output: ~939 SNB-only records, 0 duplicate slugs.
 
-## Runtime seeding (`backend/app/db/seeder.py`)
+## Runtime seeding
 
 On worker startup, `seed_dnos()` loads the parquet file and upserts each record into the database:
 

@@ -1,5 +1,7 @@
 # DNO Crawler -- Code Review
 
+> Documentation note: This is a point-in-time review snapshot. The executable codebase is the source of truth for current behavior.
+
 **Date:** 2026-02-11
 **Scope:** Full-stack review (backend + frontend)
 

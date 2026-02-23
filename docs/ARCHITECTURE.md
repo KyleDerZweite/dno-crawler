@@ -1,8 +1,12 @@
 # System Architecture
 
+> Documentation note: The running system and codebase are authoritative. This document focuses on stable architecture and data-flow intent.
+
 ## Overview
 
 DNO Crawler is a full stack application for automated extraction of regulatory data from German Distribution Network Operators (DNOs). The system features a React SPA frontend for user interaction and a FastAPI backend that orchestrates data retrieval via synchronous APIs and asynchronous background workers.
+
+The running codebase is the source of truth for implementation details. This document focuses on stable architecture, major data flows, and system boundaries.
 
 ## 1. System Architecture
 
@@ -124,7 +128,7 @@ flowchart TD
 | Component | Description |
 |-----------|-------------|
 | Frontend | React 19 SPA with OIDC authentication via react-oidc-context. Attaches JWT tokens to requests via Axios interceptors. TanStack Query manages server state with automatic caching and polling. |
-| Public API | Rate limited endpoints for address search and skeleton DNO creation. Health check at `GET /api/health` and readiness check at `GET /api/ready`. No authentication required. |
+| Public API | Rate limited endpoints for address search and skeleton DNO creation, including health/readiness checks. No authentication required. |
 | Protected API | Secured by `Depends(get_current_user)`. Provides DNO management, job triggering, data verification, AI provider management, and admin functions. |
 | Service Layer | Integrates with three external data sources and provides business logic for verification, pattern learning, and content analysis. |
 | Async Worker | arq powered Redis workers execute multi step extraction pipeline without blocking HTTP requests. Split into `worker-crawl` (discovery and download, single instance for polite crawling) and `worker-extract` (extraction, validation, finalization, scalable). |

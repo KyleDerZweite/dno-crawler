@@ -1,5 +1,7 @@
 # Deployment
 
+> Documentation note: The running deployment configuration and infrastructure code are authoritative. This document captures stable deployment operations.
+
 Production deployment uses `docker-compose.prod.yml` with `podman-compose` on a rootless Podman host. Pangolin handles TLS termination and reverse proxying; Newt tunnels traffic from Pangolin to the local stack.
 
 ## Prerequisites

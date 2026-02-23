@@ -1,5 +1,7 @@
 # DNO Crawler Frontend
 
+> Documentation note: The frontend codebase is authoritative. This README captures stable structure and usage guidance.
+
 React SPA for the DNO Crawler application.
 
 ## Stack

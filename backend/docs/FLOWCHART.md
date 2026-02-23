@@ -1,5 +1,7 @@
 # DNO Crawler - Pipeline Flowchart
 
+> Documentation note: This flowchart is conceptual. The executable pipeline code is the source of truth.
+
 This document describes the complete extraction pipeline from user input to structured data.
 
 ---

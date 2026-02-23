@@ -1,6 +1,10 @@
 # Logging Domain Fields
 
+> Documentation note: Logging implementation in code is authoritative. This file defines durable logging semantics and domain contracts.
+
 Project-specific logging fields and examples for the DNO Crawler application.
+
+The implementation in code is authoritative. This document defines logging contracts and semantics for operational consistency.
 
 ## Domain Fields
 
@@ -107,9 +111,8 @@ def should_sample(event: dict) -> bool:
     return random.random() < 0.10
 ```
 
-## Files Reference
+## Operational Contract
 
-| File | Purpose |
-|------|---------|
-| `backend/app/core/logging.py` | Wide events implementation |
-| `backend/app/api/middleware/wide_events.py` | FastAPI middleware |
+- Keep one canonical structured wide event per request lifecycle.
+- Ensure domain objects (`dno`, `job`, `extraction`, `verification`) use stable field names across services.
+- Treat sampling policy as an observability control and tune in code based on environment and cost constraints.

@@ -1,10 +1,18 @@
 # AI Agent Operational Protocol
 
-This is the single source of truth for all AI coding agents working in this repository. Tool-specific files (e.g. `CLAUDE.md`) should reference this file rather than duplicate its content.
+> Documentation note: The executable codebase is authoritative. This file defines agent workflow policy and documentation constraints.
+
+This file defines operating policy for AI agents. The executable codebase is the ultimate source of truth. Documentation provides intent, constraints, and workflow guidance and must not override observed behavior in code.
 
 ## 1. Context and Knowledge Retrieval
 
-**DO NOT HALLUCINATE.** You are strictly bound by the Source of Truth documentation. Before generating code, planning features, or answering questions, you must ingest the context from the following files.
+**DO NOT HALLUCINATE.** Before generating code, planning features, or answering questions, ingest context from key docs, then validate against the current codebase.
+
+Priority order for truth:
+1. Running code and configuration in the repository
+2. Tests and build/lint/type-check behavior
+3. Architecture and conventions documentation
+4. Knowledge docs (operational context)
 
 | Document | Purpose |
 |----------|---------|
@@ -23,11 +31,25 @@ These files are **always loaded** at the start of every session. They contain sh
 
 Apply project-specific overrides from section 7 of this file on top of these base rules.
 
+## 2.1 Engineering Principles
+
+Apply these principles as defaults across backend, frontend, and infrastructure changes where practical:
+
+1. **KISS (Keep It Simple, Stupid)**
+2. **DRY (Don't Repeat Yourself)**
+3. **YAGNI (You Aren't Gonna Need It)**
+4. **SOLID**
+5. **Separation of Concerns (SoC)**
+6. **Avoid Premature Optimization**
+7. **Law of Demeter**
+
+These are guiding principles, not hard constraints. If a change intentionally violates one, document the rationale in the relevant PR/task note and add a short entry in a related `docs/knowledge/` file when the decision has ongoing operational impact.
+
 ## 3. Knowledge Base (`docs/knowledge/`)
 
 The `docs/knowledge/` directory contains topic-specific reference files written for AI agents. These files capture operational knowledge (pipelines, processes, non-obvious context) that does not belong in user-facing `docs/`.
 
-**Reading**: Before working on a task, check if a relevant `docs/knowledge/` file exists. If it does, read it first. These files contain verified context that prevents repeated discovery of the same information.
+**Reading**: Before working on a task, check if a relevant `docs/knowledge/` file exists. If it does, read it first. These files contain verified context that reduces repeated discovery.
 
 **Writing**: When you complete a task that involved non-trivial discovery (multi-step processes, workarounds, data flow understanding, integration details), check if a matching `docs/knowledge/` file exists:
 - If yes, update it with the new information.
@@ -35,7 +57,9 @@ The `docs/knowledge/` directory contains topic-specific reference files written 
 
 **Rules**:
 - One file per topic. Use `UPPER_SNAKE_CASE.md` naming (e.g., `SEEDING.md`, `DEPLOYMENT.md`).
-- Write for a future AI agent that has zero prior context. Include exact commands, file paths, and expected outputs.
+- Write for a future AI agent that has zero prior context. Prefer stable conceptual guidance over volatile file-level references.
+- Include exact commands only when they are durable and operationally necessary.
+- Reference module/feature areas instead of concrete file paths when possible.
 - Keep content factual and verified. Do not write speculative or aspirational content.
 - Update files when the underlying code or process changes. Stale knowledge is worse than no knowledge.
 - Do not duplicate content from `docs/`. Reference `docs/` files where appropriate instead of copying.
@@ -46,7 +70,7 @@ The `docs/knowledge/` directory contains topic-specific reference files written 
 |------|-------|
 | `docs/knowledge/SEEDING.md` | Seed data pipeline: scripts, data files, stages, regeneration, runtime seeding |
 | `docs/knowledge/FRONTEND_PATTERNS.md` | TanStack Query v5 key factory, react-router-dom v7 routes, import patterns, abbreviations |
-| `docs/knowledge/LOGGING_DOMAIN.md` | DNO Crawler domain fields, complete wide event example, tail sampling, file references |
+| `docs/knowledge/LOGGING_DOMAIN.md` | DNO Crawler domain fields, complete wide event example, tail sampling semantics |
 | `docs/knowledge/DEPLOYMENT.md` | Production deploy: prerequisites, Podman quirks, Alembic migration generation, startup order, teardown |
 
 ## 4. Project Overview
@@ -92,7 +116,7 @@ npm run test:watch # Run tests in watch mode
 podman-compose up -d --build    # Start all 7 services
 ```
 
-## 6. Architectur
+## 6. Architecture
 
 ### Key Architectural Decisions
 
@@ -125,7 +149,7 @@ Base rules are in `docs/conventions/`. The overrides below are specific to this 
 
 ## 8. Tech Stack Autonomy
 
-Do not rely on text descriptions of the stack. Determine the active versioning and dependencies by inspecting the live configuration files.
+Do not rely on text descriptions of the stack alone. Determine active versions and dependencies by inspecting live configuration and lock files.
 
 | Component | Configuration File |
 |-----------|-------------------|
@@ -137,14 +161,14 @@ Do not rely on text descriptions of the stack. Determine the active versioning a
 
 When assigned a task, follow this loop.
 
-1. **Analysis** Check the codebase and `docs/ARCHITECTURE.md`
-2. **Plan** Briefly outline proposed changes. Check `docs/ARCHITECTURE.md` to ensure architectural consistency.
+1. **Analysis** Check the codebase first, then architecture/conventions docs for intent and constraints.
+2. **Plan** Briefly outline proposed changes and ensure architectural consistency.
 3. **Implementation**
-   - Apply the KISS principle (Keep It Simple, Stupid).
+   - Apply the engineering principles from section 2.1.
    - Follow naming rules in `docs/conventions/FILE_NAMING.md`.
    - Implement observability per `docs/conventions/LOGGING.md`.
    - Do not hard code secrets.
-4. **Verification** Ensure new code passes linting and tests.
+4. **Verification** Ensure new code passes linting and tests and that docs still match behavior.
 
 ## 10. Interaction Guidelines
 

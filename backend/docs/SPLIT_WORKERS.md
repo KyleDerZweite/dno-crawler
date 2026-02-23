@@ -1,5 +1,7 @@
 # Split Worker Architecture
 
+> Documentation note: This describes intended architecture. The running worker implementation is authoritative.
+
 This document describes the split crawl/extract worker architecture introduced for more efficient job processing.
 
 ## Overview

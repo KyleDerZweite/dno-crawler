@@ -1,5 +1,7 @@
 # Core Module
 
+> Documentation note: The backend codebase is authoritative. This file is a high-level module guide.
+
 Configuration, authentication, and shared models for the DNO Crawler backend.
 
 ## Files

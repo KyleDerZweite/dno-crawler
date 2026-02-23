@@ -1,5 +1,7 @@
 # DNO Crawler
 
+> Documentation note: The executable codebase and runtime behavior are the source of truth. This README provides stable orientation and operational guidance.
+
 ## Project Description
 
 DNO Crawler is a full-stack application for automated extraction of regulatory data from German Distribution Network Operators (DNOs). The system resolves geographic locations to their responsible electricity grid operator via the VNB Digital GraphQL API, then orchestrates a multi-step pipeline to discover, download, and parse pricing documents from operator websites. Extracted data includes **Netzentgelte** (network usage charges per voltage level) and **HLZF** (Hochlastzeitfenster, peak-load time windows).

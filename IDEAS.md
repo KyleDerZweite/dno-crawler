@@ -1,5 +1,7 @@
 # DNO Crawler - Knowledge Base
 
+> Documentation note: The executable codebase is the source of truth. This file captures ideas and planning context.
+
 This document consolidates research, strategies, and improvement ideas for the DNO Crawler project.
 
 ---

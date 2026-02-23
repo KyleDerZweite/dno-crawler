@@ -1,5 +1,7 @@
 # React SPA Auth Template
 
+> Documentation note: Implementation code is authoritative. This file provides reusable auth template guidance.
+
 Copy-paste auth implementation for React + TypeScript + Vite applications using Zitadel.
 
 ## Files

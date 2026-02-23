@@ -1,8 +1,12 @@
 # Backend Integration Guide
 
-This document describes the current backend implementation for MaStR statistics.
+> Documentation note: The executable backend code is authoritative. This guide describes stable integration behavior.
 
-## Implemented Files
+This document describes backend integration behavior for MaStR statistics.
+
+The codebase is authoritative for exact implementation details. This guide focuses on stable data contracts and system behavior.
+
+## Implemented Capabilities
 
 Canonical voltage levels used for MaStR connection points are:
 
@@ -10,7 +14,7 @@ Canonical voltage levels used for MaStR connection points are:
 
 For backward compatibility, API and import paths still expose/accept aggregated legacy buckets (`ns`, `ms`, `hs`, `hoe`) in addition to canonical levels.
 
-### 1. `backend/app/db/source_models.py`
+### 1. Source data model extension
 
 `DNOMastrData` includes the following MaStR statistics fields:
 
@@ -50,7 +54,7 @@ stats_computed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=Tru
 stats_data_quality: Mapped[str | None] = mapped_column(String(20))  # full, partial, sampled
 ```
 
-### 2. `backend/app/db/models.py`
+### 2. Hub model denormalized fields and convenience properties
 
 `DNOModel` includes denormalized quick-access fields:
 
@@ -100,7 +104,7 @@ def display_voltage_distribution(self) -> dict | None:
     }
 ```
 
-### 3. `backend/app/db/seeder.py`
+### 3. Runtime seed import and stats mapping
 
 `upsert_mastr_data()` handles MaStR statistics mapping:
 
@@ -165,7 +169,7 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         dno.total_capacity_mw = dno.mastr_data.total_capacity_mw
 ```
 
-### 4. `backend/app/api/routes/dnos/crud.py`
+### 4. API payload construction and exposure
 
 Build and expose MaStR statistics payload in list and detail responses:
 
@@ -185,7 +189,7 @@ def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
 #   data.stats = _build_mastr_stats_payload(dno)
 ```
 
-### 5. Database Migration
+### 5. Database migration workflow
 
 Generate and apply migration:
 

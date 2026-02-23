@@ -1,5 +1,7 @@
 # File Naming Conventions
 
+> Documentation note: The codebase is authoritative. Use these naming rules as defaults and document justified deviations.
+
 ## Quick Reference
 
 ```yaml

@@ -1,5 +1,7 @@
 # Logging Conventions
 
+> Documentation note: Runtime behavior and code implementation are authoritative. This document defines logging contracts and conventions.
+
 ## Core Principle
 
 Emit **one wide event per request** containing all context. No scattered log lines.

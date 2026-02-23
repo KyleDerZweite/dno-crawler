@@ -1,14 +1,14 @@
 # Operations Guards
 
+> Documentation note: The codebase is authoritative. This document records stable operational guardrail behavior.
+
 Repository-level guardrails implemented for expensive operations and multi-phase writes.
+
+The codebase is authoritative for exact implementation. This document captures stable operational behavior and intent.
 
 ## Admin endpoint rate limiting (per user)
 
-Expensive admin endpoints now apply per-user Redis rate limits through `RateLimiter.check_key_limit()`.
-
-### Where
-- `backend/app/core/rate_limiter.py`
-- `backend/app/api/routes/admin.py`
+Expensive admin operations apply per-user Redis-backed limits to reduce abuse and accidental load spikes.
 
 ### Key format
 - `rate_limit:admin_user:{user_id}:{operation}`
@@ -26,9 +26,6 @@ Expensive admin endpoints now apply per-user Redis rate limits through `RateLimi
 
 DNO import now commits by record type to avoid losing successful Netzentgelte writes when HLZF import fails.
 
-### Where
-- `backend/app/api/routes/dnos/import_export.py`
-
 ### Flow
 1. Netzentgelte replace/delete scope + upsert loop
 2. `commit()` Netzentgelte phase
@@ -43,9 +40,6 @@ DNO import now commits by record type to avoid losing successful Netzentgelte wr
 
 CORS parsing now strips empty values and literal `"null"` origins, with localhost fallback.
 
-### Where
-- `backend/app/core/config.py`
-
 ### Cases handled
 - JSON list string input
 - Comma-separated string input
@@ -56,12 +50,6 @@ Fallback if cleaned list is empty: `http://localhost:5173`
 ## Job orchestration idempotency guards
 
 Shared job lifecycle helpers now centralize start/completion/failure metadata writes.
-
-### Where
-- `backend/app/jobs/common.py`
-- `backend/app/jobs/crawl_job.py`
-- `backend/app/jobs/extract_job.py`
-- `backend/app/jobs/search_job.py`
 
 ### Guard behavior
 - `mark_job_running()` returns `False` for jobs already in `running`, `completed`, or `cancelled` state.
