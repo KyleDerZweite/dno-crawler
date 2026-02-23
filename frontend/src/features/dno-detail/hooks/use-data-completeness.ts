@@ -3,7 +3,7 @@
  */
 
 import { useMemo } from "react";
-import type { Netzentgelte, HLZF } from "@/lib/api";
+import type { Netzentgelte, HLZF } from "@/types";
 import { isValidValue } from "../utils/data-utils";
 
 interface DataCompletenessResult {

@@ -3,7 +3,7 @@
  */
 
 import { useState, useMemo, useEffect, useCallback } from "react";
-import type { Netzentgelte, HLZF } from "@/lib/api";
+import type { Netzentgelte, HLZF } from "@/types";
 import { isValidValue, VOLTAGE_LEVEL_ORDER, sortByVoltageLevel } from "../utils/data-utils";
 
 interface FilterOptions {

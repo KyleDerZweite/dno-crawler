@@ -454,8 +454,13 @@ class UrlProber:
 
         parsed = urlparse(url)
 
-        # Domain allowlist check (if provided)
-        if allowed_domains and not self._is_allowed_domain(parsed.hostname, allowed_domains):
+        # Domain allowlist check (if provided) — skip for document links
+        is_document_url = any(parsed.path.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS)
+        if (
+            allowed_domains
+            and not is_document_url
+            and not self._is_allowed_domain(parsed.hostname, allowed_domains)
+        ):
             self.log.debug("Domain not in allowlist", host=parsed.hostname)
             return False, None, None, None
 
@@ -503,9 +508,14 @@ class UrlProber:
 
                     next_parsed = urlparse(next_url)
 
-                    # Domain check on redirect
-                    if allowed_domains and not self._is_allowed_domain(
-                        next_parsed.hostname, allowed_domains
+                    # Domain check on redirect — skip for document URLs
+                    next_is_doc = any(
+                        next_parsed.path.lower().endswith(ext) for ext in DOCUMENT_EXTENSIONS
+                    )
+                    if (
+                        allowed_domains
+                        and not next_is_doc
+                        and not self._is_allowed_domain(next_parsed.hostname, allowed_domains)
                     ):
                         self.log.warning("Redirect to disallowed domain", host=next_parsed.hostname)
                         return False, None, None, None

@@ -6,7 +6,7 @@
 export type JobStatus = "pending" | "running" | "completed" | "failed" | "cancelled";
 
 // Job type (what kind of processing)
-export type JobType = "full" | "crawl" | "extract";
+export type JobType = "full" | "extract";
 
 // Base job information
 export interface Job {

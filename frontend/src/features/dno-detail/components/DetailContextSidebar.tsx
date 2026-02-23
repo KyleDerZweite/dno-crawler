@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CrawlDialog } from "./CrawlDialog";
-import type { DNO } from "@/lib/api";
+import type { DNO } from "@/types";
 
 interface NavItem {
     id: string;
@@ -50,8 +50,7 @@ interface DetailContextSidebarProps {
     onEditClick: () => void;
     onTriggerCrawl: (params: {
         years: number[];
-        dataType: "all" | "netzentgelte" | "hlzf";
-        jobType: "full" | "crawl" | "extract";
+        jobType: "full" | "extract";
     }) => void;
     isCrawlPending: boolean;
 }

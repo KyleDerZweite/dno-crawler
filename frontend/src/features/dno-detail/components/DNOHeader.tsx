@@ -14,7 +14,7 @@ import {
     Pencil,
     AlertCircle,
 } from "lucide-react";
-import type { DNO } from "@/lib/api";
+import type { DNO } from "@/types";
 import { CrawlDialog } from "./CrawlDialog";
 
 interface DNOHeaderProps {
@@ -25,8 +25,7 @@ interface DNOHeaderProps {
     // Crawl dialog props
     onTriggerCrawl: (params: {
         years: number[];
-        dataType: "all" | "netzentgelte" | "hlzf";
-        jobType: "full" | "crawl" | "extract";
+        jobType: "full" | "extract";
     }) => void;
     isCrawlPending: boolean;
 }

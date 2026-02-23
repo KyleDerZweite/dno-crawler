@@ -18,13 +18,13 @@ Designed to run on a single dedicated worker to ensure polite crawling
 """
 
 import contextlib
-from datetime import UTC, datetime
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from app.db import get_db_session
-from app.db.models import CrawlJobModel
+from app.db.models import CrawlJobModel, HLZFModel, NetzentgelteModel
+from app.jobs.common import ensure_job_failure_timestamp, mark_job_completed, mark_job_running
 
 logger = structlog.get_logger()
 
@@ -79,18 +79,72 @@ async def process_crawl(
             log.error("Job not found", job_id=job_id)
             return {"status": "error", "message": "Job not found"}
 
-        # Mark job as running
-        job.status = "running"
-        job.started_at = datetime.now(UTC)
-        await db.commit()
+        # Mark job as running (idempotent if already finalized)
+        should_run = await mark_job_running(job, db)
+        if not should_run:
+            log.info("Crawl job already finalized; skipping re-execution")
+            return {"status": job.status, "message": "Job already finalized"}
 
         steps = get_crawl_steps()
         total_steps = len(steps)
 
         try:
-            # Run all steps (gather, discover, download, classify)
-            for i, step in enumerate(steps, 1):
-                await step.execute(db, job, i, total_steps)
+            # Run step 0 (gather context) first — checks for cached files
+            await steps[0].execute(db, job, 1, total_steps)
+
+            # Check if we can skip crawling: cached files exist for target year
+            job_ctx = job.context or {}
+            cached_files = job_ctx.get("cached_files", {})
+            skip_crawl = False
+
+            if cached_files:
+                # Check which types already have unflagged data in the DB
+                imported = await _check_imported_data(db, job.dno_id, job.year)
+                needs_extract = {
+                    dt: path for dt, path in cached_files.items()
+                    if dt not in imported
+                }
+
+                if not needs_extract and imported:
+                    # All cached data types are already imported and not flagged — skip entirely
+                    skip_crawl = True
+                    log.info(
+                        "All data already imported, skipping crawl",
+                        imported=list(imported),
+                        cached=list(cached_files.keys()),
+                    )
+                    await mark_job_completed(job, db, current_step="Skipped - data already imported")
+                    return {
+                        "status": "completed",
+                        "message": f"Data already imported for {', '.join(imported)}",
+                    }
+
+                if needs_extract:
+                    # Files exist but data not imported — skip crawl, go straight to extract
+                    skip_crawl = True
+                    log.info(
+                        "Cached files found, skipping crawl and queuing extract",
+                        needs_extract=list(needs_extract.keys()),
+                        already_imported=list(imported),
+                    )
+                    # Build classified_files from cache so _enqueue_extract_jobs works
+                    classified = {}
+                    for dt, path in needs_extract.items():
+                        ext = path.rsplit(".", 1)[-1] if "." in path else "pdf"
+                        classified[dt] = {
+                            "path": path,
+                            "format": ext,
+                            "record_count": -1,  # Unknown, from cache
+                            "source_url": "cached",
+                        }
+                    job_ctx["classified_files"] = classified
+                    job.context = job_ctx
+                    await db.commit()
+
+            if not skip_crawl:
+                # Run remaining steps (discover, download, classify)
+                for i, step in enumerate(steps[1:], 2):
+                    await step.execute(db, job, i, total_steps)
 
             # Check if classify requested a deeper crawl
             job_ctx = job.context or {}
@@ -112,16 +166,10 @@ async def process_crawl(
                     await step.execute(db, job, i, total_steps + len(deeper_steps))
 
             # Crawl steps completed successfully
-            job.status = "completed"
-            job.progress = 100
-            job.current_step = "Crawl Completed - Queuing Extract"
-            job.completed_at = datetime.now(UTC)
-            await db.commit()
+            await mark_job_completed(job, db, current_step="Crawl Completed - Queuing Extract")
 
             # Enqueue extract job(s) for each classified data type
-            extract_job_ids = []
-            if not job.context.get("skip_extract"):
-                extract_job_ids = await _enqueue_extract_jobs(db, job, log)
+            extract_job_ids = await _enqueue_extract_jobs(db, job, log)
 
             if extract_job_ids:
                 # Store first child ID for backwards compat
@@ -159,11 +207,44 @@ async def process_crawl(
             log.error("Crawl job failed", error=str(e))
             # BaseStep sets job.status/completed_at on step failures,
             # but ensure completed_at is set even for non-step errors
-            if not job.completed_at:
-                job.completed_at = datetime.now(UTC)
-                with contextlib.suppress(Exception):
-                    await db.commit()
+            with contextlib.suppress(Exception):
+                await ensure_job_failure_timestamp(job, db)
             return {"status": "failed", "message": str(e)}
+
+
+async def _check_imported_data(db, dno_id: int, year: int) -> set[str]:
+    """Check which data types already have unflagged data in the DB.
+
+    Returns set of data type names (e.g. {"netzentgelte", "hlzf"}) that
+    have existing records and are not flagged for review.
+    """
+    imported = set()
+
+    # Check netzentgelte
+    result = await db.execute(
+        select(func.count(NetzentgelteModel.id)).where(
+            NetzentgelteModel.dno_id == dno_id,
+            NetzentgelteModel.year == year,
+            NetzentgelteModel.verification_status != "flagged",
+        )
+    )
+    netz_count = result.scalar_one()
+    if netz_count >= 2:
+        imported.add("netzentgelte")
+
+    # Check hlzf
+    result = await db.execute(
+        select(func.count(HLZFModel.id)).where(
+            HLZFModel.dno_id == dno_id,
+            HLZFModel.year == year,
+            HLZFModel.verification_status != "flagged",
+        )
+    )
+    hlzf_count = result.scalar_one()
+    if hlzf_count >= 2:
+        imported.add("hlzf")
+
+    return imported
 
 
 async def _enqueue_extract_jobs(db, parent_job: CrawlJobModel, log) -> list[int]:
@@ -191,6 +272,10 @@ async def _enqueue_extract_jobs(db, parent_job: CrawlJobModel, log) -> list[int]
         redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
 
         for data_type, file_info in classified_files.items():
+            if ":" in data_type:
+                log.info("Skipping other-year file", data_type=data_type)
+                continue  # Other-year file, already saved but don't extract
+
             # Build extract job context with the classified file info
             extract_ctx = {
                 "dno_id": job_ctx.get("dno_id"),

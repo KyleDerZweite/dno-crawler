@@ -112,6 +112,10 @@ class DiscoverStep(BaseStep):
             candidates: list[dict] = []
             seen_urls: set[str] = set()
 
+            # On pass 2+, seed seen_urls from previous candidates to avoid re-discovery
+            if crawl_pass > 1:
+                seen_urls = {c["url"] for c in ctx.get("candidate_urls", [])}
+
             def _add_candidate(url: str, score: float, source: str, file_type: str = "unknown"):
                 """Add a candidate URL if not already seen."""
                 if url in seen_urls or len(candidates) >= MAX_CANDIDATES:

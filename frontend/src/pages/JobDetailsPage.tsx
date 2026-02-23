@@ -14,7 +14,8 @@ import {
     FileText,
 } from "lucide-react";
 
-import { api, type ApiResponse, type JobDetails } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { ApiResponse, JobDetails } from "@/types";
 import { JOB_STATUS_CONFIG } from "@/lib/job-status";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -96,7 +97,6 @@ export function JobDetailsPage() {
     // Job type config
     const jobTypeLabels: Record<string, string> = {
         full: 'Full Pipeline',
-        crawl: 'Crawl Only',
         extract: 'Extract Only',
     };
 

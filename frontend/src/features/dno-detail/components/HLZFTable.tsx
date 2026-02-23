@@ -9,7 +9,7 @@ import { Clock, Loader2, MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { VerificationBadge } from "@/components/VerificationBadge";
 import { ExtractionSourceBadge } from "@/components/ExtractionSourceBadge";
 import { SmartDropdown } from "@/components/SmartDropdown";
-import type { HLZF } from "@/lib/api";
+import type { HLZF } from "@/types";
 
 interface HLZFTableProps {
     data: HLZF[];

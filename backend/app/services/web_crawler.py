@@ -202,12 +202,23 @@ IRRELEVANT_PATHS = {
 SKIP_DOMAINS = {
     "facebook.com",
     "twitter.com",
+    "x.com",
     "linkedin.com",
     "youtube.com",
     "instagram.com",
+    "tiktok.com",
+    "pinterest.com",
+    "whatsapp.com",
     "xing.com",
     "kununu.com",
     "google.com",
+    "apple.com",
+    "microsoft.com",
+    "wikipedia.org",
+    "cookiebot.com",
+    "usercentrics.com",
+    "trustarc.com",
+    "onetrust.com",
 }
 
 
@@ -455,7 +466,7 @@ class WebCrawler:
             )
 
             # Extract links
-            links = self._extract_links(soup, final_url, allowed_domains)
+            links = self._extract_links(soup, final_url, allowed_domains, target_keywords)
             return result, links
 
         except httpx.RequestError as e:
@@ -592,15 +603,29 @@ class WebCrawler:
         text_lower = text.lower()
         return [kw for kw in target_keywords if kw.lower() in text_lower]
 
+    def _is_relevant_external_link(
+        self, url: str, anchor_text: str, target_keywords: list[str]
+    ) -> bool:
+        """Check if an external HTML link is relevant enough to follow.
+
+        Returns True if the URL path or anchor text contains at least one
+        target keyword, indicating the link likely points to relevant data.
+        """
+        search_text = (urlparse(url).path + " " + anchor_text).lower()
+        return any(kw.lower() in search_text for kw in target_keywords)
+
     def _extract_links(
         self,
         soup: BeautifulSoup,
         base_url: str,
         allowed_domains: set[str],
+        target_keywords: list[str] | None = None,
     ) -> list[str]:
         """Extract valid links from HTML.
 
         Filters out external links, skip patterns, and normalizes URLs.
+        External HTML links are allowed through if their anchor text or URL
+        path contains a target keyword (relevance gate).
         """
         links = []
 
@@ -629,18 +654,38 @@ class WebCrawler:
                 host_lower = host.lower()
                 host_check = host_lower[4:] if host_lower.startswith("www.") else host_lower
 
-                # Skip external domains
-                if not any(
-                    host_check == d or host_check.endswith(f".{d}") for d in allowed_domains
-                ):
-                    continue
-
-                # Skip known bad domains
+                # Skip known bad domains early (before relevance check)
                 if any(skip in host_lower for skip in SKIP_DOMAINS):
                     continue
 
-                # Skip irrelevant paths
+                # Detect if it's a document link (download target, not navigation)
                 path_lower = parsed.path.lower()
+                is_document_link = any(path_lower.endswith(ext) for ext in DOCUMENT_EXTENSIONS)
+
+                # Check if link is external
+                is_internal = any(
+                    host_check == d or host_check.endswith(f".{d}")
+                    for d in allowed_domains
+                )
+
+                if not is_internal:
+                    if is_document_link:
+                        # External document links are always allowed (existing behavior)
+                        pass
+                    elif target_keywords and self._is_relevant_external_link(
+                        full_url, tag.get_text(strip=True), target_keywords
+                    ):
+                        # External HTML link with relevant anchor/URL — follow it
+                        self.log.debug(
+                            "relevant_external_link",
+                            url=full_url[:100],
+                            anchor=tag.get_text(strip=True)[:60],
+                        )
+                    else:
+                        # External HTML link with no relevance signal — skip
+                        continue
+
+                # Skip irrelevant paths
                 if any(pattern in path_lower for pattern in IRRELEVANT_PATHS):
                     continue
 

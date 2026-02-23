@@ -121,10 +121,29 @@ class Settings(BaseSettings):
         """Parse CORS origins from JSON string if needed."""
         if isinstance(v, str):
             try:
-                return json.loads(v)
+                parsed = json.loads(v)
+                if isinstance(parsed, list):
+                    cleaned = [
+                        origin.strip()
+                        for origin in parsed
+                        if isinstance(origin, str)
+                        and origin.strip()
+                        and origin.strip().lower() != "null"
+                    ]
+                    return cleaned or ["http://localhost:5173"]
             except json.JSONDecodeError:
                 # If not valid JSON, treat as comma-separated
-                return [s.strip() for s in v.split(",")]
+                cleaned = [
+                    s.strip() for s in v.split(",") if s.strip() and s.strip().lower() != "null"
+                ]
+                return cleaned or ["http://localhost:5173"]
+        if isinstance(v, list):
+            cleaned = [
+                origin.strip()
+                for origin in v
+                if isinstance(origin, str) and origin.strip() and origin.strip().lower() != "null"
+            ]
+            return cleaned or ["http://localhost:5173"]
         return v
 
     @field_validator("database_url")

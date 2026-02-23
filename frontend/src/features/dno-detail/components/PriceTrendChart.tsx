@@ -9,7 +9,7 @@ import type { ApexOptions } from "apexcharts";
 import { Button } from "@/components/ui/button";
 import { TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Netzentgelte } from "@/lib/api";
+import type { Netzentgelte } from "@/types";
 import { useChartColors } from "../hooks/use-chart-colors";
 import { ChartColorPicker } from "./ChartColorPicker";
 import { getApexChartBase, VOLTAGE_LEVELS } from "../utils/chart-colors";

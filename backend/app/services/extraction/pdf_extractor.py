@@ -13,8 +13,24 @@ import pdfplumber
 import structlog
 
 from app.core.constants import normalize_voltage_level
+from app.core.parsers import parse_german_number
 
 logger = structlog.get_logger()
+
+
+def _parse_number_or_log(raw: str, field: str, page_num: int, voltage_level: str) -> float:
+    """Parse numeric values and log malformed entries instead of silently skipping."""
+    value = parse_german_number(raw)
+    if value is None:
+        logger.warning(
+            "pdf_number_parse_failed",
+            field=field,
+            raw_value=raw,
+            source_page=page_num,
+            voltage_level=voltage_level,
+        )
+        raise ValueError(f"Invalid number: {raw}")
+    return value
 
 
 async def extract_netzentgelte_from_pdf_async(pdf_path: str | Path) -> list[dict[str, Any]]:
@@ -109,10 +125,10 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
         voltage_level = normalize_voltage_level(voltage_level_raw)
 
         try:
-            lp_unter = float(match[1].replace(",", "."))
-            ap_unter = float(match[2].replace(",", "."))
-            lp = float(match[3].replace(",", "."))
-            ap = float(match[4].replace(",", "."))
+            lp_unter = _parse_number_or_log(match[1], "leistung_unter_2500h", page_num, voltage_level)
+            ap_unter = _parse_number_or_log(match[2], "arbeit_unter_2500h", page_num, voltage_level)
+            lp = _parse_number_or_log(match[3], "leistung", page_num, voltage_level)
+            ap = _parse_number_or_log(match[4], "arbeit", page_num, voltage_level)
 
             records.append(
                 {
@@ -125,7 +141,12 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
                 }
             )
         except (ValueError, IndexError) as e:
-            logger.warning(f"Failed to parse numbers: {match}, error: {e}")
+            logger.warning(
+                "pdf_parse_row_failed",
+                raw_match=match,
+                source_page=page_num,
+                error=str(e),
+            )
             continue
 
     # If Pattern 1 found results, return them
@@ -345,6 +366,14 @@ def extract_hlzf_from_pdf(pdf_path: str | Path) -> list[dict[str, Any]]:
                             records.extend(hlzf_records)
                             log.info("hlzf_records_from_table", count=len(hlzf_records))
 
+                    # Fallback: try cross-table parsing for fragmented PDFs
+                    # (e.g. season header in one table, data rows in separate tables)
+                    if not records and tables:
+                        cross_records = _parse_hlzf_fragmented_tables(tables, page_num)
+                        if cross_records:
+                            records.extend(cross_records)
+                            log.info("hlzf_records_from_fragmented", count=len(cross_records))
+
             # If no table extraction worked, try text-based extraction
             if not records:
                 log.info("table_extraction_failed_trying_text")
@@ -410,6 +439,116 @@ def _merge_tables(tables: list[list]) -> list[list]:
             merged_results.extend(table_group)
 
     return merged_results
+
+
+def _parse_hlzf_fragmented_tables(
+    tables: list[list[list]], page_num: int
+) -> list[dict[str, Any]]:
+    """
+    Parse HLZF from fragmented tables where season header and data rows
+    are in separate pdfplumber tables with different column counts.
+
+    Common pattern: one small header table with season names, then separate
+    data tables per voltage level with N columns = 1 label + seasons x (von, bis).
+    """
+    records = []
+
+    # Step 1: Detect season order from any table that contains season keywords
+    season_order: list[str] = []
+    season_keywords_map = {
+        "winter": "winter",
+        "frühling": "fruehling",
+        "fruehling": "fruehling",
+        "frühjahr": "fruehling",
+        "sommer": "sommer",
+        "herbst": "herbst",
+    }
+
+    for table in tables:
+        for row in table:
+            row_str = " ".join(str(c or "").lower() for c in row)
+            found_seasons: list[tuple[int, str]] = []
+            for kw, key in season_keywords_map.items():
+                idx = row_str.find(kw)
+                if idx >= 0 and key not in [s for _, s in found_seasons]:
+                    found_seasons.append((idx, key))
+            if len(found_seasons) >= 3:
+                found_seasons.sort(key=lambda x: x[0])
+                season_order = [s for _, s in found_seasons]
+                break
+        if season_order:
+            break
+
+    if not season_order:
+        return records
+
+    num_seasons = len(season_order)
+
+    # Step 2: Collect all data rows from all tables that start with a voltage level
+    # Data tables typically have 1 + num_seasons*2 columns (label + von/bis per season)
+    expected_cols = 1 + num_seasons * 2
+
+    for table in tables:
+        if not table or not table[0]:
+            continue
+
+        col_count = len(table[0])
+        if col_count != expected_cols:
+            continue
+
+        # Parse rows: first col is voltage level label, rest are von/bis pairs
+        current_vl: str | None = None
+        vl_times: dict[str, list[str | None]] = {}  # vl -> list of season values
+
+        for row in table:
+            label = str(row[0] or "").strip()
+            label_lower = label.lower()
+
+            # Check if this row starts a new voltage level
+            if label and any(
+                v in label_lower
+                for v in ["spannung", "netz", "umspann", "msp", "nsp", "ms", "ns", "hs"]
+            ):
+                current_vl = normalize_voltage_level(label)
+                if current_vl and current_vl not in vl_times:
+                    vl_times[current_vl] = [None] * num_seasons
+
+            if not current_vl:
+                continue
+
+            # Extract von/bis pairs for each season
+            for s_idx in range(num_seasons):
+                von_col = 1 + s_idx * 2
+                bis_col = 2 + s_idx * 2
+                if von_col < len(row) and bis_col < len(row):
+                    von = str(row[von_col] or "").strip()
+                    bis = str(row[bis_col] or "").strip()
+                    if von and bis and re.match(r"\d{1,2}:\d{2}", von) and re.match(r"\d{1,2}:\d{2}", bis):
+                        time_range = f"{von}-{bis}"
+                        existing = vl_times[current_vl][s_idx]
+                        if existing:
+                            vl_times[current_vl][s_idx] = f"{existing}\n{time_range}"
+                        else:
+                            vl_times[current_vl][s_idx] = time_range
+
+        # Build records from collected data
+        for vl, times in vl_times.items():
+            season_dict: dict[str, str | None] = {
+                "winter": None, "fruehling": None, "sommer": None, "herbst": None
+            }
+            has_any = False
+            for s_idx, s_key in enumerate(season_order):
+                if s_idx < len(times) and times[s_idx]:
+                    season_dict[s_key] = times[s_idx]
+                    has_any = True
+            if has_any:
+                records.append({
+                    "voltage_level": vl,
+                    "source_page": page_num,
+                    **season_dict,
+                })
+
+    return records
 
 
 def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
@@ -601,42 +740,143 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
 
 
 def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
-    """Parse HLZF data from raw text when table extraction fails."""
-    import re
+    """Parse HLZF data from raw text when table extraction fails.
 
+    Uses a two-pass approach:
+    1. Find voltage level positions in text (full names and abbreviations)
+    2. Find time ranges (HH:MM patterns) and associate them with the nearest
+       preceding voltage level, mapping to seasons by column position.
+    """
     records = []
 
-    # This is a fallback - try to find time patterns near voltage level keywords
-    voltage_levels = [
-        "Hochspannungsnetz",
-        "Umspannung zur Mittelspannung",
-        "Mittelspannungsnetz",
-        "Umspannung zur Niederspannung",
-        "Niederspannungsnetz",
+    # Voltage level labels to search for — sorted longest first to avoid
+    # short labels (e.g. "MS") claiming positions inside longer ones ("MS/NS")
+    voltage_labels = sorted(
+        [
+            ("Hochspannungsnetz", "HS"),
+            ("Hochspannung", "HS"),
+            ("Umspannung zur Mittelspannung", "HS/MS"),
+            ("Umspannung HS/MS", "HS/MS"),
+            ("HS/MS", "HS/MS"),
+            ("Mittelspannungsnetz", "MS"),
+            ("Mittelspannung", "MS"),
+            ("MS", "MS"),
+            ("Umspannung zur Niederspannung", "MS/NS"),
+            ("Umspannung MS/NS", "MS/NS"),
+            ("MS/NS", "MS/NS"),
+            ("Niederspannungsnetz", "NS"),
+            ("Niederspannung", "NS"),
+            ("NS", "NS"),
+            ("HS", "HS"),
+        ],
+        key=lambda x: len(x[0]),
+        reverse=True,
+    )
+
+    # Detect season order from headers in the text
+    season_names = [
+        ("fruehling", r"Fr[üu]h(?:ling|jahr)"),
+        ("sommer", r"Sommer"),
+        ("herbst", r"Herbst"),
+        ("winter", r"Winter"),
     ]
 
-    # Time pattern: XX:XX-XX:XX
-    time_pattern = r"(\d{1,2}:\d{2})-(\d{1,2}:\d{2})"
+    # Find season header positions to determine column order
+    season_order: list[str] = []
+    season_positions: list[tuple[int, str]] = []
+    for key, pattern in season_names:
+        for m in re.finditer(pattern, text, re.IGNORECASE):
+            season_positions.append((m.start(), key))
+    season_positions.sort(key=lambda x: x[0])
+    # Deduplicate (take first occurrence of each)
+    seen_seasons: set[str] = set()
+    for _, key in season_positions:
+        if key not in seen_seasons:
+            season_order.append(key)
+            seen_seasons.add(key)
 
-    for voltage in voltage_levels:
-        # Find the voltage level in text and extract nearby time patterns
-        pattern = rf"{re.escape(voltage)}[^\n]*?((?:\d{{1,2}}:\d{{2}}-\d{{1,2}}:\d{{2}}[\s\n]*)+)"
-        match = re.search(pattern, text, re.IGNORECASE)
+    if not season_order:
+        # Default order if no season headers found
+        season_order = ["winter", "fruehling", "sommer", "herbst"]
 
-        if match:
-            times = re.findall(time_pattern, match.group(1))
-            if times:
-                time_str = "\n".join([f"{t[0]}-{t[1]}" for t in times])
-                records.append(
-                    {
-                        "voltage_level": voltage,
-                        "winter": time_str,  # Assuming Winter since that's most common
-                        "fruehling": None,
-                        "sommer": None,
-                        "herbst": None,
-                        "source_page": 0,
-                    }
-                )
+    num_seasons = len(season_order)
+
+    # Find all voltage level positions in the text
+    vl_positions: list[tuple[int, str]] = []  # (position, normalized_level)
+    claimed_ranges: list[tuple[int, int]] = []  # (start, end) of already-claimed matches
+
+    for label, normalized in voltage_labels:
+        for m in re.finditer(re.escape(label), text, re.IGNORECASE):
+            # Skip if this match overlaps with an already-claimed range
+            if any(not (m.end() <= cs or m.start() >= ce) for cs, ce in claimed_ranges):
+                continue
+            # For short abbreviations (2-5 chars), require word boundaries
+            if len(label) <= 5:
+                before = text[m.start() - 1] if m.start() > 0 else " "
+                after = text[m.end()] if m.end() < len(text) else " "
+                if before.isalnum() or after.isalnum():
+                    continue
+            vl_positions.append((m.start(), normalized))
+            claimed_ranges.append((m.start(), m.end()))
+
+    # Sort by position and deduplicate overlapping voltage levels
+    vl_positions.sort(key=lambda x: x[0])
+
+    # Deduplicate: if same normalized level appears multiple times, keep first
+    seen_vls: set[str] = set()
+    unique_vl_positions: list[tuple[int, str]] = []
+    for pos, vl in vl_positions:
+        if vl not in seen_vls:
+            unique_vl_positions.append((pos, vl))
+            seen_vls.add(vl)
+    vl_positions = unique_vl_positions
+
+    if not vl_positions:
+        return records
+
+    # Find all time ranges in the text: HH:MM - HH:MM (with various separators)
+    time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})"
+    time_matches = [(m.start(), m.group(1), m.group(2)) for m in re.finditer(time_range_pattern, text)]
+
+    # For each voltage level, collect the time ranges that follow it
+    # (up to the next voltage level or end of text)
+    for i, (vl_pos, vl_name) in enumerate(vl_positions):
+        # Determine the text region for this voltage level
+        next_vl_pos = vl_positions[i + 1][0] if i + 1 < len(vl_positions) else len(text)
+
+        # Collect time ranges in this region
+        vl_times = [
+            (pos, start, end)
+            for pos, start, end in time_matches
+            if vl_pos <= pos < next_vl_pos
+        ]
+
+        if not vl_times:
+            continue
+
+        # Map time ranges to seasons
+        # Each season gets one time range (von-bis), assigned in season_order
+        season_values: dict[str, str | None] = dict.fromkeys(
+            ["winter", "fruehling", "sommer", "herbst"], None
+        )
+
+        for j, (_, start_time, end_time) in enumerate(vl_times):
+            if j < num_seasons:
+                season_key = season_order[j]
+                time_str = f"{start_time}-{end_time}"
+                if season_values[season_key] is None:
+                    season_values[season_key] = time_str
+                else:
+                    # Multiple time ranges for same season
+                    season_values[season_key] += f"\n{time_str}"
+
+        records.append(
+            {
+                "voltage_level": vl_name,
+                "source_page": 0,
+                **season_values,
+            }
+        )
 
     return records
 

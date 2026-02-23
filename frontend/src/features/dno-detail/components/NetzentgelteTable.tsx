@@ -9,7 +9,7 @@ import { Zap, Loader2, MoreVertical, Pencil, Trash2, Globe } from "lucide-react"
 import { VerificationBadge } from "@/components/VerificationBadge";
 import { ExtractionSourceBadge } from "@/components/ExtractionSourceBadge";
 import { SmartDropdown } from "@/components/SmartDropdown";
-import type { Netzentgelte } from "@/lib/api";
+import type { Netzentgelte } from "@/types";
 
 interface NetzentgelteTableProps {
     data: Netzentgelte[];

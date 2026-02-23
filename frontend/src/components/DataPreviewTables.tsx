@@ -12,7 +12,7 @@ import {
 } from "@/components/ui/tooltip";
 import { CheckCircle2, AlertTriangle, Circle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { PublicSearchNetzentgelte, PublicSearchHLZF } from "@/lib/api";
+import type { PublicSearchNetzentgelte, PublicSearchHLZF } from "@/types";
 
 interface DataPreviewTablesProps {
     netzentgelte?: PublicSearchNetzentgelte[];

@@ -100,6 +100,28 @@ import { formatCurrency, isValidValue } from "@/utils/data-utils";
 import type { DNO, Job } from "@/types/api.types";
 ```
 
+## Shared Public Search UI
+
+Landing and search pages use a single shared component for the public search form and result rendering.
+
+```typescript
+// Shared component
+import { PublicSearchPanel } from "@/components/PublicSearchPanel";
+
+// Search page
+<PublicSearchPanel showImportLinkForSkeleton={true} />
+
+// Landing page
+<PublicSearchPanel errorClassName="mt-6" resultClassName="mt-6" />
+```
+
+Use this component when updating search modes, validation, year filters, or result cards to avoid drift between pages.
+
+## Type Source of Truth
+
+For domain types (`DNO`, `Netzentgelte`, `HLZF`, `Job`, search response types), import from `@/types`.
+Keep `@/lib/api` focused on runtime client functions (`api`, `apiClient`) and compatibility exports only.
+
 ## Abbreviations
 
 | Abbreviation | Full Form | Usage |

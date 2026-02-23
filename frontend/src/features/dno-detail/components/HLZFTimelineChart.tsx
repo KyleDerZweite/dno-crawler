@@ -9,7 +9,7 @@ import type { ApexOptions } from "apexcharts";
 import { Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import type { HLZF, HLZFTimeRange } from "@/lib/api";
+import type { HLZF, HLZFTimeRange } from "@/types";
 import { useChartColors } from "../hooks/use-chart-colors";
 import { ChartColorPicker } from "./ChartColorPicker";
 import { getApexChartBase, VOLTAGE_LEVELS } from "../utils/chart-colors";

@@ -26,8 +26,7 @@ interface CrawlDialogProps {
     hasLocalFiles: boolean;
     onTrigger: (params: {
         years: number[];
-        dataType: "all" | "netzentgelte" | "hlzf";
-        jobType: "full" | "crawl" | "extract";
+        jobType: "full" | "extract";
     }) => void;
     isPending: boolean;
 }
@@ -41,8 +40,7 @@ export function CrawlDialog({
 }: CrawlDialogProps) {
     const [open, setOpen] = useState(false);
     const [crawlYears, setCrawlYears] = useState<number[]>(DEFAULT_CRAWL_YEARS);
-    const [crawlDataType, setCrawlDataType] = useState<"all" | "netzentgelte" | "hlzf">("all");
-    const [crawlJobType, setCrawlJobType] = useState<"full" | "crawl" | "extract">("full");
+    const [crawlJobType, setCrawlJobType] = useState<"full" | "extract">("full");
     const [showAdvanced, setShowAdvanced] = useState(false);
 
     const toggleCrawlYear = (year: number) => {
@@ -55,12 +53,11 @@ export function CrawlDialog({
         });
     };
 
-    const crawlJobCount = crawlYears.length * (crawlDataType === "all" ? 2 : 1);
+    const crawlJobCount = crawlYears.length;
 
     const handleTrigger = () => {
         onTrigger({
             years: crawlYears,
-            dataType: crawlDataType,
             jobType: crawlJobType,
         });
         setOpen(false);
@@ -140,8 +137,7 @@ export function CrawlDialog({
                                     {(
                                         [
                                             { value: "full", label: "Full Pipeline", desc: "Crawl + Extract" },
-                                            { value: "crawl", label: "Crawl Only", desc: "Download file" },
-                                            { value: "extract", label: "Extract Only", desc: "Process existing file" },
+                                            { value: "extract", label: "Extract Only", desc: "Re-process existing files" },
                                         ] as const
                                     ).map((opt) => (
                                         <button
@@ -172,31 +168,9 @@ export function CrawlDialog({
                                 {crawlJobType === "extract" && (
                                     <p className="text-xs text-muted-foreground flex items-center gap-1">
                                         <Info className="w-3 h-3" />
-                                        Requires an existing downloaded file for the selected year/type
+                                        Requires existing downloaded files for the selected year
                                     </p>
                                 )}
-                            </div>
-
-                            {/* Data Type Selection */}
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Data Type</label>
-                                <div className="flex gap-2">
-                                    {(["all", "netzentgelte", "hlzf"] as const).map((type) => (
-                                        <button
-                                            key={type}
-                                            type="button"
-                                            onClick={() => { setCrawlDataType(type); }}
-                                            className={cn(
-                                                "px-3 py-1.5 rounded-md border text-sm font-medium transition-colors",
-                                                crawlDataType === type
-                                                    ? "bg-primary text-primary-foreground border-primary"
-                                                    : "bg-background border-input hover:bg-muted"
-                                            )}
-                                        >
-                                            {type === "all" ? "All" : type === "netzentgelte" ? "Netzentgelte" : "HLZF"}
-                                        </button>
-                                    ))}
-                                </div>
                             </div>
                         </div>
                     )}
@@ -215,7 +189,7 @@ export function CrawlDialog({
                         ) : (
                             <>
                                 Start {crawlJobCount}{" "}
-                                {crawlJobType === "full" ? "" : crawlJobType + " "}
+                                {crawlJobType === "extract" ? "Extract " : ""}
                                 Job{crawlJobCount > 1 ? "s" : ""}
                             </>
                         )}

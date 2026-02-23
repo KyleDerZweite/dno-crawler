@@ -92,8 +92,13 @@ class DownloadStep(BaseStep):
             raise StepError(f"Invalid slug for path construction: {dno_slug}")
         save_dir.mkdir(parents=True, exist_ok=True)
 
+        # Merge with existing downloads (for multi-pass crawls)
+        existing_files = ctx.get("downloaded_files", [])
+        existing_urls = {f["url"] for f in existing_files}
+        start_idx = len(existing_files)
+
         downloaded: list[dict] = []
-        total_bytes = 0
+        total_bytes = sum(f.get("size_bytes", 0) for f in existing_files)
         failed = 0
 
         async with httpx.AsyncClient(
@@ -101,8 +106,13 @@ class DownloadStep(BaseStep):
             follow_redirects=True,
             limits=httpx.Limits(max_connections=10, max_keepalive_connections=5),
         ) as client:
-            for idx, candidate in enumerate(candidates[:MAX_FILES]):
+            for i, candidate in enumerate(candidates[:MAX_FILES]):
                 url = candidate["url"]
+                idx = start_idx + i
+
+                # Skip URLs already downloaded in a previous pass
+                if url in existing_urls:
+                    continue
 
                 if total_bytes >= MAX_TOTAL_SIZE:
                     log.warning("total_size_limit_reached", total_bytes=total_bytes)
@@ -150,11 +160,11 @@ class DownloadStep(BaseStep):
                     index=idx,
                 )
 
-        ctx["downloaded_files"] = downloaded
+        ctx["downloaded_files"] = existing_files + downloaded
         job.context = ctx
         await db.commit()
 
-        if not downloaded:
+        if not downloaded and not existing_files:
             raise StepError(
                 f"All {failed} download attempts failed for {dno_slug}. "
                 f"Tried {len(candidates[:MAX_FILES])} candidates."

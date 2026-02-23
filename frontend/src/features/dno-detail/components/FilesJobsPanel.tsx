@@ -17,7 +17,7 @@ import {
     Clock,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Job } from "@/lib/api";
+import type { Job } from "@/types";
 
 interface SourceFile {
     name: string;
@@ -178,7 +178,7 @@ export function FilesJobsPanel({
                                             {job.year} - {job.data_type}
                                             {job.job_type && job.job_type !== "full" && (
                                                 <Badge variant="outline" className="text-xs">
-                                                    {job.job_type === "crawl" ? "Crawl Only" : "Extract Only"}
+                                                    {job.job_type === "extract" ? "Extract Only" : job.job_type}
                                                 </Badge>
                                             )}
                                         </p>

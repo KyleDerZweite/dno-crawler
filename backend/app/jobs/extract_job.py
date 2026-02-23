@@ -14,13 +14,13 @@ crawling is performed.
 """
 
 import contextlib
-from datetime import UTC, datetime
 
 import structlog
 from sqlalchemy import select
 
 from app.db import get_db_session
 from app.db.models import CrawlJobModel
+from app.jobs.common import ensure_job_failure_timestamp, mark_job_completed, mark_job_running
 
 logger = structlog.get_logger()
 
@@ -80,10 +80,11 @@ async def process_extract(
             await db.commit()
             return {"status": "failed", "message": "No file to extract from"}
 
-        # Mark job as running
-        job.status = "running"
-        job.started_at = datetime.now(UTC)
-        await db.commit()
+        # Mark job as running (idempotent no-op if already finished)
+        should_run = await mark_job_running(job, db)
+        if not should_run:
+            log.info("Extract job already finished; skipping re-execution")
+            return {"status": job.status, "message": "Job already finalized"}
 
         steps = get_extract_steps()
         total_steps = len(steps)
@@ -93,11 +94,7 @@ async def process_extract(
                 await step.execute(db, job, i, total_steps)
 
             # Extract steps completed successfully
-            job.status = "completed"
-            job.progress = 100
-            job.current_step = "Extraction Complete"
-            job.completed_at = datetime.now(UTC)
-            await db.commit()
+            await mark_job_completed(job, db, current_step="Extraction Complete")
 
             # Release DNO lock
             await _release_dno_lock(db, job.dno_id, log)
@@ -112,10 +109,8 @@ async def process_extract(
             log.error("❌ Extract job failed", error=str(e))
             # BaseStep sets job.status/completed_at on step failures,
             # but ensure completed_at is set even for non-step errors
-            if not job.completed_at:
-                job.completed_at = datetime.now(UTC)
-                with contextlib.suppress(Exception):
-                    await db.commit()
+            with contextlib.suppress(Exception):
+                await ensure_job_failure_timestamp(job, db)
 
             # Release DNO lock even on failure
             await _release_dno_lock(db, job.dno_id, log)

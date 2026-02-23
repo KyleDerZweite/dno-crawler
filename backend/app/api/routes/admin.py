@@ -22,6 +22,7 @@ from app.core.auth import User as AuthUser
 from app.core.auth import require_admin
 from app.core.config import settings
 from app.core.models import APIResponse
+from app.core.rate_limiter import get_rate_limiter
 from app.db import (
     CrawlJobModel,
     DNOModel,
@@ -36,6 +37,26 @@ router = APIRouter()
 
 # Priority for bulk admin extraction jobs (lower than default 5)
 BULK_EXTRACT_PRIORITY = 2
+
+ADMIN_SCAN_RATE_LIMIT = 12
+ADMIN_BULK_RATE_LIMIT = 20
+ADMIN_RATE_WINDOW_SECONDS = 60
+
+
+async def _check_admin_operation_limit(admin: AuthUser, operation: str, limit: int) -> None:
+    """Apply per-user rate limiting for expensive admin operations."""
+    try:
+        limiter = get_rate_limiter()
+    except RuntimeError:
+        # Redis/rate limiter unavailable in dev: fail open
+        return
+
+    await limiter.check_key_limit(
+        key=f"rate_limit:admin_user:{admin.id}:{operation}",
+        limit=limit,
+        window_seconds=ADMIN_RATE_WINDOW_SECONDS,
+        detail="Rate limit exceeded for admin operation. Please retry shortly.",
+    )
 
 
 @router.get("/dashboard")
@@ -240,6 +261,8 @@ async def list_cached_files(
     - Total files, by data type, by format
     - Extraction status (no data, flagged, verified, unverified)
     """
+    await _check_admin_operation_limit(admin, "files_scan", ADMIN_SCAN_RATE_LIMIT)
+
     storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
 
@@ -390,6 +413,8 @@ async def preview_bulk_extract(
     - force_override: ALL files (including verified)
     - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
+    await _check_admin_operation_limit(admin, "bulk_preview", ADMIN_BULK_RATE_LIMIT)
+
     storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
 
@@ -572,6 +597,8 @@ async def trigger_bulk_extract(
     - force_override: Extract all files, including verified (adds force_override to context)
     - no_data_and_failed: Only files with no data OR files with failed extraction jobs
     """
+    await _check_admin_operation_limit(admin, "bulk_trigger", ADMIN_BULK_RATE_LIMIT)
+
     # First get the preview to know what to extract
     storage_path = settings.storage_path
     downloads_path = Path(storage_path) / "downloads"
@@ -838,6 +865,8 @@ async def cancel_bulk_extract(
 
     Only cancels jobs that are still pending (not running or completed).
     """
+    await _check_admin_operation_limit(admin, "bulk_cancel", ADMIN_BULK_RATE_LIMIT)
+
     # Find all pending bulk extract jobs
     query = select(CrawlJobModel).where(
         and_(
@@ -880,6 +909,8 @@ async def delete_bulk_extract_jobs(
     This effectively resets the 'Bulk Extraction Progress' bar.
     It deletes jobs with BULK_EXTRACT_PRIORITY (2).
     """
+    await _check_admin_operation_limit(admin, "bulk_delete", ADMIN_BULK_RATE_LIMIT)
+
     # Delete all jobs with bulk priority
     query = select(CrawlJobModel).where(CrawlJobModel.priority == BULK_EXTRACT_PRIORITY)
     result = await db.execute(query)

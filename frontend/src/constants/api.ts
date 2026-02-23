@@ -26,9 +26,5 @@ export function getAvailableYears(
     return years;
 }
 
-// Default data types
-export const DATA_TYPES = ["all", "netzentgelte", "hlzf"] as const;
-export type DataType = (typeof DATA_TYPES)[number];
-
 // Job types
-export const JOB_TYPES = ["full", "crawl", "extract"] as const;
+export const JOB_TYPES = ["full", "extract"] as const;

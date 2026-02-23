@@ -179,21 +179,22 @@ async def import_dno_data(
     hlzf_created = 0
     hlzf_updated = 0
 
-    try:
-        # Handle replace mode - delete existing data first
-        if request.mode == "replace":
-            # If arrays are empty, delete ALL data for this DNO (user wants to clear)
-            # If arrays have data, only delete for the years being imported
+    def _netz_replace_years() -> set[int]:
+        return {r.year for r in request.netzentgelte}
 
+    def _hlzf_replace_years() -> set[int]:
+        return {r.year for r in request.hlzf}
+
+    try:
+        # ------------------------
+        # Phase 1: Netzentgelte
+        # ------------------------
+        if request.mode == "replace":
             if len(request.netzentgelte) == 0:
-                # Empty array means: delete ALL netzentgelte for this DNO
-                await db.execute(
-                    delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id)
-                )
+                await db.execute(delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id))
                 logger.info("import_deleted_all_netzentgelte", dno_id=dno_id)
             else:
-                # Non-empty: delete only for the years being imported
-                netz_years = {r.year for r in request.netzentgelte}
+                netz_years = _netz_replace_years()
                 if netz_years:
                     await db.execute(
                         delete(NetzentgelteModel).where(
@@ -204,24 +205,6 @@ async def import_dno_data(
                         )
                     )
 
-            if len(request.hlzf) == 0:
-                # Empty array means: delete ALL hlzf for this DNO
-                await db.execute(delete(HLZFModel).where(HLZFModel.dno_id == dno_id))
-                logger.info("import_deleted_all_hlzf", dno_id=dno_id)
-            else:
-                # Non-empty: delete only for the years being imported
-                hlzf_years = {r.year for r in request.hlzf}
-                if hlzf_years:
-                    await db.execute(
-                        delete(HLZFModel).where(
-                            and_(
-                                HLZFModel.dno_id == dno_id,
-                                HLZFModel.year.in_(hlzf_years),
-                            )
-                        )
-                    )
-
-        # Import Netzentgelte
         for record in request.netzentgelte:
             # Check for existing record
             existing = await db.execute(
@@ -270,7 +253,27 @@ async def import_dno_data(
                 db.add(new_record)
                 netz_created += 1
 
-        # Import HLZF
+        await db.commit()
+
+        # ------------------------
+        # Phase 2: HLZF
+        # ------------------------
+        if request.mode == "replace":
+            if len(request.hlzf) == 0:
+                await db.execute(delete(HLZFModel).where(HLZFModel.dno_id == dno_id))
+                logger.info("import_deleted_all_hlzf", dno_id=dno_id)
+            else:
+                hlzf_years = _hlzf_replace_years()
+                if hlzf_years:
+                    await db.execute(
+                        delete(HLZFModel).where(
+                            and_(
+                                HLZFModel.dno_id == dno_id,
+                                HLZFModel.year.in_(hlzf_years),
+                            )
+                        )
+                    )
+
         for record in request.hlzf:
             # Sanitize time strings
             winter = sanitize_time_string(record.winter or "", "winter") if record.winter else None
@@ -352,6 +355,7 @@ async def import_dno_data(
 
     except SanitizationError as e:
         logger.warning("import_sanitization_failed", error=str(e), dno_id=dno_id)
+        await db.rollback()
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Content sanitization failed: {e!s}",

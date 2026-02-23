@@ -54,6 +54,17 @@ async def startup_with_seeding(ctx):
             logger.error("Database seeding failed", error=str(e))
             # Don't fail startup on seeding errors
 
+    # Recover any stuck crawl jobs/DNO locks from previous crashes
+    try:
+        from app.services.crawl_recovery import recover_stuck_crawl_jobs
+
+        async with get_db_session() as db:
+            recovered = await recover_stuck_crawl_jobs(db)
+            if recovered > 0:
+                logger.info("Recovered stuck jobs on worker startup", count=recovered)
+    except Exception as e:
+        logger.warning("Recovery check failed on worker startup", error=str(e))
+
     logger.info("Worker startup complete.")
 
 

@@ -6,12 +6,26 @@ These prompts are used by the extraction step to guide AI models
 in extracting structured data from PDF/HTML documents.
 """
 
+import re
+
+
+def _sanitize_prompt_value(value: str, max_len: int = 120) -> str:
+    """Sanitize untrusted values before inserting into prompts."""
+    cleaned = re.sub(r"[\r\n\t]+", " ", str(value or "")).strip()
+    cleaned = re.sub(r"[{}<>`]+", "", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    if not cleaned:
+        return "Unknown DNO"
+    return cleaned[:max_len]
+
 
 def build_netzentgelte_prompt(dno_name: str, year: int) -> str:
     """Build the AI extraction prompt for Netzentgelte data."""
+    safe_dno_name = _sanitize_prompt_value(dno_name)
+
     return f"""Extract Netzentgelte (network tariffs) data from this document.
 
-DNO: {dno_name}
+DNO: {safe_dno_name}
 Year: {year}
 
 IMPORTANT: Extract ALL voltage levels present in the document - the number varies by DNO:
@@ -72,9 +86,11 @@ Return the structure:
 
 def build_hlzf_prompt(dno_name: str, year: int) -> str:
     """Build the AI extraction prompt for HLZF data."""
+    safe_dno_name = _sanitize_prompt_value(dno_name)
+
     return f"""Extract HLZF (Hochlastzeitfenster) data from this German electricity grid document.
 
-DNO: {dno_name}
+DNO: {safe_dno_name}
 Year: {year}
 
 IMPORTANT: Extract ALL voltage levels present in the document - the number varies by DNO:

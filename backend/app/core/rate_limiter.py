@@ -119,6 +119,33 @@ class RateLimiter:
         """Convenience method to call before every VNB Digital API request."""
         await self.check_vnb_quota()
 
+    async def check_key_limit(
+        self,
+        key: str,
+        limit: int,
+        window_seconds: int,
+        detail: str,
+    ) -> None:
+        """Check and increment a generic Redis-backed rate limit key."""
+        try:
+            async with self.redis.pipeline(transaction=True) as pipe:
+                await pipe.incr(key)
+                await pipe.expire(key, window_seconds)
+                results = await pipe.execute()
+            count = results[0]
+
+            if count > limit:
+                self.log.warning("Key rate limit exceeded", key=key, count=count, limit=limit)
+                raise HTTPException(
+                    status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                    detail=detail,
+                    headers={"Retry-After": str(window_seconds)},
+                )
+        except Exception as e:
+            if isinstance(e, HTTPException):
+                raise
+            self.log.error("Redis error in key rate limit", key=key, error=str(e))
+
     async def get_current_counts(self, ip: str) -> dict:
         """Get current rate limit counts (for debugging/monitoring)."""
         try:

@@ -10,11 +10,11 @@ Replace with actual implementation once queue mechanism is verified.
 """
 
 import contextlib
-from datetime import UTC, datetime
 
 import structlog
 
 from app.db import get_db_session
+from app.jobs.common import ensure_job_failure_timestamp, mark_job_completed, mark_job_running
 
 logger = structlog.get_logger()
 
@@ -42,9 +42,10 @@ async def process_dno_crawl(
             log.error("Job not found", job_id=job_id)
             return {"status": "error", "message": "Job not found"}
 
-        job.status = "running"
-        job.started_at = datetime.now(UTC)
-        await db.commit()
+        should_run = await mark_job_running(job, db)
+        if not should_run:
+            log.info("Search job already finalized; skipping re-execution")
+            return {"status": job.status, "message": "Job already finalized"}
 
         total_steps = len(CRAWL_JOB_STEPS)
 
@@ -54,11 +55,7 @@ async def process_dno_crawl(
                 await step.execute(db, job, i, total_steps)
 
             # Finalize Job status
-            job.status = "completed"
-            job.progress = 100
-            job.current_step = "Completed"
-            job.completed_at = datetime.now(UTC)
-            await db.commit()
+            await mark_job_completed(job, db, current_step="Completed")
 
             log.info("✅ Job completed successfully")
             return {"status": "completed", "message": "Workflow completed"}
@@ -67,10 +64,8 @@ async def process_dno_crawl(
             log.error("❌ Job failed", error=str(e))
             # BaseStep sets job.status/completed_at on step failures,
             # but ensure completed_at is set even for non-step errors
-            if not job.completed_at:
-                job.completed_at = datetime.now(UTC)
-                with contextlib.suppress(Exception):
-                    await db.commit()
+            with contextlib.suppress(Exception):
+                await ensure_job_failure_timestamp(job, db)
             return {"status": "failed", "message": str(e)}
 
 

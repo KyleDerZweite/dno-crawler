@@ -74,7 +74,25 @@ export function SmartDropdown({ trigger, children, isOpen, onOpenChange, classNa
 
     return (
         <>
-            <div ref={triggerRef} onClick={() => { onOpenChange(!isOpen); }} className="inline-block">
+            <div
+                ref={triggerRef}
+                role="button"
+                tabIndex={0}
+                aria-haspopup="menu"
+                aria-expanded={isOpen}
+                onClick={() => { onOpenChange(!isOpen); }}
+                onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                        event.preventDefault();
+                        onOpenChange(!isOpen);
+                    }
+                    if (event.key === 'Escape' && isOpen) {
+                        event.preventDefault();
+                        onOpenChange(false);
+                    }
+                }}
+                className="inline-block"
+            >
                 {trigger}
             </div>
             {isOpen && createPortal(

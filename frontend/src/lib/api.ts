@@ -712,9 +712,8 @@ export const api = {
       dno_id: string,
       payload: {
         year: number;
-        data_type?: 'all' | 'netzentgelte' | 'hlzf';
         priority?: number;
-        job_type?: 'full' | 'crawl' | 'extract';
+        job_type?: 'full' | 'extract';
       }
     ): Promise<ApiResponse<{ job_id: string; job_type: string }>> {
       const { data } = await apiClient.post(`/dnos/${dno_id}/crawl`, payload);

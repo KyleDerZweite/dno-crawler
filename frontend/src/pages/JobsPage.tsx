@@ -183,7 +183,7 @@ interface CrawlJobItem {
   dno_name?: string;
   year: number;
   data_type: string;
-  job_type?: 'full' | 'crawl' | 'extract';
+  job_type?: string;
   status: string;
   progress: number;
   current_step?: string;
@@ -199,7 +199,6 @@ interface CrawlJobItem {
 // Job type badge config
 const jobTypeConfig: Record<string, { label: string; color: string }> = {
   full: { label: 'Full', color: 'bg-purple-500/20 text-purple-600 border-purple-500/30' },
-  crawl: { label: 'Crawl', color: 'bg-orange-500/20 text-orange-600 border-orange-500/30' },
   extract: { label: 'Extract', color: 'bg-teal-500/20 text-teal-600 border-teal-500/30' },
 };
 

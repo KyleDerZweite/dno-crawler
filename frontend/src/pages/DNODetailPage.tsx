@@ -94,13 +94,10 @@ export function DNODetailPage() {
 
     // Mutations
     const triggerCrawlMutation = useMutation({
-        mutationFn: async ({ years, dataType, jobType }: { years: number[]; dataType: "all" | "netzentgelte" | "hlzf"; jobType: "full" | "crawl" | "extract" }) => {
-            const types: ("netzentgelte" | "hlzf")[] = dataType === 'all' ? ['netzentgelte', 'hlzf'] : [dataType as "netzentgelte" | "hlzf"];
+        mutationFn: async ({ years, jobType }: { years: number[]; jobType: "full" | "extract" }) => {
             const results = [];
             for (const year of years) {
-                for (const type of types) {
-                    results.push(await api.dnos.triggerCrawl(String(numericId), { year, data_type: type, job_type: jobType }));
-                }
+                results.push(await api.dnos.triggerCrawl(String(numericId), { year, job_type: jobType }));
             }
             return results;
         },

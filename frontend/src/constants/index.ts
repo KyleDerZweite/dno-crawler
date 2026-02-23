@@ -7,7 +7,6 @@
 
 export {
     API_URL,
-    DATA_TYPES,
     DEFAULT_PAGE_SIZE,
     DEFAULT_YEAR,
     getAvailableYears,
@@ -16,7 +15,6 @@ export {
     MIN_YEAR,
     PAGE_SIZE_OPTIONS,
 } from "./api";
-export type { DataType } from "./api";
 
 export {
     DNO_STATUS_CONFIG,

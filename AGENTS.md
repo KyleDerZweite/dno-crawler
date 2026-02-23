@@ -92,64 +92,7 @@ npm run test:watch # Run tests in watch mode
 podman-compose up -d --build    # Start all 7 services
 ```
 
-## 6. Architecture
-
-### Backend (Python/FastAPI)
-```
-backend/app/
-  api/
-    main.py              # App factory: create_app(), lifespan, middleware
-    routes/              # HTTP endpoints
-      dnos/              # Decomposed: schemas.py, crud.py, crawl.py, data.py, files.py, import_export.py
-      health.py, auth.py, search.py, jobs.py, verification.py, ai.py, admin.py
-    middleware/
-      wide_events.py     # Canonical log line (one structured event per request)
-  core/
-    config.py            # Pydantic Settings (reads .env)
-    auth.py              # Zitadel OIDC JWT; mock mode when ZITADEL_DOMAIN=auth.example.com
-    logging.py           # structlog + Wide Events
-    models.py            # Shared enums (JobStatus, DataType) + Pydantic base schemas
-    exceptions.py        # Custom exception hierarchy
-  db/
-    database.py          # SQLAlchemy async engine + session factory (asyncpg)
-    models.py            # Core ORM models (DNOModel, NetzentgelteModel, HLZFModel, CrawlJobModel)
-    source_models.py     # External source ORM models (MaStR, VNB, BDEW)
-  jobs/
-    __init__.py          # arq worker settings (CrawlWorkerSettings, ExtractWorkerSettings)
-    crawl_job.py         # Steps 0-3 handler
-    extract_job.py       # Steps 4-6 handler
-    steps/               # Pipeline: gather_context → discover → download → extract → validate → finalize
-  services/
-    vnb/                 # VNB Digital GraphQL client
-    discovery/           # URL discovery (BFS crawler, sitemap parser, URL scorer)
-    extraction/          # Data extraction (PDF/HTML extractors, AI prompts)
-    ai/                  # AI provider gateway (OpenRouter, LiteLLM, encryption)
-    web_crawler.py       # BFS web crawler engine
-
-marktstammdatenregister/
-  transform_mastr.py     # MaStR XML to DNO statistics JSON
-  import_mastr_stats.py  # Compatibility wrapper for backend import
-  mastr/
-    models.py            # Transformation data classes and catalogs
-    parsers.py           # Iterative XML parsers
-    aggregators.py       # DNO-level statistics aggregation
-```
-
-### Frontend (React 19 + TypeScript + Vite)
-```
-frontend/src/
-  App.tsx                # Route definitions (react-router-dom v7, code-based routing)
-  lib/
-    api.ts               # Centralized Axios client, all types, all API functions
-    auth-config.ts       # OIDC configuration
-    ProtectedRoute.tsx   # Auth guard
-  pages/                 # Top-level pages (PascalCase + Page suffix)
-  features/
-    dno-detail/          # Feature module: components/, views/, hooks/, utils/
-  components/
-    ui/                  # shadcn/ui components (keep lowercase naming)
-    layout/Layout.tsx    # App shell with sidebar
-```
+## 6. Architectur
 
 ### Key Architectural Decisions
 
@@ -194,7 +137,7 @@ Do not rely on text descriptions of the stack. Determine the active versioning a
 
 When assigned a task, follow this loop.
 
-1. **Analysis** Check `docs/ARCHITECTURE.md` for context and `README.md` for available scripts.
+1. **Analysis** Check the codebase and `docs/ARCHITECTURE.md`
 2. **Plan** Briefly outline proposed changes. Check `docs/ARCHITECTURE.md` to ensure architectural consistency.
 3. **Implementation**
    - Apply the KISS principle (Keep It Simple, Stupid).

@@ -4,12 +4,13 @@
  * Fetches its own jobs data for lazy loading.
  */
 
-import { useOutletContext } from "react-router-dom";
+import { useNavigate, useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Job } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { Job } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Clock, CheckCircle2, XCircle, AlertCircle, Loader2 } from "lucide-react";
+import { Clock, CheckCircle2, XCircle, AlertCircle, Loader2, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { DNODetailContext } from "./types";
 
@@ -28,6 +29,7 @@ function StatusIcon({ status, className }: { status: string; className?: string 
 
 export function JobHistory() {
     const { numericId } = useOutletContext<DNODetailContext>();
+    const navigate = useNavigate();
 
     const { data: jobsResponse, isLoading } = useQuery({
         queryKey: ["dno-jobs", numericId],
@@ -55,7 +57,11 @@ export function JobHistory() {
             <h2 className="text-lg font-semibold">Job History</h2>
             <Card className="divide-y">
                 {jobs.map((job: Job) => (
-                    <div key={job.id} className="p-4 flex items-center justify-between hover:bg-muted/30">
+                    <div
+                        key={job.id}
+                        className="p-4 flex items-center justify-between hover:bg-muted/30 cursor-pointer transition-colors"
+                        onClick={() => { navigate(`/jobs/${job.id}`); }}
+                    >
                         <div className="flex items-center gap-4">
                             <StatusIcon status={job.status} />
                             <div>
@@ -81,6 +87,7 @@ export function JobHistory() {
                             }>
                                 {job.status}
                             </Badge>
+                            <ChevronRight className="h-4 w-4 text-muted-foreground" />
                         </div>
                     </div>
                 ))}

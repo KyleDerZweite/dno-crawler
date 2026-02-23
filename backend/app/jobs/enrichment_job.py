@@ -56,12 +56,6 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
 
     async with get_db_session() as db:
         try:
-            # Mark as processing
-            await db.execute(
-                update(DNOModel).where(DNOModel.id == dno_id).values(enrichment_status="processing")
-            )
-            await db.commit()
-
             # Get DNO record
             stmt = select(DNOModel).where(DNOModel.id == dno_id)
             dno = (await db.execute(stmt)).scalar_one_or_none()
@@ -70,6 +64,17 @@ async def enrich_dno(ctx: dict, dno_id: int) -> dict:
                 log.error("DNO not found")
                 result["error"] = "DNO not found"
                 return result
+
+            # Avoid concurrent writes to shared fields while crawl job is active
+            if dno.status == "crawling":
+                log.info("Enrichment skipped due to active crawl")
+                result["status"] = "skipped"
+                result["error"] = "Skipped: DNO currently crawling"
+                return result
+
+            # Mark as processing
+            dno.enrichment_status = "processing"
+            await db.commit()
 
             log = log.bind(dno_name=dno.name, dno_slug=dno.slug)
 

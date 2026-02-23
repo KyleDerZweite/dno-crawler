@@ -39,7 +39,10 @@ class HtmlStripper:
     """
 
     # Pattern to find year indicators in headers
-    YEAR_PATTERN = re.compile(r"gültig ab 01\.01\.(\d{4})")
+    YEAR_PATTERN = re.compile(
+        r"(?:gültig\s*(?:ab|für)?\s*(?:\d{1,2}[./]\d{1,2}[./])?\s*(20\d{2})|\b(?:netz|preis|entgelt|hlzf)\s*(?:jahr|für)?\s*(20\d{2}))",
+        re.IGNORECASE,
+    )
 
     # Elements to completely remove
     REMOVE_TAGS = [
@@ -96,7 +99,7 @@ class HtmlStripper:
             year_match = self.YEAR_PATTERN.search(header_text)
 
             if year_match:
-                year = int(year_match.group(1))
+                year = int(year_match.group(1) or year_match.group(2))
                 years_found.add(year)
 
                 # Find the next table after this header (can be nested in same parent)
@@ -146,7 +149,7 @@ class HtmlStripper:
             year_match = self.YEAR_PATTERN.search(header_text)
 
             if year_match:
-                year = int(year_match.group(1))
+                year = int(year_match.group(1) or year_match.group(2))
                 table = self._find_next_table(header)
 
                 if table:

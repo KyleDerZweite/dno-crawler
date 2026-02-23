@@ -33,37 +33,24 @@ export function useDNOMutations({ dnoId, onSuccess }: UseDNOMutationsOptions) {
     const triggerCrawl = useMutation({
         mutationFn: async ({
             years,
-            dataType,
             jobType,
         }: {
             years: number[];
-            dataType: "all" | "netzentgelte" | "hlzf";
-            jobType: "full" | "crawl" | "extract";
+            jobType: "full" | "extract";
         }) => {
-            const typesToCrawl =
-                dataType === "all" ? (["netzentgelte", "hlzf"] as const) : [dataType];
             const results = [];
-
             for (const year of years) {
-                for (const type of typesToCrawl) {
-                    const result = await api.dnos.triggerCrawl(String(dnoId), {
-                        year,
-                        data_type: type,
-                        job_type: jobType,
-                    });
-                    results.push(result);
-                }
+                const result = await api.dnos.triggerCrawl(String(dnoId), {
+                    year,
+                    job_type: jobType,
+                });
+                results.push(result);
             }
             return results;
         },
         onSuccess: (results, variables) => {
             const jobCount = results.length;
-            const jobTypeLabel =
-                variables.jobType === "full"
-                    ? "Full"
-                    : variables.jobType === "crawl"
-                        ? "Crawl"
-                        : "Extract";
+            const jobTypeLabel = variables.jobType === "full" ? "Full" : "Extract";
             toast({
                 title: `${jobTypeLabel} job${jobCount > 1 ? "s" : ""} triggered`,
                 description: `${jobCount} job${jobCount > 1 ? "s" : ""} queued for years: ${variables.years.join(", ")}`,

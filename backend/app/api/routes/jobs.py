@@ -82,7 +82,7 @@ async def list_jobs(
     crawl_position = 0
     extract_position = 0
     for job_id, job_type in pending_result.fetchall():
-        if job_type in ("crawl", "full"):
+        if job_type == "full":
             crawl_position += 1
             pending_order[job_id] = crawl_position
         else:  # extract

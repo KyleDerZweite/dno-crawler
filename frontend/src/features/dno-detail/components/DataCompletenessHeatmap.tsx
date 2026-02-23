@@ -8,7 +8,7 @@ import Chart from "react-apexcharts";
 import type { ApexOptions } from "apexcharts";
 import { Grid3X3 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Netzentgelte, HLZF } from "@/lib/api";
+import type { Netzentgelte, HLZF } from "@/types";
 import { useChartColors } from "../hooks/use-chart-colors";
 import { ChartColorPicker } from "./ChartColorPicker";
 import { getApexChartBase, VOLTAGE_LEVELS } from "../utils/chart-colors";

@@ -259,6 +259,98 @@ class AIGateway:
 
         raise NoProviderAvailableError(f"All providers failed. Last error: {last_error}")
 
+    async def ocr_pdf(self, file_path: Path, prompt: str) -> str | None:
+        """OCR a scanned PDF using vision AI, returning plain text.
+
+        Unlike extract() which expects JSON, this returns raw text from the
+        model — useful for transcribing scanned documents before classification.
+
+        Args:
+            file_path: Path to the PDF file
+            prompt: Instruction for what to transcribe
+
+        Returns:
+            Transcribed text, or None if no provider available
+        """
+        configs = await self.get_sorted_configs(
+            needs_vision=True, needs_files=True
+        )
+        if not configs:
+            return None
+
+        image_data = base64.b64encode(file_path.read_bytes()).decode()
+        last_error = None
+
+        for config in configs:
+            try:
+                provider = self._create_provider(config)
+
+                # Call the model without json_object response format
+                # so it returns plain text instead of trying to produce JSON
+                from openrouter import OpenRouter as _OpenRouter
+
+                api_key = provider._get_api_key()
+                request_kwargs = {
+                    "model": config.model,
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:application/pdf;base64,{image_data}"
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                }
+
+                async with _OpenRouter(api_key=api_key) as client:
+                    response = await client.chat.send_async(**request_kwargs)
+
+                text = response.choices[0].message.content or ""
+                tokens = 0
+                if response.usage:
+                    tokens = response.usage.total_tokens or 0
+
+                await self.config_service.mark_success(config.id, tokens)
+                await self.db.commit()
+
+                logger.info(
+                    "ocr_pdf_success",
+                    model=config.model,
+                    text_len=len(text),
+                    tokens=tokens,
+                )
+                return text
+
+            except RateLimitError as e:
+                retry_after = 60
+                if hasattr(e, "headers") and e.headers:
+                    retry_after = int(e.headers.get("retry-after", 60))
+                await self.config_service.mark_rate_limited(config.id, retry_after)
+                await self.db.commit()
+                last_error = e
+                continue
+
+            except Exception as e:
+                logger.warning(
+                    "ocr_pdf_error",
+                    provider=config.provider_type,
+                    model=config.model,
+                    error=str(e),
+                )
+                await self.config_service.mark_failure(config.id, str(e))
+                await self.db.commit()
+                last_error = e
+                continue
+
+        logger.warning("ocr_pdf_all_providers_failed", last_error=str(last_error))
+        return None
+
     async def test_provider(self, config_id: int) -> dict[str, Any]:
         """Test a provider configuration.
 

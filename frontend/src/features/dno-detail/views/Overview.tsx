@@ -7,7 +7,8 @@
 
 import { useOutletContext } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
-import { api, type Netzentgelte, type HLZF } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { Netzentgelte, HLZF } from "@/types";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Zap, Clock, Activity, Shield, ShieldAlert } from "lucide-react";

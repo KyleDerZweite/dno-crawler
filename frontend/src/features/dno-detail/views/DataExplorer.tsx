@@ -1,7 +1,8 @@
 import { useState, useRef } from "react";
 import { useOutletContext } from "react-router-dom";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { api, type Netzentgelte, type HLZF } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { Netzentgelte, HLZF } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Upload, Download, Loader2 } from "lucide-react";

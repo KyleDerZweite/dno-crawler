@@ -174,3 +174,35 @@ This document consolidates research, strategies, and improvement ideas for the D
 	- **Acceptance Criteria:**
 		- DNOs with missing websites are flagged and auto-discovered where possible.
 		- robots.txt and sitemap data pre-cached for all crawlable DNOs.
+
+- [ ] **TASK-007 Voltage Level-Based Completeness Scoring**
+	- **Goal:** Improve completeness score by using MaStR voltage level data to predict expected data coverage.
+	- **Scope:**
+		- Extract voltage level information from MaStR statistics per DNO.
+		- Infer which voltage levels should have Netzentgelte and HLZF data available.
+		- Calculate expected total values per DNO based on voltage levels.
+		- Enhance completeness score to compare actual vs. expected data.
+	- **Deliverables:**
+		- Voltage level extraction from MaStR import pipeline.
+		- Completeness score calculation incorporating expected coverage.
+		- API field for expected vs. actual data breakdown.
+	- **Acceptance Criteria:**
+		- Completeness score reflects voltage-level-based expectations.
+		- Frontend displays expected data coverage per DNO.
+
+- [ ] **TASK-008 DNO Importance Scoring and Priority-Based Gap Filling**
+	- **Goal:** Assign importance scores to DNOs and use them for intelligent crawl job prioritization.
+	- **Scope:**
+		- Define importance scoring formula (covered area, connection points, customer count).
+		- Example: DNO with >300k connection points = high importance, <1k = low importance.
+		- Build service job that automatically queues crawl jobs to fill data gaps.
+		- Prioritize gaps based on DNO importance to maximize value for users.
+		- Major DNOs first = higher probability of directly serving useful data.
+	- **Deliverables:**
+		- Importance scoring module with configurable weights.
+		- Background scheduler for gap-based crawl job enqueuing.
+		- Admin dashboard showing priority queue and importance distribution.
+	- **Acceptance Criteria:**
+		- All DNOs have calculated importance score.
+		- Gap-filling scheduler prioritizes high-importance DNOs.
+		- System achieves better data coverage for major DNOs first.

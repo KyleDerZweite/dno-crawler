@@ -35,6 +35,7 @@ from sqlalchemy.orm.attributes import flag_modified
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
 from app.services.extraction.prompts import build_extraction_prompt
+from app.services.extraction.validation import validate_extraction_sanity
 from app.services.sample_capture import SampleCapture
 
 logger = structlog.get_logger()
@@ -374,67 +375,8 @@ class ExtractStep(BaseStep):
         return f"Extracted {len(records)} records using {method} - FLAGGED: {reason}"
 
     def _validate_extraction(self, records: list, data_type: str) -> tuple[bool, str]:
-        """
-        Validate extracted data passes sanity checks.
-
-        Returns:
-            Tuple of (passed: bool, reason: str)
-        """
-        if data_type == "netzentgelte":
-            return self._validate_netzentgelte(records)
-        else:  # hlzf
-            return self._validate_hlzf(records)
-
-    def _validate_netzentgelte(self, records: list) -> tuple[bool, str]:
-        """
-        Check netzentgelte has sufficient records with price values.
-
-        Rules:
-        - At least 2 records (small municipal utilities may only have MS and NS)
-        - Each record must have at least leistung OR arbeit with actual value
-        """
-        if len(records) < 2:
-            return False, f"Too few records: {len(records)} (minimum 2 required)"
-
-        # Check each record has at least one price value
-        valid_records = 0
-        for record in records:
-            leistung = record.get("leistung")
-            arbeit = record.get("arbeit")
-            leistung_unter = record.get("leistung_unter_2500h")
-            arbeit_unter = record.get("arbeit_unter_2500h")
-
-            # Check if value is valid (not None, not "-", not "N/A")
-            def is_valid_value(v):
-                if v is None:
-                    return False
-                v_str = str(v).strip().lower()
-                return v_str not in ["-", "n/a", "null", "none", ""]
-
-            # At least one price must be a valid value
-            if any(is_valid_value(v) for v in [leistung, arbeit, leistung_unter, arbeit_unter]):
-                valid_records += 1
-
-        if valid_records < 2:
-            return False, f"Too few valid records with prices: {valid_records} (minimum 2 required)"
-
-        return True, "OK"
-
-    def _validate_hlzf(self, records: list) -> tuple[bool, str]:
-        """
-        Check HLZF extraction quality.
-
-        # Rules:
-        # - At least 2 voltage levels (allowing for TSOs or very small DNOs)
-        # - Empty windows are allowed if explicitly extracted as "-"
-        """
-        if len(records) < 2:
-            return (
-                False,
-                f"Missing voltage levels: only {len(records)} extracted (minimum 2 required)",
-            )
-
-        return True, "OK"
+        """Validate extracted data passes shared sanity checks."""
+        return validate_extraction_sanity(records, data_type)
 
     async def _extract_with_ai(
         self,

@@ -30,6 +30,7 @@ from sqlalchemy.orm.attributes import flag_modified
 
 from app.db.models import CrawlJobModel
 from app.jobs.steps.base import BaseStep
+from app.services.extraction.validation import is_valid_data_value, validate_extraction_sanity
 
 
 class ValidateStep(BaseStep):
@@ -91,16 +92,9 @@ class ValidateStep(BaseStep):
         errors = []
         warnings = []
 
-        # Check minimum records - at least 2 for small municipal DNOs
-        if len(data) < 2:
-            errors.append(f"Only {len(data)} voltage levels (expected at least 2)")
-
-        # Helper to check if value is valid (not None, "-", or "N/A")
-        def is_valid_value(v):
-            if v is None:
-                return False
-            v_str = str(v).strip().lower()
-            return v_str not in ["-", "n/a", "null", "none", ""]
+        sanity_ok, sanity_reason = validate_extraction_sanity(data, "netzentgelte")
+        if not sanity_ok:
+            errors.append(sanity_reason)
 
         for i, record in enumerate(data):
             # Check required fields - missing voltage_level is critical
@@ -109,7 +103,7 @@ class ValidateStep(BaseStep):
 
             # Validate Arbeitspreis range - skip "-" and null values
             ap = record.get("arbeitspreis") or record.get("arbeit")
-            if is_valid_value(ap):
+            if is_valid_data_value(ap):
                 try:
                     ap_float = float(str(ap).replace(",", "."))
                     if not (0.01 <= ap_float <= 20):
@@ -119,7 +113,7 @@ class ValidateStep(BaseStep):
 
             # Validate Leistungspreis range - skip "-" and null values
             lp = record.get("leistungspreis") or record.get("leistung")
-            if is_valid_value(lp):
+            if is_valid_data_value(lp):
                 try:
                     lp_float = float(str(lp).replace(",", "."))
                     if not (0 <= lp_float <= 500):
@@ -140,16 +134,13 @@ class ValidateStep(BaseStep):
         errors = []
         warnings = []
 
-        # Check minimum records - less than 2 is critical (even small DNOs have at least 2)
-        if len(data) < 2:
-            errors.append(f"Only {len(data)} voltage levels (expected at least 2)")
+        sanity_ok, sanity_reason = validate_extraction_sanity(data, "hlzf")
+        if not sanity_ok:
+            errors.append(sanity_reason)
 
         # Helper to check if value is valid time data
         def is_valid_time(v):
-            if v is None:
-                return False
-            v_str = str(v).strip().lower()
-            return v_str not in ["-", "entfällt", "null", "none", ""]
+            return is_valid_data_value(v)
 
         # Check that expected voltage levels are present
         # Note: Small DNOs may only have MS, MS/NS, NS (3 levels) - that's OK
