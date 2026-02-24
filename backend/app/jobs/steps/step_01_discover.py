@@ -36,7 +36,7 @@ from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 logger = structlog.get_logger()
 
 # Maximum candidates to collect across all strategies
-MAX_CANDIDATES = 30
+MAX_CANDIDATES = 60
 
 # Timeout for BFS crawl (5 minutes)
 BFS_CRAWL_TIMEOUT_SECONDS = 300

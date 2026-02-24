@@ -317,6 +317,7 @@ class ClassifyStep(BaseStep):
         hlzf_keywords = [
             "hochlastzeitfenster",
             "hochlastzeit",
+            "hochlast",
             "atypische netznutzung",
         ]
         if not any(kw in text_lower for kw in hlzf_keywords):

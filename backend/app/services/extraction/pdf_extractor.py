@@ -834,8 +834,8 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
     if not vl_positions:
         return records
 
-    # Find all time ranges in the text: HH:MM - HH:MM (with various separators)
-    time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—]\s*(\d{1,2}:\d{2})"
+    # Find all time ranges in the text: HH:MM - HH:MM (with various separators or just whitespace)
+    time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—\s]\s*(\d{1,2}:\d{2})"
     time_matches = [(m.start(), m.group(1), m.group(2)) for m in re.finditer(time_range_pattern, text)]
 
     # For each voltage level, collect the time ranges that follow it

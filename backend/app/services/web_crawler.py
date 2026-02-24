@@ -350,7 +350,7 @@ class WebCrawler:
 
             # Fetch and analyze the URL
             result, links = await self._fetch_and_analyze(
-                url, depth, target_keywords, data_type, allowed_domains
+                url, depth, target_keywords, data_type, allowed_domains, target_year
             )
 
             if result:
@@ -363,7 +363,7 @@ class WebCrawler:
                     if normalized_link not in visited:
                         visited.add(normalized_link)
                         link_score = self._score_url(
-                            normalized_link, depth + 1, target_keywords, data_type
+                            normalized_link, depth + 1, target_keywords, data_type, target_year
                         )
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
 
@@ -388,6 +388,7 @@ class WebCrawler:
         target_keywords: list[str],
         data_type: str | None,
         allowed_domains: set[str],
+        target_year: int | None = None,
     ) -> tuple[CrawlResult | None, list[str]]:
         """Fetch using probe and get logic, then analyze the content."""
         # Probe URL with HEAD first
@@ -404,7 +405,7 @@ class WebCrawler:
         is_document = self._is_document(final_url, content_type)
 
         if is_document:
-            score = self._score_url(final_url, depth, target_keywords, data_type)
+            score = self._score_url(final_url, depth, target_keywords, data_type, target_year)
             result = CrawlResult(
                 url=url,
                 final_url=final_url,
@@ -447,7 +448,7 @@ class WebCrawler:
             title = soup.title.string.strip() if soup.title and soup.title.string else None
 
             # Score this page
-            score = self._score_url(final_url, depth, target_keywords, data_type)
+            score = self._score_url(final_url, depth, target_keywords, data_type, target_year)
             text_content = soup.get_text()
             text_keywords = self._find_keywords_in_text(text_content, target_keywords)
 
@@ -524,7 +525,12 @@ class WebCrawler:
         return any(pattern.search(url) for pattern in _TOKEN_URL_PATTERNS)
 
     def _score_url(
-        self, url: str, depth: int, target_keywords: list[str], data_type: str | None = None
+        self,
+        url: str,
+        depth: int,
+        target_keywords: list[str],
+        data_type: str | None = None,
+        target_year: int | None = None,
     ) -> float:
         """Score URL based on relevance.
 
@@ -545,7 +551,7 @@ class WebCrawler:
                 score += 15
 
         # Year in URL bonus (current/recent years)
-        score += self._get_year_bonus(url_lower)
+        score += self._get_year_bonus(url_lower, target_year)
 
         # Irrelevant path penalty
         for pattern in IRRELEVANT_PATHS:
@@ -565,14 +571,18 @@ class WebCrawler:
 
         return score
 
-    def _get_year_bonus(self, url_lower: str) -> float:
+    def _get_year_bonus(self, url_lower: str, target_year: int | None = None) -> float:
         """Calculate score bonus for recent years in URL."""
         bonus = 0.0
         current_year = datetime.now().year
         for pattern in _YEAR_PATTERNS:
             matches = pattern.findall(url_lower)
-            for year in matches:
-                if current_year - 6 <= int(year) <= current_year:
+            for year_str in matches:
+                year = int(year_str)
+                if target_year and year == target_year:
+                    bonus += 20  # Stronger bonus for target year
+                    break
+                if current_year - 6 <= year <= current_year:
                     bonus += 10
                     break  # Only count once per pattern type
         return bonus
