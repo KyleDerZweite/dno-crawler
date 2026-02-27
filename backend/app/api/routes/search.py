@@ -12,9 +12,11 @@ from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_rate_limiter
 from app.db import DNOModel, HLZFModel, LocationModel, NetzentgelteModel, get_db
+from app.services.completeness import compute_completeness
 from app.services.vnb import (
     NormalizedAddress,
     VNBDigitalClient,
@@ -67,6 +69,12 @@ class DNOSearchInput(BaseModel):
 
     dno_id: str | None = Field(None, max_length=100, pattern=r"^[a-zA-Z0-9_-]*$")
     dno_name: str | None = Field(None, max_length=200)
+    mastr_nr: str | None = Field(
+        None,
+        max_length=50,
+        pattern=r"^[A-Za-z0-9]*$",
+        description="MaStR number (e.g. SNB982046657236)",
+    )
 
 
 class PublicSearchRequest(BaseModel):
@@ -87,6 +95,7 @@ class DNOMetadata(BaseModel):
     name: str
     official_name: str | None = None
     vnb_id: str | None = None
+    mastr_nr: str | None = None
     status: str
 
 
@@ -198,6 +207,15 @@ class HLZFData(BaseModel):
     verification_status: str | None = None
 
 
+class CompletenessInfo(BaseModel):
+    """Completeness score based on voltage level coverage."""
+
+    score: int | None = None
+    has_expectations: bool = False
+    expected_count: int = 0
+    covered_count: int = 0
+
+
 class PublicSearchResponse(BaseModel):
     """Response for public search."""
 
@@ -207,6 +225,7 @@ class PublicSearchResponse(BaseModel):
     location: LocationInfo | None = None
     netzentgelte: list[NetzentgelteData] | None = None
     hlzf: list[HLZFData] | None = None
+    completeness: CompletenessInfo | None = None
     message: str | None = None
 
 
@@ -562,10 +581,16 @@ async def _search_by_dno(
     2. If not found, search VNB Digital API by name
     3. If VNB returns results, create skeleton DNO
     """
-    log = log.bind(dno_name=dno_input.dno_name, dno_id=dno_input.dno_id)
+    log = log.bind(
+        dno_name=dno_input.dno_name,
+        dno_id=dno_input.dno_id,
+        mastr_nr=dno_input.mastr_nr,
+    )
 
     # Build query for local DB search
-    if dno_input.dno_id:
+    if dno_input.mastr_nr:
+        query = select(DNOModel).where(DNOModel.mastr_nr == dno_input.mastr_nr)
+    elif dno_input.dno_id:
         query = select(DNOModel).where(DNOModel.vnb_id == dno_input.dno_id)
     elif dno_input.dno_name:
         # Fuzzy search: match name, official_name, or slug
@@ -578,7 +603,7 @@ async def _search_by_dno(
             | (DNOModel.slug == search_term.lower().replace(" ", "-"))
         )
     else:
-        raise HTTPException(400, "Either dno_id or dno_name must be provided")
+        raise HTTPException(400, "One of 'dno_id', 'dno_name', or 'mastr_nr' must be provided")
 
     result = await db.execute(query)
     dno = result.scalars().first()
@@ -684,6 +709,13 @@ async def _build_response(
 ) -> PublicSearchResponse:
     """Build response with data evaluation."""
 
+    # Eagerly load MaStR data for completeness scoring (if not already loaded)
+    if not hasattr(dno, "_sa_instance_state") or "mastr_data" not in dno.__dict__:
+        result = await db.execute(
+            select(DNOModel).options(selectinload(DNOModel.mastr_data)).where(DNOModel.id == dno.id)
+        )
+        dno = result.scalar_one()
+
     # Build DNO metadata
     dno_meta = DNOMetadata(
         id=dno.id,
@@ -691,6 +723,7 @@ async def _build_response(
         name=dno.name,
         official_name=dno.official_name,
         vnb_id=dno.vnb_id,
+        mastr_nr=dno.mastr_nr,
         status=dno.status,
     )
 
@@ -749,6 +782,29 @@ async def _build_response(
 
     has_data = len(netzentgelte) > 0 or len(hlzf) > 0
 
+    # Compute completeness score from data already loaded above
+    actual_netz_levels = {n.voltage_level for n in netzentgelte}
+    actual_hlzf_levels = {h.voltage_level for h in hlzf}
+
+    connection_points = None
+    if dno.mastr_data:
+        connection_points = {
+            "ns": dno.mastr_data.connection_points_ns,
+            "ms": dno.mastr_data.connection_points_ms,
+            "hs": dno.mastr_data.connection_points_hs,
+            "hoe": dno.mastr_data.connection_points_hoe,
+        }
+
+    completeness_result = compute_completeness(
+        connection_points, actual_netz_levels, actual_hlzf_levels
+    )
+    completeness_info = CompletenessInfo(
+        score=completeness_result.score,
+        has_expectations=completeness_result.has_expectations,
+        expected_count=completeness_result.expected_count,
+        covered_count=completeness_result.covered_count,
+    )
+
     # Build message for skeleton DNOs
     message = None
     if not has_data:
@@ -761,5 +817,6 @@ async def _build_response(
         location=loc_info,
         netzentgelte=netzentgelte if netzentgelte else None,
         hlzf=hlzf if hlzf else None,
+        completeness=completeness_info,
         message=message,
     )

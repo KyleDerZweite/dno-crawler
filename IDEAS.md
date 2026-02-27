@@ -66,7 +66,7 @@ This document consolidates research, strategies, and improvement ideas for the D
 - `POST /api/v1/webhooks` - Price change notifications
 - Bulk export (CSV/JSON)
 - GraphQL endpoint
-- **MaStR Nr in Search API** - Use MaStR Nr as filter parameter in search endpoint; always return MaStR Nr in results since it's the official unique identifier for DNOs in Germany
+- ~~**MaStR Nr in Search API** - Use MaStR Nr as filter parameter in search endpoint; always return MaStR Nr in results since it's the official unique identifier for DNOs in Germany~~ ✅ Done
 
 ---
 
@@ -177,20 +177,10 @@ This document consolidates research, strategies, and improvement ideas for the D
 		- DNOs with missing websites are flagged and auto-discovered where possible.
 		- robots.txt and sitemap data pre-cached for all crawlable DNOs.
 
-- [ ] **TASK-007 Voltage Level-Based Completeness Scoring**
-	- **Goal:** Improve completeness score by using MaStR voltage level data to predict expected data coverage.
-	- **Scope:**
-		- Extract voltage level information from MaStR statistics per DNO.
-		- Infer which voltage levels should have Netzentgelte and HLZF data available.
-		- Calculate expected total values per DNO based on voltage levels.
-		- Enhance completeness score to compare actual vs. expected data.
-	- **Deliverables:**
-		- Voltage level extraction from MaStR import pipeline.
-		- Completeness score calculation incorporating expected coverage.
-		- API field for expected vs. actual data breakdown.
-	- **Acceptance Criteria:**
-		- Completeness score reflects voltage-level-based expectations.
-		- Frontend displays expected data coverage per DNO.
+- [x] **TASK-007 Voltage Level-Based Completeness Scoring**
+	- **Status:** Done
+	- **Outcome:** Completeness scoring service compares MaStR voltage level data against actual extracted Netzentgelte/HLZF records. Integrated into detail endpoint (full breakdown) and public search API.
+	- **Reference:** `app/services/completeness.py`, `tests/test_completeness.py`
 
 - [ ] **TASK-008 DNO Importance Scoring and Priority-Based Gap Filling**
 	- **Goal:** Assign importance scores to DNOs and use them for intelligent crawl job prioritization.

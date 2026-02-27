@@ -14,6 +14,7 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, HLZFModel, NetzentgelteModel, get_db
+from app.services.completeness import compute_completeness
 
 from .schemas import CreateDNORequest, UpdateDNORequest
 from .utils import slugify
@@ -84,6 +85,56 @@ def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
         },
         "data_quality": mastr.stats_data_quality,
         "computed_at": mastr.stats_computed_at.isoformat() if mastr.stats_computed_at else None,
+    }
+
+
+async def _build_completeness_payload(
+    db: AsyncSession,
+    dno: DNOModel,
+) -> dict:
+    """Build completeness score payload for a single DNO.
+
+    Queries distinct voltage levels from Netzentgelte/HLZF tables
+    and delegates scoring to the completeness service.
+    """
+    # Query distinct voltage levels that have data for this DNO
+    netz_result = await db.execute(
+        select(NetzentgelteModel.voltage_level.distinct()).where(NetzentgelteModel.dno_id == dno.id)
+    )
+    hlzf_result = await db.execute(
+        select(HLZFModel.voltage_level.distinct()).where(HLZFModel.dno_id == dno.id)
+    )
+
+    actual_netz = {row[0] for row in netz_result.fetchall()}
+    actual_hlzf = {row[0] for row in hlzf_result.fetchall()}
+
+    # Get MaStR connection points (if available)
+    connection_points = None
+    if dno.mastr_data:
+        connection_points = {
+            "ns": dno.mastr_data.connection_points_ns,
+            "ms": dno.mastr_data.connection_points_ms,
+            "hs": dno.mastr_data.connection_points_hs,
+            "hoe": dno.mastr_data.connection_points_hoe,
+        }
+
+    result = compute_completeness(connection_points, actual_netz, actual_hlzf)
+
+    return {
+        "score": result.score,
+        "has_expectations": result.has_expectations,
+        "expected_count": result.expected_count,
+        "covered_count": result.covered_count,
+        "levels": [
+            {
+                "level": lvl.level,
+                "expected": lvl.expected,
+                "has_netzentgelte": lvl.has_netzentgelte,
+                "has_hlzf": lvl.has_hlzf,
+                "covered": lvl.covered,
+            }
+            for lvl in result.levels
+        ],
     }
 
 
@@ -624,9 +675,10 @@ async def list_dnos_detailed(
         else:
             live_status = "uncrawled"
 
-        # Calculate completeness score (percentage)
-        # Score is based on having data - max at ~50 data points
-        score = min(round((data_points_count / 50) * 100), 100)
+        # List-view completeness score: simple presence-based heuristic.
+        # The full voltage-level-aware breakdown is only computed in
+        # the detail endpoint to avoid N+1 per-DNO queries here.
+        score = min(round((data_points_count / 50) * 100), 100) if data_points_count > 0 else 0
 
         dno_data = {
             "id": str(dno.id),
@@ -855,6 +907,7 @@ async def get_dno_details(
             "vnb_data": vnb_data,
             "bdew_data": bdew_data,
             "stats": _build_mastr_stats_payload(dno),
+            "completeness": await _build_completeness_payload(db, dno),
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },
