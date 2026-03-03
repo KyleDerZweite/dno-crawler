@@ -61,8 +61,50 @@ export interface BdewData {
     last_synced_at?: string;
 }
 
+// MaStR statistics types
+export interface MastrConnectionPointsStats {
+    total?: number | null;
+    by_canonical_level?: Record<string, number | null> | null;
+    by_voltage?: {
+        ns?: number | null;
+        ms?: number | null;
+        hs?: number | null;
+        hoe?: number | null;
+    } | null;
+}
+
+export interface MastrNetworksStats {
+    count?: number | null;
+    has_customers?: boolean | null;
+    closed_distribution_network?: boolean | null;
+}
+
+export interface MastrInstalledCapacityStats {
+    total?: number | null;
+    solar?: number | null;
+    wind?: number | null;
+    storage?: number | null;
+    biomass?: number | null;
+    hydro?: number | null;
+}
+
+export interface MastrUnitCountsStats {
+    solar?: number | null;
+    wind?: number | null;
+    storage?: number | null;
+}
+
+export interface MastrStats {
+    connection_points?: MastrConnectionPointsStats | null;
+    networks?: MastrNetworksStats | null;
+    installed_capacity_mw?: MastrInstalledCapacityStats | null;
+    unit_counts?: MastrUnitCountsStats | null;
+    data_quality?: string | null;
+    computed_at?: string | null;
+}
+
 // DNO status type
-export type DNOStatus = "uncrawled" | "pending" | "running" | "crawled" | "failed";
+export type DNOStatus = "uncrawled" | "pending" | "running" | "crawled" | "failed" | "protected";
 
 // Main DNO entity
 export interface DNO {
@@ -103,6 +145,20 @@ export interface DNO {
     crawlable?: boolean;
     crawl_blocked_reason?: string;
     has_local_files?: boolean;
+    // Technical crawl data (robots.txt + sitemap)
+    robots_txt?: string;
+    robots_fetched_at?: string;  // TTL: 150 days
+    sitemap_urls?: string[];  // Sitemap URLs from robots.txt
+    sitemap_parsed_urls?: string[];  // All URLs extracted from sitemaps
+    sitemap_fetched_at?: string;  // TTL: 120 days
+    disallow_paths?: string[];
+    // Technical Stack
+    cms_system?: string;
+    tech_stack_details?: {
+        cms?: string;
+        server?: string;
+        generator?: string;
+    };
     // Source data availability
     has_mastr?: boolean;
     has_vnb?: boolean;
@@ -114,10 +170,12 @@ export interface DNO {
     mastr_data?: MastrData;
     vnb_data?: VnbData;
     bdew_data?: BdewData[];
+    stats?: MastrStats | null;
     // Stats
     data_points_count?: number;
     netzentgelte_count?: number;
     hlzf_count?: number;
+    score?: number;  // Completeness score (0-100%)
     created_at?: string;
     updated_at?: string;
 }

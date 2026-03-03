@@ -92,13 +92,13 @@ async def fetch_sitemap(
 
     for sitemap_url in sitemap_urls:
         try:
-            response = await with_retries(
+            response: httpx.Response = await with_retries(
                 _fetch_sitemap_url, sitemap_url, max_attempts=2, backoff_base=0.5
-            )  # type: ignore[misc]
+            )
 
             # Check if it's valid XML (not a Cloudflare challenge)
-            if response.status_code == 200:  # type: ignore[union-attr]
-                content = response.text  # type: ignore[union-attr]
+            if response.status_code == 200:
+                content = response.text
                 if (
                     content.strip().startswith("<?xml")
                     or "<urlset" in content[:500]

@@ -34,6 +34,11 @@ export const DNO_STATUS_CONFIG: Record<
         color: "text-red-600",
         bgColor: "bg-red-100",
     },
+    protected: {
+        label: "Protected",
+        color: "text-purple-600",
+        bgColor: "bg-purple-100",
+    },
 };
 
 // Job status display configuration

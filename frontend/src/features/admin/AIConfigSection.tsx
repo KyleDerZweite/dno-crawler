@@ -3,15 +3,15 @@ import DOMPurify from "dompurify";
 import { useToast } from "@/hooks/use-toast";
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import {
-    api,
-    type AIProviderConfig,
-    type AIProviderType,
-    type AIConfigCreate,
-    type AIConfigUpdate,
-    type ThinkingCapability,
-    type AIAuthType,
-} from "@/lib/api";
+import { api } from "@/lib/api";
+import type {
+    AIProviderConfig,
+    AIProviderType,
+    AIConfigCreate,
+    AIConfigUpdate,
+    ThinkingCapability,
+    AIAuthType,
+} from "@/types";
 import {
     Card,
     CardContent,

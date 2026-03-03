@@ -401,33 +401,18 @@ async def _search_by_address(
 
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
 
-    # Step 7: Try to enrich address with postal code + city from Impressum
+    # Step 7: Enrich address + fetch robots.txt
     enriched_address = dno_details.address if dno_details else None
-    if dno_details and dno_details.homepage_url and dno_details.address:
-        from app.services.impressum_extractor import impressum_extractor
-
-        full_addr = await impressum_extractor.extract_full_address(
-            dno_details.homepage_url,
-            dno_details.address,
-        )
-        if full_addr:
-            enriched_address = full_addr.formatted
-
-    # Step 8: Fetch robots.txt to determine crawlability
     robots_result = None
     if dno_details and dno_details.homepage_url:
-        import httpx
+        from app.services.dno_enrichment import enrich_dno_from_web
 
-        from app.services.robots_parser import fetch_robots_txt
+        enrichment = await enrich_dno_from_web(dno_details.homepage_url, dno_details.address)
+        robots_result = enrichment.robots
+        if enrichment.enriched_address:
+            enriched_address = enrichment.enriched_address
 
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "DNO-Crawler/1.0"},
-            follow_redirects=True,
-            timeout=10.0,
-        ) as http_client:
-            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
-
-    # Step 9: Create or get DNO skeleton with contact info and crawlability
+    # Step 8: Create or get DNO skeleton with contact info and crawlability
     dno, dno_created = await skeleton_service.get_or_create_dno(
         db,
         name=vnb.name,
@@ -505,31 +490,16 @@ async def _search_by_coordinates(
 
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
 
-    # Try to enrich address with postal code + city from Impressum
+    # Enrich address + fetch robots.txt
     enriched_address = dno_details.address if dno_details else None
-    if dno_details and dno_details.homepage_url and dno_details.address:
-        from app.services.impressum_extractor import impressum_extractor
-
-        full_addr = await impressum_extractor.extract_full_address(
-            dno_details.homepage_url,
-            dno_details.address,
-        )
-        if full_addr:
-            enriched_address = full_addr.formatted
-
-    # Fetch robots.txt to determine crawlability
     robots_result = None
     if dno_details and dno_details.homepage_url:
-        import httpx
+        from app.services.dno_enrichment import enrich_dno_from_web
 
-        from app.services.robots_parser import fetch_robots_txt
-
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "DNO-Crawler/1.0"},
-            follow_redirects=True,
-            timeout=10.0,
-        ) as http_client:
-            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
+        enrichment = await enrich_dno_from_web(dno_details.homepage_url, dno_details.address)
+        robots_result = enrichment.robots
+        if enrichment.enriched_address:
+            enriched_address = enrichment.enriched_address
 
     dno, _ = await skeleton_service.get_or_create_dno(
         db,
@@ -647,31 +617,16 @@ async def _search_by_dno(
 
     dno_details = await vnb_client.get_vnb_details(vnb.vnb_id)
 
-    # Try to enrich address with postal code + city from Impressum
+    # Enrich address + fetch robots.txt
     enriched_address = dno_details.address if dno_details else None
-    if dno_details and dno_details.homepage_url and dno_details.address:
-        from app.services.impressum_extractor import impressum_extractor
-
-        full_addr = await impressum_extractor.extract_full_address(
-            dno_details.homepage_url,
-            dno_details.address,
-        )
-        if full_addr:
-            enriched_address = full_addr.formatted
-
-    # Fetch robots.txt to determine crawlability
     robots_result = None
     if dno_details and dno_details.homepage_url:
-        import httpx
+        from app.services.dno_enrichment import enrich_dno_from_web
 
-        from app.services.robots_parser import fetch_robots_txt
-
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "DNO-Crawler/1.0"},
-            follow_redirects=True,
-            timeout=10.0,
-        ) as http_client:
-            robots_result = await fetch_robots_txt(http_client, dno_details.homepage_url)
+        enrichment = await enrich_dno_from_web(dno_details.homepage_url, dno_details.address)
+        robots_result = enrichment.robots
+        if enrichment.enriched_address:
+            enriched_address = enrichment.enriched_address
 
     # Create or get DNO skeleton
     dno, dno_created = await skeleton_service.get_or_create_dno(

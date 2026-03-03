@@ -10,7 +10,7 @@ from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.auth import User as AuthUser
-from app.core.auth import get_current_user
+from app.core.auth import get_current_user, require_admin
 from app.core.models import APIResponse
 from app.db import DNOModel, get_db
 
@@ -156,14 +156,9 @@ async def update_netzentgelte(
     record_id: int,
     request: UpdateNetzentgelteRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    current_user: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Update a Netzentgelte record (admin only)."""
-    if not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
 
     from app.db import NetzentgelteModel
 
@@ -209,14 +204,9 @@ async def delete_netzentgelte(
     dno_id: int,
     record_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    current_user: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Delete a Netzentgelte record (admin only)."""
-    if not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
 
     from app.db import NetzentgelteModel
 
@@ -248,14 +238,9 @@ async def update_hlzf(
     record_id: int,
     request: UpdateHLZFRequest,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    current_user: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Update an HLZF record (admin only)."""
-    if not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
 
     from app.db import HLZFModel
 
@@ -301,14 +286,9 @@ async def delete_hlzf(
     dno_id: int,
     record_id: int,
     db: Annotated[AsyncSession, Depends(get_db)],
-    current_user: Annotated[AuthUser, Depends(get_current_user)],
+    current_user: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Delete an HLZF record (admin only)."""
-    if not current_user.is_admin:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Admin access required",
-        )
 
     from app.db import HLZFModel
 

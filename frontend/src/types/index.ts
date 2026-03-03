@@ -1,6 +1,6 @@
 /**
  * Type definitions index.
- * 
+ *
  * Re-exports all types from domain-specific modules.
  * Import from '@/types' for convenient access.
  */
@@ -8,13 +8,37 @@
 // API types
 export type { ApiResponse, PaginationMeta, UserInfo } from "./api.types";
 
+// AI provider types
+export type {
+    AIAuthType,
+    AIConfigCreate,
+    AIConfigUpdate,
+    AIProviderConfig,
+    AIProviderType,
+    ProviderInfo,
+    ReasoningOptions,
+    ThinkingCapability,
+} from "./ai.types";
+
+// API key types
+export type {
+    APIKeyCreateRequest,
+    APIKeyCreateResponse,
+    APIKeyInfo,
+} from "./api-key.types";
+
 // DNO types
 export type {
     AddressComponents,
     BdewData,
     DNO,
     DNOStatus,
+    MastrConnectionPointsStats,
     MastrData,
+    MastrInstalledCapacityStats,
+    MastrNetworksStats,
+    MastrStats,
+    MastrUnitCountsStats,
     VNBDetails,
     VNBSuggestion,
     VnbData,

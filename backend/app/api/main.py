@@ -59,10 +59,10 @@ async def lifespan(app: FastAPI) -> AsyncGenerator[None, None]:
         if settings.is_production:
             logger.critical(
                 "FATAL: Authentication is disabled in a production/staging environment! "
-                "Set ZITADEL_DOMAIN to your Zitadel instance domain. "
-                "The application will reject all authenticated requests until this is fixed.",
+                "Set ZITADEL_DOMAIN to your Zitadel instance domain.",
                 environment=settings.environment,
             )
+            raise SystemExit(1)
         else:
             logger.warning(
                 "Authentication is DISABLED (mock admin mode). "

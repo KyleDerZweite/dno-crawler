@@ -23,8 +23,18 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
     loop.close()
 
 
+async def _check_db_available() -> None:
+    """Raise pytest.skip if the database is not reachable."""
+    try:
+        async with engine.begin() as conn:
+            await conn.execute(text("SELECT 1"))
+    except OSError as e:
+        pytest.skip(f"Database not available: {e}")
+
+
 async def _create_tables() -> None:
     """Create pg_trgm extension and all tables."""
+    await _check_db_available()
     async with engine.begin() as conn:
         await conn.execute(text("CREATE EXTENSION IF NOT EXISTS pg_trgm;"))
         await conn.run_sync(Base.metadata.create_all)

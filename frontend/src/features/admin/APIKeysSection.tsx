@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { api, type APIKeyInfo, type APIKeyCreateResponse } from "@/lib/api";
+import { api } from "@/lib/api";
+import type { APIKeyInfo, APIKeyCreateResponse } from "@/types";
 import {
     Card,
     CardContent,

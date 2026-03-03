@@ -309,29 +309,23 @@ async def create_dno(
     sitemap_urls = None
     disallow_paths = None
 
+    tech_info = None
+
     if website:
         import httpx
 
-        from app.services.robots_parser import fetch_robots_txt, fetch_site_tech_info
+        from app.services.robots_parser import fetch_and_verify_robots, fetch_site_tech_info
 
         async with httpx.AsyncClient(
             headers={"User-Agent": "DNO-Crawler/1.0"},
             follow_redirects=True,
             timeout=10.0,
         ) as http_client:
-            # Parallel check: Robots/Sitemap + Tech Stack
-            robots_task = fetch_robots_txt(http_client, website)
-            tech_task = fetch_site_tech_info(http_client, website)
-
-            # Note: fetch_robots_txt in crud.py is using the old import which doesn't include the new default sitemap check logic
-            # Use fetch_and_verify_robots instead for full logic
-            from app.services.robots_parser import fetch_and_verify_robots
-
             robots_result = await fetch_and_verify_robots(
                 http_client, website, verify_sitemap=False
             )
 
-            tech_info = await tech_task
+            tech_info = await fetch_site_tech_info(http_client, website)
 
             if robots_result:
                 crawlable = robots_result.crawlable
@@ -359,8 +353,8 @@ async def create_dno(
         sitemap_urls=sitemap_urls,
         disallow_paths=disallow_paths,
         # Tech Info
-        cms_system=tech_info.get("cms") if website and "tech_info" in locals() else None,
-        tech_stack_details=tech_info if website and "tech_info" in locals() else None,
+        cms_system=tech_info.get("cms") if tech_info else None,
+        tech_stack_details=tech_info,
     )
     db.add(dno)
     await db.commit()

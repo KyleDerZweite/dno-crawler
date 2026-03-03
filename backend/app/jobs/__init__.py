@@ -13,9 +13,6 @@ Architecture:
   - Can be scaled horizontally since no external requests
   - Listens on "extract" queue
 
-- WorkerSettings: Legacy combined worker (for backwards compatibility)
-  - Runs full pipeline (all steps)
-  - Listens on default queue
 """
 
 import structlog
@@ -86,7 +83,6 @@ async def shutdown(ctx):
 from app.jobs.crawl_job import process_crawl  # noqa: E402
 from app.jobs.enrichment_job import enrich_dno  # noqa: E402
 from app.jobs.extract_job import process_extract  # noqa: E402
-from app.jobs.search_job import process_dno_crawl  # noqa: E402
 
 
 class CrawlWorkerSettings:
@@ -148,28 +144,3 @@ class ExtractWorkerSettings:
 
     # Job timeout: 5 minutes for extract jobs (AI extraction)
     job_timeout = 300
-
-
-class WorkerSettings:
-    """
-    Legacy ARQ worker settings - runs FULL pipeline.
-
-    For backwards compatibility. Runs all steps (0-6) in sequence.
-    Use this if you want a single combined worker.
-    """
-
-    functions = [
-        health_check_job,
-        process_dno_crawl,  # Full pipeline
-        enrich_dno,
-    ]
-    redis_settings = RedisSettings.from_dsn(str(settings.redis_url))
-    on_startup = startup_with_seeding
-    on_shutdown = shutdown
-    handle_signals = False
-
-    # Only process one job at a time
-    max_jobs = 1
-
-    # Job timeout: 15 minutes for full pipeline
-    job_timeout = 900
