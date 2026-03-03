@@ -5,7 +5,7 @@ This DNO's HLZF/netzentgelte data lives on Avacon Netz's site, not their own.
 This test validates the relevance-gated external link following feature.
 
 Run with:
-    cd backend && python -m pytest tests/test_celle_uelzen.py -v -s
+    cd backend && python -m pytest tests/manual/test_celle_uelzen.py -v -s
 """
 
 from urllib.parse import urlparse

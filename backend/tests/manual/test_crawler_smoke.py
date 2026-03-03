@@ -4,7 +4,7 @@ the BFS crawler against its website.
 
 This is a live integration test that makes real HTTP requests.
 Run with:
-    cd backend && python -m pytest tests/test_crawler_smoke.py -v -s
+    cd backend && python -m pytest tests/manual/test_crawler_smoke.py -v -s
 
 Use --count N (pytest-repeat) or -k to control which/how-many DNOs to test.
 """
