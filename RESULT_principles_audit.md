@@ -183,11 +183,11 @@ The codebase is generally well-structured with clear separation of concerns and 
 | F-011 | SoC | HIGH | `dnos/crud.py` | HTTP calls in route handler |
 | F-012 | SoC | MEDIUM | `admin.py` | Duplicated file scanning logic |
 | F-013 | OCP | MEDIUM | `verification.py` | Copy-paste verification endpoints |
-| F-014 | DRY | HIGH | `lib/api.ts` vs `types/` | ~300 lines of duplicated frontend types |
+| F-014 | DRY | HIGH | `lib/api.ts` vs `types/` | Resolved in MVP: duplicated frontend types removed; consumers import from `@/types` |
 | F-015 | DRY | HIGH | `constants.py` vs `models.py` | Parallel enum and Literal definitions |
-| F-016 | DRY | HIGH | `search.py` + `crud.py` | Robots + impressum enrichment repeated 4x |
+| F-016 | DRY | HIGH | `search.py` + `crud.py` | Resolved in MVP: enrichment extracted into `enrich_dno_from_web()` and reused |
 | F-017 | DRY | MEDIUM | `crud.py` vs `search.py` | Duplicated completeness computation |
-| F-018 | DRY | MEDIUM | `data.py` | Inline admin check instead of `require_admin` |
+| F-018 | DRY | MEDIUM | `data.py` | Resolved in MVP: endpoints use `Depends(require_admin)` |
 | F-019 | DRY | MEDIUM | `admin.py` | Status lookup built 3 times |
 | F-020 | Refactor | MEDIUM | `db/models.py` | 12 identical columns across 2 models |
 | F-021 | Refactor | MEDIUM | `ai/gateway.py` | `ocr_pdf` bypasses provider abstraction |
@@ -203,6 +203,8 @@ The codebase is generally well-structured with clear separation of concerns and 
 
 ### Priority Recommendations
 
-1. **Immediate** (HIGH impact, relatively contained fix): F-014 (remove duplicated frontend types), F-018 (use `require_admin` dependency), F-016 (extract enrichment helper)
-2. **Next sprint**: F-007 and F-008 (extract service layers from oversized handlers), F-015 (consolidate enum/Literal duplication), F-013 (generic verification)
+This audit is a point-in-time snapshot. Findings F-014, F-016, and F-018 were addressed during MVP implementation.
+
+1. **Immediate** (HIGH impact, relatively contained fix): F-015 (consolidate enum/Literal duplication)
+2. **Next sprint**: F-007 and F-008 (extract service layers from oversized handlers), F-013 (generic verification)
 3. **Ongoing**: F-020 (model mixins), F-009/F-017 (shared serialization and completeness), documentation improvements

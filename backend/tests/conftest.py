@@ -9,6 +9,7 @@ import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.main import app
@@ -30,7 +31,7 @@ async def _check_db_available() -> None:
         await engine.dispose()
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-    except (OSError, RuntimeError) as e:
+    except (OSError, RuntimeError, SQLAlchemyError) as e:
         pytest.skip(f"Database not available: {e}")
 
 

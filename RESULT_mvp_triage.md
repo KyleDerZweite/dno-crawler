@@ -48,13 +48,15 @@
 - **Fix**: Add proper type narrowing (`if response is not None:`) or refactor the HTTP call to always return a typed result.
 - **Priority**: 5
 
-### C6. No XLSX extraction in the extraction pipeline
+### C6. [Deferred] No XLSX extraction in the extraction pipeline
 
 - **Files**: `/home/kyle/CodingProjects/dno-crawler/backend/app/services/extraction/` (directory)
 - **Issue**: The architecture document (`docs/ARCHITECTURE.md`, line 439) shows XLSX as a supported extraction path. The discovery and download steps correctly detect and download XLSX files. The `content_verifier.py` can read XLSX for verification. However, there is no `xlsx_extractor.py` in the extraction pipeline. If a DNO only publishes data in XLSX format, the deterministic extraction step will fail silently and fall through to AI extraction (if configured) or fail entirely.
-- **Why Critical**: Data gap for XLSX-only DNOs. The pipeline claims to support XLSX but does not extract from it.
-- **Fix**: Implement `xlsx_extractor.py` using openpyxl (already a dependency) with pattern matching for Netzentgelte and HLZF table structures. Wire it into `step_03_classify.py`.
-- **Priority**: 6
+- **Status**: Deferred per `MVP_PLAN.md` ("What was NOT done", around line 76).
+- **Why Deferred**: During MVP validation, no active DNO in scope used XLSX as the sole source for Netzentgelte/HLZF. Existing PDF/HTML paths cover current production targets.
+- **Implementation Target**: Add `/app/services/extraction/xlsx_extractor.py` and wire it into the extraction pipeline entrypoint in `/app/services/extraction/` (classifier/dispatch stage).
+- **Planned Timing**: First post-MVP extraction expansion milestone, when a DNO source set requires XLSX parsing.
+- **Priority**: Deferred (not critical for MVP launch)
 
 ---
 
@@ -134,8 +136,8 @@
 | 3 | C3: Fail-fast startup check for auth in production | 30 min | Confusing partial availability |
 | 4 | C4: Remove legacy `search_job.py` and `WorkerSettings` | 15 min | Silent data pipeline failure |
 | 5 | C5: Fix `type: ignore` in sitemap service | 20 min | Potential runtime crash during crawl |
-| 6 | C6: Implement XLSX extractor | 2-4 hours | Data gap for XLSX-only DNOs |
+| 6 | C6: XLSX extractor | Deferred post-MVP | Track as extraction expansion item |
 
-**Total estimated effort for Critical items: approximately 4-5 hours.**
+**Total estimated effort for Critical MVP launch items: approximately 1-2 hours (C1-C5).**
 
 All QoL items (Q1-Q9) can be addressed post-launch with no impact on core data extraction, security, or operational stability.

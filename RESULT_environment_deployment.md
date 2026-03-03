@@ -231,6 +231,15 @@ If a production deploy fails:
 ```bash
 git checkout main
 git revert HEAD   # or: git reset --hard <last-good-commit>
+
+# Roll back DB migration before bringing services back up
+cd backend
+DATABASE_URL="postgresql+asyncpg://dno:<password>@<prod-db-host>:5432/dno_crawler" \
+  uv run alembic downgrade -1
+cd ..
+
+# Use the correct downgrade target for the failed release (e.g. -1 or a specific revision)
+# and ensure DATABASE_URL credentials/host point to production.
 podman-compose -f docker-compose.prod.yml up -d --build
 ```
 
