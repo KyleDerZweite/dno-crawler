@@ -66,9 +66,9 @@ async def test_celle_uelzen_discovers_external_links() -> None:
         else:
             external.append(r)
 
-    print(f"\n{'='*70}")
+    print(f"\n{'=' * 70}")
     print("Celle-Uelzen Netz Crawl Results")
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")
     print(f"  Total results  : {len(results)}")
     print(f"  Internal       : {len(internal)}")
     print(f"  External       : {len(external)}")
@@ -97,4 +97,4 @@ async def test_celle_uelzen_discovers_external_links() -> None:
         print("\n  No external links discovered.")
         print("  (The site may not link to Avacon, or links may not pass relevance gate)")
 
-    print(f"{'='*70}")
+    print(f"{'=' * 70}")

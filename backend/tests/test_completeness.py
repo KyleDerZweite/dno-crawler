@@ -2,7 +2,6 @@
 Tests for voltage level-based completeness scoring.
 """
 
-
 from app.services.completeness import (
     compute_completeness,
     expected_voltage_levels,

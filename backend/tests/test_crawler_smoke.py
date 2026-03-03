@@ -41,10 +41,7 @@ def _load_dnos_with_websites() -> list[dict]:
     with open(SEED_FILE, encoding="utf-8") as f:
         data = json.load(f)
 
-    return [
-        d for d in data
-        if d.get("website") and d["website"].startswith("http")
-    ]
+    return [d for d in data if d.get("website") and d["website"].startswith("http")]
 
 
 # Load once at module level so parametrize can sample

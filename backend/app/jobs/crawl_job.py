@@ -101,8 +101,7 @@ async def process_crawl(
                 # Check which types already have unflagged data in the DB
                 imported = await _check_imported_data(db, job.dno_id, job.year)
                 needs_extract = {
-                    dt: path for dt, path in cached_files.items()
-                    if dt not in imported
+                    dt: path for dt, path in cached_files.items() if dt not in imported
                 }
 
                 if not needs_extract and imported:
@@ -113,7 +112,9 @@ async def process_crawl(
                         imported=list(imported),
                         cached=list(cached_files.keys()),
                     )
-                    await mark_job_completed(job, db, current_step="Skipped - data already imported")
+                    await mark_job_completed(
+                        job, db, current_step="Skipped - data already imported"
+                    )
                     return {
                         "status": "completed",
                         "message": f"Data already imported for {', '.join(imported)}",

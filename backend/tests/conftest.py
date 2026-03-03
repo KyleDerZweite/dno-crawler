@@ -26,9 +26,11 @@ def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
 async def _check_db_available() -> None:
     """Raise pytest.skip if the database is not reachable."""
     try:
+        # Dispose stale connections from previous event loops
+        await engine.dispose()
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-    except OSError as e:
+    except (OSError, RuntimeError) as e:
         pytest.skip(f"Database not available: {e}")
 
 

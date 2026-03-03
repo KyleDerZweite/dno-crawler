@@ -272,9 +272,7 @@ class AIGateway:
         Returns:
             Transcribed text, or None if no provider available
         """
-        configs = await self.get_sorted_configs(
-            needs_vision=True, needs_files=True
-        )
+        configs = await self.get_sorted_configs(needs_vision=True, needs_files=True)
         if not configs:
             return None
 
