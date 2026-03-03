@@ -36,7 +36,7 @@ USER_AGENT = (
 def _load_dnos_with_websites() -> list[dict]:
     """Load enriched seed data and return only DNOs that have a website."""
     if not SEED_FILE.exists():
-        pytest.skip(f"Seed file not found: {SEED_FILE}")
+        return []
 
     with open(SEED_FILE, encoding="utf-8") as f:
         data = json.load(f)
@@ -60,6 +60,8 @@ def _pick_random_dno(seed: int | None = None) -> dict:
 @pytest.fixture
 def random_dno() -> dict:
     """Fixture that returns a random DNO with a website."""
+    if not _ALL_DNOS:
+        pytest.skip(f"Seed file not found or empty: {SEED_FILE}")
     dno = _pick_random_dno()
     print(f"\n--- Selected DNO: {dno['name']} | {dno['website']} ---")
     return dno

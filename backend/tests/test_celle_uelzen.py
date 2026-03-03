@@ -8,7 +8,6 @@ Run with:
     cd backend && python -m pytest tests/test_celle_uelzen.py -v -s
 """
 
-import asyncio
 from urllib.parse import urlparse
 
 import httpx
@@ -68,7 +67,7 @@ async def test_celle_uelzen_discovers_external_links() -> None:
             external.append(r)
 
     print(f"\n{'='*70}")
-    print(f"Celle-Uelzen Netz Crawl Results")
+    print("Celle-Uelzen Netz Crawl Results")
     print(f"{'='*70}")
     print(f"  Total results  : {len(results)}")
     print(f"  Internal       : {len(internal)}")
@@ -76,13 +75,13 @@ async def test_celle_uelzen_discovers_external_links() -> None:
     print(f"  Documents      : {sum(1 for r in results if r.is_document)}")
 
     if internal:
-        print(f"\n  Internal pages/docs:")
+        print("\n  Internal pages/docs:")
         for r in internal[:10]:
             doc = " [DOC]" if r.is_document else ""
             print(f"    score={r.score:6.1f}  d={r.depth}  {r.final_url[:90]}{doc}")
 
     if external:
-        print(f"\n  External pages/docs (relevance-gated):")
+        print("\n  External pages/docs (relevance-gated):")
         for r in external:
             doc = " [DOC]" if r.is_document else ""
             kw = f"  kw={r.keywords_found}" if r.keywords_found else ""
