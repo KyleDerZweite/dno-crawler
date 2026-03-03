@@ -674,8 +674,7 @@ class WebCrawler:
 
                 # Check if link is external
                 is_internal = any(
-                    host_check == d or host_check.endswith(f".{d}")
-                    for d in allowed_domains
+                    host_check == d or host_check.endswith(f".{d}") for d in allowed_domains
                 )
 
                 if not is_internal:

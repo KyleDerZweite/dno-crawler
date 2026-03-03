@@ -125,7 +125,9 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
         voltage_level = normalize_voltage_level(voltage_level_raw)
 
         try:
-            lp_unter = _parse_number_or_log(match[1], "leistung_unter_2500h", page_num, voltage_level)
+            lp_unter = _parse_number_or_log(
+                match[1], "leistung_unter_2500h", page_num, voltage_level
+            )
             ap_unter = _parse_number_or_log(match[2], "arbeit_unter_2500h", page_num, voltage_level)
             lp = _parse_number_or_log(match[3], "leistung", page_num, voltage_level)
             ap = _parse_number_or_log(match[4], "arbeit", page_num, voltage_level)
@@ -441,9 +443,7 @@ def _merge_tables(tables: list[list]) -> list[list]:
     return merged_results
 
 
-def _parse_hlzf_fragmented_tables(
-    tables: list[list[list]], page_num: int
-) -> list[dict[str, Any]]:
+def _parse_hlzf_fragmented_tables(tables: list[list[list]], page_num: int) -> list[dict[str, Any]]:
     """
     Parse HLZF from fragmented tables where season header and data rows
     are in separate pdfplumber tables with different column counts.
@@ -523,7 +523,12 @@ def _parse_hlzf_fragmented_tables(
                 if von_col < len(row) and bis_col < len(row):
                     von = str(row[von_col] or "").strip()
                     bis = str(row[bis_col] or "").strip()
-                    if von and bis and re.match(r"\d{1,2}:\d{2}", von) and re.match(r"\d{1,2}:\d{2}", bis):
+                    if (
+                        von
+                        and bis
+                        and re.match(r"\d{1,2}:\d{2}", von)
+                        and re.match(r"\d{1,2}:\d{2}", bis)
+                    ):
                         time_range = f"{von}-{bis}"
                         existing = vl_times[current_vl][s_idx]
                         if existing:
@@ -534,7 +539,10 @@ def _parse_hlzf_fragmented_tables(
         # Build records from collected data
         for vl, times in vl_times.items():
             season_dict: dict[str, str | None] = {
-                "winter": None, "fruehling": None, "sommer": None, "herbst": None
+                "winter": None,
+                "fruehling": None,
+                "sommer": None,
+                "herbst": None,
             }
             has_any = False
             for s_idx, s_key in enumerate(season_order):
@@ -542,11 +550,13 @@ def _parse_hlzf_fragmented_tables(
                     season_dict[s_key] = times[s_idx]
                     has_any = True
             if has_any:
-                records.append({
-                    "voltage_level": vl,
-                    "source_page": page_num,
-                    **season_dict,
-                })
+                records.append(
+                    {
+                        "voltage_level": vl,
+                        "source_page": page_num,
+                        **season_dict,
+                    }
+                )
 
     return records
 
@@ -836,7 +846,9 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
 
     # Find all time ranges in the text: HH:MM - HH:MM (with various separators or just whitespace)
     time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—\s]\s*(\d{1,2}:\d{2})"
-    time_matches = [(m.start(), m.group(1), m.group(2)) for m in re.finditer(time_range_pattern, text)]
+    time_matches = [
+        (m.start(), m.group(1), m.group(2)) for m in re.finditer(time_range_pattern, text)
+    ]
 
     # For each voltage level, collect the time ranges that follow it
     # (up to the next voltage level or end of text)
@@ -846,9 +858,7 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
 
         # Collect time ranges in this region
         vl_times = [
-            (pos, start, end)
-            for pos, start, end in time_matches
-            if vl_pos <= pos < next_vl_pos
+            (pos, start, end) for pos, start, end in time_matches if vl_pos <= pos < next_vl_pos
         ]
 
         if not vl_times:

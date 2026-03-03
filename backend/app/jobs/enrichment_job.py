@@ -294,7 +294,7 @@ async def queue_enrichment_jobs(db: AsyncSession, limit: int = 100) -> int:
             _queue_name="crawl",
         )
 
-    await redis.close()
+    await redis.aclose()
 
     logger.info("Enrichment jobs queued", count=len(dno_ids))
     return len(dno_ids)
@@ -318,4 +318,4 @@ async def enqueue_enrichment_job(dno_id: int) -> bool:
         logger.info("Enqueued enrichment job", dno_id=dno_id)
         return True
     finally:
-        await redis.close()
+        await redis.aclose()

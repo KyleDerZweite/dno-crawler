@@ -4,7 +4,7 @@ the BFS crawler against its website.
 
 This is a live integration test that makes real HTTP requests.
 Run with:
-    cd backend && python -m pytest tests/test_crawler_smoke.py -v -s
+    cd backend && python -m pytest tests/manual/test_crawler_smoke.py -v -s
 
 Use --count N (pytest-repeat) or -k to control which/how-many DNOs to test.
 """
@@ -41,10 +41,7 @@ def _load_dnos_with_websites() -> list[dict]:
     with open(SEED_FILE, encoding="utf-8") as f:
         data = json.load(f)
 
-    return [
-        d for d in data
-        if d.get("website") and d["website"].startswith("http")
-    ]
+    return [d for d in data if d.get("website") and d["website"].startswith("http")]
 
 
 # Load once at module level so parametrize can sample

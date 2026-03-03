@@ -2,33 +2,27 @@
 Pytest configuration and fixtures for DNO Crawler tests.
 """
 
-import asyncio
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 
 import pytest
 import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.main import app
 from app.db.database import Base, async_session_maker, engine
 
 
-@pytest.fixture(scope="session")
-def event_loop() -> Generator[asyncio.AbstractEventLoop, None, None]:
-    """Create event loop for async tests."""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
 async def _check_db_available() -> None:
     """Raise pytest.skip if the database is not reachable."""
     try:
+        # Dispose stale connections from previous event loops
+        await engine.dispose()
         async with engine.begin() as conn:
             await conn.execute(text("SELECT 1"))
-    except OSError as e:
+    except (OSError, RuntimeError, SQLAlchemyError) as e:
         pytest.skip(f"Database not available: {e}")
 
 
@@ -44,6 +38,7 @@ async def _drop_tables() -> None:
     """Drop all tables."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.drop_all)
+    await engine.dispose()
 
 
 @pytest_asyncio.fixture(scope="function")

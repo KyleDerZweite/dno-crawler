@@ -25,8 +25,7 @@ def validate_extraction_sanity(records: list[dict], data_type: str) -> tuple[boo
 
         if valid_records < 2:
             return False, (
-                f"Too few valid records with prices: {valid_records} "
-                "(minimum 2 required)"
+                f"Too few valid records with prices: {valid_records} (minimum 2 required)"
             )
 
         return True, "OK"

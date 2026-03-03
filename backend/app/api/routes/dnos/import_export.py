@@ -191,7 +191,9 @@ async def import_dno_data(
         # ------------------------
         if request.mode == "replace":
             if len(request.netzentgelte) == 0:
-                await db.execute(delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id))
+                await db.execute(
+                    delete(NetzentgelteModel).where(NetzentgelteModel.dno_id == dno_id)
+                )
                 logger.info("import_deleted_all_netzentgelte", dno_id=dno_id)
             else:
                 netz_years = _netz_replace_years()

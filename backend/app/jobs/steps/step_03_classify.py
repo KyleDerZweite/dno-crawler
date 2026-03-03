@@ -215,9 +215,7 @@ class ClassifyStep(BaseStep):
 
                 def _read_all_pages():
                     with pdfplumber.open(file_path) as pdf:
-                        return "\n".join(
-                            page.extract_text() or "" for page in pdf.pages
-                        )
+                        return "\n".join(page.extract_text() or "" for page in pdf.pages)
 
                 text = await asyncio.to_thread(_read_all_pages)
 
@@ -283,7 +281,9 @@ class ClassifyStep(BaseStep):
         if not text:
             return None
 
-        keywords = r"(?:Netzentgelt|Entgelt|Hochlastzeitfenster|Netznutzung|Preisblatt|gültig|Gültigkeit)"
+        keywords = (
+            r"(?:Netzentgelt|Entgelt|Hochlastzeitfenster|Netznutzung|Preisblatt|gültig|Gültigkeit)"
+        )
         pattern = rf"(?:{keywords}).{{0,100}}(20\d{{2}})|(20\d{{2}}).{{0,100}}{keywords}"
         matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
 
@@ -325,7 +325,9 @@ class ClassifyStep(BaseStep):
 
         # Must contain voltage level references
         vl_keywords = [
-            "mittelspannung", "niederspannung", "hochspannung",
+            "mittelspannung",
+            "niederspannung",
+            "hochspannung",
             "umspannung",
         ]
         # Also check for standalone abbreviations with word boundaries
@@ -367,7 +369,9 @@ class ClassifyStep(BaseStep):
 
         # Must contain voltage level references
         vl_keywords = [
-            "mittelspannung", "niederspannung", "hochspannung",
+            "mittelspannung",
+            "niederspannung",
+            "hochspannung",
             "umspannung",
         ]
         has_vl = any(kw in text_lower for kw in vl_keywords)
