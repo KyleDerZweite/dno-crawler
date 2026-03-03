@@ -282,37 +282,12 @@ class AIGateway:
         for config in configs:
             try:
                 provider = self._create_provider(config)
-
-                # Call the model without json_object response format
-                # so it returns plain text instead of trying to produce JSON
-                from openrouter import OpenRouter as _OpenRouter
-
-                api_key = provider._get_api_key()
-                request_kwargs = {
-                    "model": config.model,
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:application/pdf;base64,{image_data}"
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                }
-
-                async with _OpenRouter(api_key=api_key) as client:
-                    response = await client.chat.send_async(**request_kwargs)
-
-                text = response.choices[0].message.content or ""
+                text = await provider.extract_plain_text(
+                    image_data=image_data,
+                    mime_type="application/pdf",
+                    prompt=prompt,
+                )
                 tokens = 0
-                if response.usage:
-                    tokens = response.usage.total_tokens or 0
 
                 await self.config_service.mark_success(config.id, tokens)
                 await self.db.commit()

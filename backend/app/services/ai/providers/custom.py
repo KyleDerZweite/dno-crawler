@@ -200,6 +200,32 @@ class CustomProvider(BaseProvider):
 
         return result
 
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text from image/document using OpenAI-compatible endpoint."""
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=self.config.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
+            max_tokens=self.MAX_OUTPUT_TOKENS,
+        )
+        return response.choices[0].message.content or ""
+
     async def health_check(self) -> bool:
         """Check if custom endpoint is reachable."""
         try:

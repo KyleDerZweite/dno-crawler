@@ -150,3 +150,44 @@ def compute_completeness(
         covered_count=covered,
         has_expectations=True,
     )
+
+
+def connection_points_from_mastr(mastr_data: object | None) -> dict[str, int | None] | None:
+    """Extract canonical connection point buckets from a MaStR payload/model."""
+    if mastr_data is None:
+        return None
+    return {
+        "ns": getattr(mastr_data, "connection_points_ns", None),
+        "ms": getattr(mastr_data, "connection_points_ms", None),
+        "hs": getattr(mastr_data, "connection_points_hs", None),
+        "hoe": getattr(mastr_data, "connection_points_hoe", None),
+    }
+
+
+def build_completeness_payload(
+    *,
+    connection_points: dict[str, int | None] | None,
+    actual_netz_levels: set[str],
+    actual_hlzf_levels: set[str],
+    include_levels: bool = False,
+) -> dict:
+    """Build a standardized completeness payload for API responses."""
+    result = compute_completeness(connection_points, actual_netz_levels, actual_hlzf_levels)
+    payload = {
+        "score": result.score,
+        "has_expectations": result.has_expectations,
+        "expected_count": result.expected_count,
+        "covered_count": result.covered_count,
+    }
+    if include_levels:
+        payload["levels"] = [
+            {
+                "level": lvl.level,
+                "expected": lvl.expected,
+                "has_netzentgelte": lvl.has_netzentgelte,
+                "has_hlzf": lvl.has_hlzf,
+                "covered": lvl.covered,
+            }
+            for lvl in result.levels
+        ]
+    return payload

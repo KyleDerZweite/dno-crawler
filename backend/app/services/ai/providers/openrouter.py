@@ -274,6 +274,37 @@ class OpenRouterProvider(BaseProvider):
 
         return result
 
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text (no JSON response format)."""
+        reasoning = self._build_reasoning_config()
+        request_kwargs: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
+        }
+        if reasoning:
+            request_kwargs["reasoning"] = reasoning
+
+        async with OpenRouter(api_key=self._get_api_key()) as client:
+            response = await client.chat.send_async(**request_kwargs)
+
+        return response.choices[0].message.content or ""
+
     async def health_check(self) -> bool:
         """Check if OpenRouter is reachable."""
         try:

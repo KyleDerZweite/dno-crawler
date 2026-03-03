@@ -138,6 +138,62 @@ def parse_time_window(value: str | None) -> str | None:
     return s
 
 
+def parse_hlzf_time_ranges(value: str | None) -> list[dict[str, str]] | None:
+    """Parse HLZF time strings into structured start/end ranges.
+
+    Handles mixed formats produced by PDFs and AI extraction:
+    - comma/newline separated windows
+    - hyphen/en-dash/em-dash separators
+    - occasional AI output using whitespace instead of a dash
+    """
+    if not value or value.strip() == "-" or value.strip().lower() == "entfällt":
+        return None
+
+    ranges: list[dict[str, str]] = []
+
+    def normalize_time(t: str) -> str:
+        parts = t.split(":")
+        hour = parts[0].zfill(2)
+        minute = parts[1] if len(parts) > 1 else "00"
+        second = parts[2] if len(parts) > 2 else "00"
+        return f"{hour}:{minute}:{second}"
+
+    periods = re.split(r"[,\n]", value)
+
+    for period in periods:
+        period = period.strip()
+        if not period:
+            continue
+
+        dash_match = re.match(
+            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$",
+            period,
+        )
+        if dash_match:
+            ranges.append(
+                {
+                    "start": normalize_time(dash_match.group(1)),
+                    "end": normalize_time(dash_match.group(2)),
+                }
+            )
+            continue
+
+        # Common AI fallback error: "18:00 20:00"
+        space_match = re.match(
+            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$",
+            period,
+        )
+        if space_match:
+            ranges.append(
+                {
+                    "start": normalize_time(space_match.group(1)),
+                    "end": normalize_time(space_match.group(2)),
+                }
+            )
+
+    return ranges if ranges else None
+
+
 def clean_string(value: str | None, max_length: int | None = None) -> str | None:
     """
     Clean and normalize a string value.

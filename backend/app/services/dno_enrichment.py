@@ -7,12 +7,18 @@ and CRUD endpoints.
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 import httpx
 import structlog
 
 from app.services.impressum_extractor import impressum_extractor
-from app.services.robots_parser import RobotsResult, fetch_robots_txt
+from app.services.robots_parser import (
+    RobotsResult,
+    fetch_and_verify_robots,
+    fetch_robots_txt,
+    fetch_site_tech_info,
+)
 
 logger = structlog.get_logger()
 
@@ -23,11 +29,15 @@ class EnrichmentResult:
 
     robots: RobotsResult | None = None
     enriched_address: str | None = None
+    tech_info: dict[str, Any] | None = None
 
 
 async def enrich_dno_from_web(
     homepage_url: str,
     address: str | None = None,
+    *,
+    verify_robots: bool = False,
+    include_tech_info: bool = False,
 ) -> EnrichmentResult:
     """
     Fetch robots.txt and optionally enrich address via Impressum.
@@ -35,7 +45,9 @@ async def enrich_dno_from_web(
     Args:
         homepage_url: DNO homepage URL (e.g., "https://www.rheinnetz.de/")
         address: Street address from VNB Digital to enrich with postal code + city.
-                 If None, impressum enrichment is skipped.
+            If None, impressum enrichment is skipped.
+        verify_robots: If True, run stricter robots verification checks.
+        include_tech_info: If True, detect CMS/tech info from homepage.
 
     Returns:
         EnrichmentResult with robots info and optionally enriched address.
@@ -59,7 +71,17 @@ async def enrich_dno_from_web(
             follow_redirects=True,
             timeout=10.0,
         ) as http_client:
-            result.robots = await fetch_robots_txt(http_client, homepage_url)
+            if verify_robots:
+                result.robots = await fetch_and_verify_robots(
+                    http_client,
+                    homepage_url,
+                    verify_sitemap=False,
+                )
+            else:
+                result.robots = await fetch_robots_txt(http_client, homepage_url)
+
+            if include_tech_info:
+                result.tech_info = await fetch_site_tech_info(http_client, homepage_url)
     except Exception as e:
         log.debug("Robots.txt fetch failed", error=str(e))
 

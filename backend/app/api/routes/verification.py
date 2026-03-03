@@ -1,13 +1,7 @@
-"""
-Data verification routes.
-
-Provides endpoints for:
-- Verifying data as correct (any authenticated user)
-- Flagging data as incorrect (any authenticated user)
-- Removing flags (Maintainer/Admin only)
-"""
+"""Data verification routes."""
 
 from datetime import UTC, datetime
+from typing import Any
 
 import structlog
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -21,13 +15,7 @@ from app.db import get_db
 from app.db.models import HLZFModel, NetzentgelteModel
 
 logger = structlog.get_logger()
-
 router = APIRouter()
-
-
-# ==============================================================================
-# Request/Response Schemas
-# ==============================================================================
 
 
 class FlagRequest(BaseModel):
@@ -58,9 +46,116 @@ class VerificationResponse(BaseModel):
     message: str
 
 
-# ==============================================================================
-# Netzentgelte Verification Endpoints
-# ==============================================================================
+async def _get_record_or_404(
+    *,
+    db: AsyncSession,
+    model_cls: Any,
+    record_id: int,
+    label: str,
+):
+    result = await db.execute(select(model_cls).where(model_cls.id == record_id))
+    record = result.scalar_one_or_none()
+    if not record:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"{label} record {record_id} not found",
+        )
+    return record
+
+
+def _to_verification_response(record: Any, message: str) -> VerificationResponse:
+    return VerificationResponse(
+        id=record.id,
+        verification_status=record.verification_status,
+        verified_by=record.verified_by,
+        verified_at=record.verified_at,
+        verification_notes=record.verification_notes,
+        flagged_by=record.flagged_by,
+        flagged_at=record.flagged_at,
+        flag_reason=record.flag_reason,
+        message=message,
+    )
+
+
+async def _verify_record(
+    *,
+    db: AsyncSession,
+    model_cls: Any,
+    record_id: int,
+    label: str,
+    user: User,
+    request: VerifyRequest | None,
+) -> VerificationResponse:
+    record = await _get_record_or_404(db=db, model_cls=model_cls, record_id=record_id, label=label)
+
+    record.verification_status = VerificationStatus.VERIFIED.value
+    record.verified_by = user.id
+    record.verified_at = datetime.now(UTC)
+    record.verification_notes = request.notes if request else None
+    record.flagged_by = None
+    record.flagged_at = None
+    record.flag_reason = None
+
+    await db.commit()
+
+    logger.info(
+        f"{label}_record_verified", record_id=record_id, user_id=user.id, user_email=user.email
+    )
+    return _to_verification_response(record, "Record verified successfully")
+
+
+async def _flag_record(
+    *,
+    db: AsyncSession,
+    model_cls: Any,
+    record_id: int,
+    label: str,
+    user: User,
+    request: FlagRequest,
+) -> VerificationResponse:
+    record = await _get_record_or_404(db=db, model_cls=model_cls, record_id=record_id, label=label)
+
+    record.verification_status = VerificationStatus.FLAGGED.value
+    record.flagged_by = user.id
+    record.flagged_at = datetime.now(UTC)
+    record.flag_reason = request.reason
+
+    await db.commit()
+
+    logger.info(
+        f"{label}_record_flagged",
+        record_id=record_id,
+        user_id=user.id,
+        user_email=user.email,
+        reason=request.reason,
+    )
+    return _to_verification_response(record, "Record flagged successfully")
+
+
+async def _unflag_record(
+    *,
+    db: AsyncSession,
+    model_cls: Any,
+    record_id: int,
+    label: str,
+    user: User,
+) -> VerificationResponse:
+    record = await _get_record_or_404(db=db, model_cls=model_cls, record_id=record_id, label=label)
+
+    if record.verification_status != VerificationStatus.FLAGGED.value:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Record is not flagged")
+
+    record.verification_status = VerificationStatus.UNVERIFIED.value
+    record.flagged_by = None
+    record.flagged_at = None
+    record.flag_reason = None
+
+    await db.commit()
+
+    logger.info(
+        f"{label}_record_unflagged", record_id=record_id, user_id=user.id, user_email=user.email
+    )
+    return _to_verification_response(record, "Flag removed successfully")
 
 
 @router.post(
@@ -75,46 +170,13 @@ async def verify_netzentgelte(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Mark a Netzentgelte record as verified."""
-    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found",
-        )
-
-    # Update verification status
-    record.verification_status = VerificationStatus.VERIFIED.value
-    record.verified_by = user.id
-    record.verified_at = datetime.now(UTC)
-    record.verification_notes = request.notes if request else None
-
-    # Clear any existing flags when verifying
-    record.flagged_by = None
-    record.flagged_at = None
-    record.flag_reason = None
-
-    await db.commit()
-
-    logger.info(
-        "Netzentgelte record verified",
+    return await _verify_record(
+        db=db,
+        model_cls=NetzentgelteModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
-    )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Record verified successfully",
+        label="Netzentgelte",
+        user=user,
+        request=request,
     )
 
 
@@ -130,42 +192,13 @@ async def flag_netzentgelte(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Flag a Netzentgelte record as potentially incorrect."""
-    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found",
-        )
-
-    # Update status to flagged
-    record.verification_status = VerificationStatus.FLAGGED.value
-    record.flagged_by = user.id
-    record.flagged_at = datetime.now(UTC)
-    record.flag_reason = request.reason
-
-    await db.commit()
-
-    logger.info(
-        "Netzentgelte record flagged",
+    return await _flag_record(
+        db=db,
+        model_cls=NetzentgelteModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
-        reason=request.reason,
-    )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Record flagged successfully",
+        label="Netzentgelte",
+        user=user,
+        request=request,
     )
 
 
@@ -180,50 +213,13 @@ async def unflag_netzentgelte(
     user: User = Depends(require_maintainer_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Remove a flag from a Netzentgelte record (Maintainer/Admin only)."""
-    result = await db.execute(select(NetzentgelteModel).where(NetzentgelteModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Netzentgelte record {record_id} not found",
-        )
-
-    if record.verification_status != VerificationStatus.FLAGGED.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Record is not flagged")
-
-    # Reset to unverified status
-    record.verification_status = VerificationStatus.UNVERIFIED.value
-    record.flagged_by = None
-    record.flagged_at = None
-    record.flag_reason = None
-
-    await db.commit()
-
-    logger.info(
-        "Netzentgelte record unflagged",
+    return await _unflag_record(
+        db=db,
+        model_cls=NetzentgelteModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
+        label="Netzentgelte",
+        user=user,
     )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Flag removed successfully",
-    )
-
-
-# ==============================================================================
-# HLZF Verification Endpoints
-# ==============================================================================
 
 
 @router.post(
@@ -238,45 +234,13 @@ async def verify_hlzf(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Mark an HLZF record as verified."""
-    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
-        )
-
-    # Update verification status
-    record.verification_status = VerificationStatus.VERIFIED.value
-    record.verified_by = user.id
-    record.verified_at = datetime.now(UTC)
-    record.verification_notes = request.notes if request else None
-
-    # Clear any existing flags when verifying
-    record.flagged_by = None
-    record.flagged_at = None
-    record.flag_reason = None
-
-    await db.commit()
-
-    logger.info(
-        "HLZF record verified",
+    return await _verify_record(
+        db=db,
+        model_cls=HLZFModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
-    )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Record verified successfully",
+        label="HLZF",
+        user=user,
+        request=request,
     )
 
 
@@ -292,41 +256,13 @@ async def flag_hlzf(
     user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Flag an HLZF record as potentially incorrect."""
-    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
-        )
-
-    # Update status to flagged
-    record.verification_status = VerificationStatus.FLAGGED.value
-    record.flagged_by = user.id
-    record.flagged_at = datetime.now(UTC)
-    record.flag_reason = request.reason
-
-    await db.commit()
-
-    logger.info(
-        "HLZF record flagged",
+    return await _flag_record(
+        db=db,
+        model_cls=HLZFModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
-        reason=request.reason,
-    )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Record flagged successfully",
+        label="HLZF",
+        user=user,
+        request=request,
     )
 
 
@@ -341,41 +277,10 @@ async def unflag_hlzf(
     user: User = Depends(require_maintainer_or_admin),
     db: AsyncSession = Depends(get_db),
 ) -> VerificationResponse:
-    """Remove a flag from an HLZF record (Maintainer/Admin only)."""
-    result = await db.execute(select(HLZFModel).where(HLZFModel.id == record_id))
-    record = result.scalar_one_or_none()
-
-    if not record:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail=f"HLZF record {record_id} not found"
-        )
-
-    if record.verification_status != VerificationStatus.FLAGGED.value:
-        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Record is not flagged")
-
-    # Reset to unverified status
-    record.verification_status = VerificationStatus.UNVERIFIED.value
-    record.flagged_by = None
-    record.flagged_at = None
-    record.flag_reason = None
-
-    await db.commit()
-
-    logger.info(
-        "HLZF record unflagged",
+    return await _unflag_record(
+        db=db,
+        model_cls=HLZFModel,
         record_id=record_id,
-        user_id=user.id,
-        user_email=user.email,
-    )
-
-    return VerificationResponse(
-        id=record.id,
-        verification_status=record.verification_status,
-        verified_by=record.verified_by,
-        verified_at=record.verified_at,
-        verification_notes=record.verification_notes,
-        flagged_by=record.flagged_by,
-        flagged_at=record.flagged_at,
-        flag_reason=record.flag_reason,
-        message="Flag removed successfully",
+        label="HLZF",
+        user=user,
     )

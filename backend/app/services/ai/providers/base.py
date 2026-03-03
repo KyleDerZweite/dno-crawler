@@ -157,6 +157,26 @@ class BaseProvider(ABC):
         """Check if provider is reachable and working."""
         ...
 
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text from vision input.
+
+        Default implementation reuses `extract_vision` and best-effort flattens
+        the JSON-like result into text. Providers can override this for native
+        plain-text OCR/transcription requests.
+        """
+        result = await self.extract_vision(image_data, mime_type, prompt)
+        if isinstance(result, dict):
+            if isinstance(result.get("text"), str):
+                return result["text"]
+            if isinstance(result.get("content"), str):
+                return result["content"]
+        return json.dumps(result, ensure_ascii=False)
+
     # -------------------------------------------------------------------------
     # Helper Methods
     # -------------------------------------------------------------------------
