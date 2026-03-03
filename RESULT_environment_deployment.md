@@ -185,7 +185,7 @@ Vite variables (`VITE_*`) are baked at build time. This is already handled corre
 ### Dev Deployment (Local Machine)
 
 ```bash
-cd /home/kyle/CodingProjects/dno-crawler
+cd <repo-root>
 git checkout dev
 
 # Ensure .env has development values
@@ -201,7 +201,7 @@ open http://localhost:5173
 ### Prod Deployment (Production Server)
 
 ```bash
-cd /path/to/dno-crawler
+cd <repo-root>
 git checkout main
 git pull origin main
 
@@ -230,7 +230,7 @@ If a production deploy fails:
 
 ```bash
 git checkout main
-git revert HEAD   # or: git reset --hard <last-good-commit>
+git revert HEAD
 
 # Roll back DB migration before bringing services back up
 cd backend
@@ -242,6 +242,8 @@ cd ..
 # and ensure DATABASE_URL credentials/host point to production.
 podman-compose -f docker-compose.prod.yml up -d --build
 ```
+
+Use `git reset --hard <last-good-commit>` only as a last-resort recovery option when a normal revert is not possible. It is non-auditable, rewrites local history, and can permanently discard unpushed work, so use it only with explicit operator approval and clear incident documentation.
 
 ---
 

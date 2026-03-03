@@ -198,8 +198,8 @@ The codebase is generally well-structured with clear separation of concerns and 
 
 ### Severity Distribution
 - **HIGH**: 7 findings (F-001, F-007, F-008, F-011, F-014, F-015, F-016)
-- **MEDIUM**: 12 findings (F-004, F-009, F-010, F-012, F-013, F-017, F-018, F-019, F-020, F-021, F-025)
-- **LOW**: 6 findings (F-002, F-003, F-005, F-006, F-022, F-023, F-024)
+- **MEDIUM**: 11 findings (F-004, F-009, F-010, F-012, F-013, F-017, F-018, F-019, F-020, F-021, F-025)
+- **LOW**: 7 findings (F-002, F-003, F-005, F-006, F-022, F-023, F-024)
 
 ### Priority Recommendations
 
