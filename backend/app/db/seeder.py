@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import DNOModel
 from app.db.source_models import DNOBdewData, DNOMastrData, DNOVnbData
+from app.services.importance import apply_importance_to_dno
 
 logger = structlog.get_logger()
 
@@ -291,6 +292,8 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
         dno.sitemap_fetched_at = parse_date(record["sitemap_fetched_at"])
     if record.get("disallow_paths"):
         dno.disallow_paths = record["disallow_paths"]
+
+    apply_importance_to_dno(dno)
 
     # Create BDEW data if present in enriched record
     if record.get("bdew_code"):

@@ -145,6 +145,13 @@ class DNOModel(Base, TimestampMixin):
     )  # Netzbetreiber code
     connection_points_count: Mapped[int | None] = mapped_column(Integer)
     total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    service_area_km2: Mapped[float | None] = mapped_column(Float)
+    customer_count: Mapped[int | None] = mapped_column(Integer)
+    importance_score: Mapped[float | None] = mapped_column(Float, index=True)
+    importance_confidence: Mapped[float | None] = mapped_column(Float)
+    importance_version: Mapped[str | None] = mapped_column(String(32))
+    importance_factors: Mapped[dict | None] = mapped_column(JSON)
+    importance_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # -------------------------------------------------------------------------
     # Operational Status

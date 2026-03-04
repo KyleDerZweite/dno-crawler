@@ -75,8 +75,15 @@ export function AdminPage() {
     enabled: isAdmin(),
   });
 
+  const { data: importanceResponse, isLoading: importanceLoading } = useQuery({
+    queryKey: ["admin", "importance", "distribution"],
+    queryFn: api.admin.getImportanceDistribution,
+    enabled: isAdmin(),
+  });
+
   const stats = dashboardResponse?.data;
   const flaggedItems = flaggedResponse?.data?.items || [];
+  const importance = importanceResponse?.data;
 
   // Parse structured flag reason for display
   const parseFlagReason = (reason?: string | null) => {
@@ -152,6 +159,64 @@ export function AdminPage() {
           loading={statsLoading}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-primary" />
+            Importance Scoring
+          </CardTitle>
+          <CardDescription>Canonical DNO importance distribution and factor quality</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {importanceLoading ? (
+            <p className="text-sm text-muted-foreground">Loading importance distribution...</p>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-4">
+                <StatMini label="Scored DNOs" value={`${importance?.scored || 0}/${importance?.total || 0}`} />
+                <StatMini label="Median (p50)" value={`${importance?.p50?.toFixed(1) || "0.0"}`} />
+                <StatMini label="High (p90)" value={`${importance?.p90?.toFixed(1) || "0.0"}`} />
+                <StatMini
+                  label="Fallbacks"
+                  value={`${importance?.quality?.fallback_customers || 0}/${importance?.quality?.fallback_area || 0}`}
+                  subtitle="customers / area"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {(importance?.histogram || []).map((bucket) => {
+                  const maxCount = Math.max(...(importance?.histogram || []).map((b) => b.count), 1);
+                  const width = (bucket.count / maxCount) * 100;
+                  return (
+                    <div key={bucket.range} className="flex items-center gap-3">
+                      <span className="w-16 text-xs text-muted-foreground">{bucket.range}</span>
+                      <div className="h-2 flex-1 rounded bg-muted overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${width}%` }} />
+                      </div>
+                      <span className="w-8 text-xs text-muted-foreground text-right">{bucket.count}</span>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Top Important DNOs</p>
+                {(importance?.top || []).slice(0, 8).map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/dnos/${item.id}`}
+                    className="flex items-center justify-between rounded border p-2 hover:bg-muted/30"
+                  >
+                    <span className="text-sm truncate">{item.name}</span>
+                    <span className="text-sm font-semibold text-primary">{item.importance_score.toFixed(1)}</span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Flagged Items Section */}
       <Card>
@@ -286,6 +351,16 @@ export function AdminPage() {
           </div>
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+function StatMini({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
+  return (
+    <div className="rounded border border-border/50 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold mt-1">{value}</p>
+      {subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null}
     </div>
   );
 }

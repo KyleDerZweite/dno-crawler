@@ -36,6 +36,7 @@ from app.services.bulk_extraction import (
     enqueue_extract_jobs,
     scan_bulk_candidates,
 )
+from app.services.importance import compute_importance_for_dno
 
 logger = structlog.get_logger()
 
@@ -125,6 +126,106 @@ async def admin_dashboard(
                 "netzentgelte": flagged_netzentgelte or 0,
                 "hlzf": flagged_hlzf or 0,
                 "total": (flagged_netzentgelte or 0) + (flagged_hlzf or 0),
+            },
+        },
+    )
+
+
+@router.get("/importance/distribution")
+async def get_importance_distribution(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Get distribution and diagnostics for DNO importance scoring."""
+    query = select(DNOModel).order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    result = await db.execute(query)
+    dnos = result.scalars().all()
+
+    if not dnos:
+        return APIResponse(
+            success=True,
+            data={
+                "total": 0,
+                "histogram": [],
+                "top": [],
+                "quality": {"missing_score": 0, "fallback_customers": 0, "fallback_area": 0},
+            },
+        )
+
+    scores: list[float] = []
+    fallback_customers = 0
+    fallback_area = 0
+    top_items: list[dict] = []
+
+    for dno in dnos:
+        if dno.importance_score is None:
+            # YAGNI: keep this endpoint read-only. We compute transient values for visibility
+            # instead of writing to DB from admin HTTP paths. Persist via recompute script.
+            computed = compute_importance_for_dno(dno)
+            score = computed.score
+            factors = computed.factors
+            confidence = computed.confidence
+        else:
+            score = dno.importance_score
+            factors = dno.importance_factors or {}
+            confidence = dno.importance_confidence
+
+        if score is not None:
+            score_value = float(score)
+            scores.append(score_value)
+
+            if len(top_items) < 20:
+                top_items.append(
+                    {
+                        "id": dno.id,
+                        "slug": dno.slug,
+                        "name": dno.name,
+                        "importance_score": round(score_value, 2),
+                        "importance_confidence": confidence,
+                        "connection_points_count": dno.connection_points_count,
+                    }
+                )
+
+        fallback_map = factors.get("fallbacks") if isinstance(factors, dict) else None
+        if isinstance(fallback_map, dict):
+            if fallback_map.get("customers"):
+                fallback_customers += 1
+            if fallback_map.get("area"):
+                fallback_area += 1
+
+    histogram_buckets = [0] * 10
+    for value in scores:
+        idx = min(int(value // 10), 9)
+        histogram_buckets[idx] += 1
+
+    histogram = [
+        {
+            "range": f"{i * 10}-{i * 10 + 9}",
+            "count": histogram_buckets[i],
+        }
+        for i in range(10)
+    ]
+
+    sorted_scores = sorted(scores)
+    total = len(sorted_scores)
+    p50 = sorted_scores[int((total - 1) * 0.5)] if total else 0.0
+    p90 = sorted_scores[int((total - 1) * 0.9)] if total else 0.0
+
+    top_items.sort(key=lambda item: item["importance_score"], reverse=True)
+
+    return APIResponse(
+        success=True,
+        data={
+            "total": len(dnos),
+            "scored": len(scores),
+            "p50": round(p50, 2),
+            "p90": round(p90, 2),
+            "histogram": histogram,
+            "top": top_items,
+            "quality": {
+                "missing_score": len(dnos) - len(scores),
+                "fallback_customers": fallback_customers,
+                "fallback_area": fallback_area,
             },
         },
     )

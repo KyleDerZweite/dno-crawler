@@ -35,10 +35,11 @@
     - System can resolve addresses through OSM path for supported regions.
     - Fallback to VNB works when OSM confidence is low.
 
-- [ ] **TASK-008 DNO Importance Scoring and Priority-Based Gap Filling**
+- [x] **TASK-008 DNO Importance Scoring and Priority-Based Gap Filling**
   - Goal: Establish the canonical importance score used by all automated enrichment/crawl workflows.
   - Scope: scoring formula (area, connection points, customer count), explainability output, and calibration.
   - Deliverables: scoring module, score storage/update flow, admin visibility for score distribution and factors.
+  - Implementation note (2026-03-04): Canonical scoring service + DB persistence + script-based recompute + read-only admin distribution shipped. Admin write endpoint intentionally removed per YAGNI.
   - Acceptance:
     - All DNOs have an importance score.
     - Scores are explainable (factor breakdown available for operators).

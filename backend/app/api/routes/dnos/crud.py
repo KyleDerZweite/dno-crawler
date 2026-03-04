@@ -15,6 +15,7 @@ from app.core.config import settings
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, HLZFModel, NetzentgelteModel, get_db
 from app.services.completeness import build_completeness_payload, connection_points_from_mastr
+from app.services.importance import apply_importance_to_dno, compute_importance_for_dno
 
 from .schemas import CreateDNORequest, UpdateDNORequest
 from .utils import slugify
@@ -160,6 +161,16 @@ def _serialize_dno_list_item(
     data_points_count = netzentgelte_count + hlzf_count
     score = min(round((data_points_count / 50) * 100), 100) if data_points_count > 0 else 0
 
+    importance_result = None
+    if dno.importance_score is None:
+        importance_result = compute_importance_for_dno(dno)
+
+    importance_score = importance_result.score if importance_result else dno.importance_score
+    importance_confidence = (
+        importance_result.confidence if importance_result else dno.importance_confidence
+    )
+    importance_version = importance_result.version if importance_result else dno.importance_version
+
     dno_data = {
         "id": str(dno.id),
         "slug": dno.slug,
@@ -176,6 +187,9 @@ def _serialize_dno_list_item(
         "netzentgelte_count": netzentgelte_count,
         "hlzf_count": hlzf_count,
         "score": score,
+        "importance_score": importance_score,
+        "importance_confidence": importance_confidence,
+        "importance_version": importance_version,
         "created_at": dno.created_at.isoformat() if dno.created_at else None,
         "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
     }
@@ -456,6 +470,7 @@ async def create_dno(
         cms_system=resolved.tech_info.get("cms") if resolved.tech_info else None,
         tech_stack_details=resolved.tech_info,
     )
+    apply_importance_to_dno(dno)
     db.add(dno)
     await db.commit()
     await db.refresh(dno)
@@ -533,7 +548,8 @@ async def list_dnos_detailed(
         description="Filter by status: uncrawled, crawled, running, pending, protected",
     ),
     sort_by: str = Query(
-        "name_asc", description="Sort by: name_asc, name_desc, score_asc, score_desc, region_asc"
+        "name_asc",
+        description="Sort by: name_asc, name_desc, importance_asc, importance_desc, score_asc, score_desc, region_asc",
     ),
 ) -> APIResponse:
     """
@@ -768,11 +784,11 @@ async def list_dnos_detailed(
 
         data.append(dno_data)
 
-    # Sort by score if requested (post-fetch since score is computed)
-    if sort_by == "score_desc":
-        data.sort(key=lambda x: x["score"], reverse=True)
-    elif sort_by == "score_asc":
-        data.sort(key=lambda x: x["score"], reverse=False)
+    # Sort by importance if requested (score_* kept as backward-compatible aliases)
+    if sort_by in {"importance_desc", "score_desc"}:
+        data.sort(key=lambda x: x.get("importance_score") or 0.0, reverse=True)
+    elif sort_by in {"importance_asc", "score_asc"}:
+        data.sort(key=lambda x: x.get("importance_score") or 0.0, reverse=False)
 
     return APIResponse(
         success=True,
@@ -859,6 +875,18 @@ async def get_dno_details(
     else:
         live_status = "uncrawled"
 
+    importance_result = None
+    if dno.importance_score is None:
+        importance_result = compute_importance_for_dno(dno)
+
+    importance_payload = {
+        "score": importance_result.score if importance_result else dno.importance_score,
+        "confidence": importance_result.confidence if importance_result else dno.importance_confidence,
+        "version": importance_result.version if importance_result else dno.importance_version,
+        "factors": importance_result.factors if importance_result else dno.importance_factors,
+        "updated_at": dno.importance_updated_at.isoformat() if dno.importance_updated_at else None,
+    }
+
     return APIResponse(
         success=True,
         data={
@@ -900,6 +928,12 @@ async def get_dno_details(
             "bdew_data": bdew_data,
             "stats": _build_mastr_stats_payload(dno),
             "completeness": await _build_completeness_payload(db, dno),
+            "service_area_km2": dno.service_area_km2,
+            "customer_count": dno.customer_count,
+            "importance": importance_payload,
+            "importance_score": importance_payload["score"],
+            "importance_confidence": importance_payload["confidence"],
+            "importance_version": importance_payload["version"],
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },
@@ -941,6 +975,12 @@ async def update_dno(
         dno.email = request.email
     if request.contact_address is not None:
         dno.contact_address = request.contact_address
+    if request.service_area_km2 is not None:
+        dno.service_area_km2 = request.service_area_km2
+    if request.customer_count is not None:
+        dno.customer_count = request.customer_count
+
+    apply_importance_to_dno(dno)
 
     await db.commit()
     await db.refresh(dno)
