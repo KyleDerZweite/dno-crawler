@@ -22,7 +22,7 @@ logger = structlog.get_logger()
 class OpenRouterProvider(BaseProvider):
     """OpenRouter provider using native SDK with reasoning token support."""
 
-    DEFAULT_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
+    DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview"
     API_URL = "https://openrouter.ai/api/v1"
     MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models"
 

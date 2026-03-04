@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import User as AuthUser
 from app.core.auth import require_admin
@@ -137,7 +138,11 @@ async def get_importance_distribution(
     admin: Annotated[AuthUser, Depends(require_admin)],
 ) -> APIResponse:
     """Get distribution and diagnostics for DNO importance scoring."""
-    query = select(DNOModel).order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    query = (
+        select(DNOModel)
+        .options(selectinload(DNOModel.mastr_data))
+        .order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    )
     result = await db.execute(query)
     dnos = result.scalars().all()
 

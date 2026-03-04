@@ -51,6 +51,11 @@ Admin endpoints:
 
 - `GET /api/v1/admin/importance/distribution`
 
+Async ORM caveat:
+
+- Any route that computes transient importance from ORM DNO objects must eager-load `mastr_data` (for example `selectinload(DNOModel.mastr_data)`).
+- Without eager loading, accessing `dno.mastr_data` during score computation can trigger `MissingGreenlet` in async contexts and make admin metrics appear as zeros in the UI because the request fails.
+
 Notes:
 
 - Recompute is intentionally script-only (`scripts/recompute_importance.py`) to keep admin API surface minimal (YAGNI).

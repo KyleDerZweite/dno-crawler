@@ -84,7 +84,21 @@ function getStatusDisplay(status: string, blockedReason?: string | null) {
 export function Overview() {
     const { dno, numericId } = useOutletContext<DNODetailContext>();
     const mastrStats = dno.stats;
-    const hasMastrSummary = !!dno.mastr_data || !!mastrStats;
+    const hasMastrSummary = Boolean(dno.mastr_data || mastrStats || dno.mastr_nr);
+    const vnbDataForDisplay = dno.vnb_data ?? (dno.vnb_id
+        ? {
+            vnb_id: dno.vnb_id,
+            official_name: dno.official_name || dno.name,
+            homepage_url: dno.website,
+            phone: dno.phone,
+            email: dno.email,
+        }
+        : undefined);
+    const bdewDataForDisplay = (dno.bdew_data && dno.bdew_data.length > 0)
+        ? dno.bdew_data
+        : (dno.primary_bdew_code
+            ? [{ bdew_code: dno.primary_bdew_code, market_function: "Netzbetreiber" }]
+            : undefined);
 
     // Lightweight data for overview stats
     const { data: dataResponse } = useQuery({
@@ -116,6 +130,7 @@ export function Overview() {
     // Get status display config
     const statusDisplay = getStatusDisplay(dno.status ?? "uncrawled", dno.crawl_blocked_reason);
     const StatusIcon = statusDisplay.icon;
+    const hasSourceData = Boolean(dno.mastr_data || vnbDataForDisplay || (bdewDataForDisplay && bdewDataForDisplay.length > 0));
 
     return (
         <div className="space-y-6 animate-in fade-in duration-300">
@@ -245,6 +260,32 @@ export function Overview() {
                 </Card>
             </div>
 
+            {/* General Metadata */}
+            <Card className="p-4">
+                <div className="mb-3">
+                    <h3 className="text-sm font-semibold">General Metadata</h3>
+                    <p className="text-xs text-muted-foreground">Core identifier and discovery metadata</p>
+                </div>
+                <dl className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                    <div className="rounded-md border bg-muted/20 p-3">
+                        <dt className="text-xs text-muted-foreground">Slug</dt>
+                        <dd className="font-medium mt-1 break-all">{dno.slug || "-"}</dd>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                        <dt className="text-xs text-muted-foreground">DNO ID</dt>
+                        <dd className="font-medium mt-1">{dno.id || "-"}</dd>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                        <dt className="text-xs text-muted-foreground">Region</dt>
+                        <dd className="font-medium mt-1">{dno.region || "-"}</dd>
+                    </div>
+                    <div className="rounded-md border bg-muted/20 p-3">
+                        <dt className="text-xs text-muted-foreground">Website</dt>
+                        <dd className="font-medium mt-1 break-all">{dno.website || "-"}</dd>
+                    </div>
+                </dl>
+            </Card>
+
             {/* Compact MaStR Summary */}
             <Card className="p-4">
                 <div className="flex items-center justify-between mb-3">
@@ -266,7 +307,10 @@ export function Overview() {
                         <div className="rounded-md border bg-muted/20 p-3">
                             <dt className="text-xs text-muted-foreground">Connection Points</dt>
                             <dd className="font-medium mt-1">
-                                {mastrStats?.connection_points?.total?.toLocaleString("de-DE") || "-"}
+                                {mastrStats?.connection_points?.total !== null &&
+                                mastrStats?.connection_points?.total !== undefined
+                                    ? mastrStats.connection_points.total.toLocaleString("de-DE")
+                                    : "-"}
                             </dd>
                         </div>
                         <div className="rounded-md border bg-muted/20 p-3">
@@ -295,14 +339,20 @@ export function Overview() {
 
             {/* Source Info */}
             <Card>
-                <ExternalDataSources
-                    hasMastr={!!dno.has_mastr}
-                    hasVnb={!!dno.has_vnb}
-                    hasBdew={!!dno.has_bdew}
-                    mastrData={dno.mastr_data}
-                    vnbData={dno.vnb_data}
-                    bdewData={dno.bdew_data}
-                />
+                {hasSourceData ? (
+                    <ExternalDataSources
+                        hasMastr={!!dno.has_mastr}
+                        hasVnb={!!vnbDataForDisplay}
+                        hasBdew={!!(bdewDataForDisplay && bdewDataForDisplay.length > 0)}
+                        mastrData={dno.mastr_data}
+                        vnbData={vnbDataForDisplay}
+                        bdewData={bdewDataForDisplay}
+                    />
+                ) : (
+                    <div className="p-4 text-sm text-muted-foreground">
+                        No external source records linked to this DNO yet.
+                    </div>
+                )}
             </Card>
         </div>
     );

@@ -212,14 +212,14 @@ def _serialize_mastr_data(dno: DNOModel) -> dict | None:
     m = dno.mastr_data
     return {
         "mastr_nr": m.mastr_nr,
-        "download_url": m.download_url,
-        "federal_state": m.federal_state,
-        "operator_name": m.operator_name,
-        "operator_legal_form": m.operator_legal_form,
-        "operator_address": m.operator_address,
-        "operator_city": m.operator_city,
-        "operator_zip": m.operator_zip,
-        "operator_country": m.operator_country,
+        "download_url": getattr(m, "download_url", None),
+        "federal_state": getattr(m, "federal_state", None),
+        "operator_name": getattr(m, "operator_name", None),
+        "operator_legal_form": getattr(m, "operator_legal_form", None),
+        "operator_address": getattr(m, "operator_address", None),
+        "operator_city": getattr(m, "operator_city", None),
+        "operator_zip": getattr(m, "operator_zip", None),
+        "operator_country": getattr(m, "operator_country", None),
         "connection_points_ns": m.connection_points_ns,
         "connection_points_ms": m.connection_points_ms,
         "connection_points_hs": m.connection_points_hs,
@@ -239,11 +239,11 @@ def _serialize_mastr_data(dno: DNOModel) -> dict | None:
         "storage_capacity_mw": float(m.storage_capacity_mw)
         if m.storage_capacity_mw is not None
         else None,
-        "biomass_units": m.biomass_units,
+        "biomass_units": getattr(m, "biomass_units", None),
         "biomass_capacity_mw": float(m.biomass_capacity_mw)
         if m.biomass_capacity_mw is not None
         else None,
-        "hydro_units": m.hydro_units,
+        "hydro_units": getattr(m, "hydro_units", None),
         "hydro_capacity_mw": float(m.hydro_capacity_mw)
         if m.hydro_capacity_mw is not None
         else None,

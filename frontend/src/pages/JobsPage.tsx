@@ -74,20 +74,6 @@ export function JobsPage() {
     deleteMutation.mutate(jobId);
   };
 
-  if (!isAdminUser) {
-    return (
-      <div className="flex items-center justify-center min-h-[60vh]">
-        <Card className="max-w-md p-8 text-center">
-          <Activity className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h2 className="text-xl font-semibold mb-2">Access Denied</h2>
-          <p className="text-muted-foreground">
-            You need administrator privileges to access the jobs page.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   // Detail view - navigate to job detail page
   const handleJobClick = (job: typeof jobs[0]) => {
     navigate(`/jobs/${job.job_id}`);
@@ -147,31 +133,34 @@ export function JobsPage() {
               job={job}
               onClick={() => { handleJobClick(job); }}
               onDelete={() => { setJobToDelete(job.job_id); }}
+              canDelete={isAdminUser}
             />
           ))}
         </div>
       )}
 
       {/* Delete Confirmation Dialog */}
-      <Dialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Delete Job</DialogTitle>
-            <DialogDescription>
-              Are you sure you want to delete this job? This action cannot be undone.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => { setJobToDelete(null); }}>Cancel</Button>
-            <Button
-              variant="destructive"
-              onClick={() => jobToDelete && handleDelete(jobToDelete)}
-            >
-              Delete
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {isAdminUser && (
+        <Dialog open={!!jobToDelete} onOpenChange={(open) => !open && setJobToDelete(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Delete Job</DialogTitle>
+              <DialogDescription>
+                Are you sure you want to delete this job? This action cannot be undone.
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => { setJobToDelete(null); }}>Cancel</Button>
+              <Button
+                variant="destructive"
+                onClick={() => jobToDelete && handleDelete(jobToDelete)}
+              >
+                Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -202,7 +191,17 @@ const jobTypeConfig: Record<string, { label: string; color: string }> = {
   extract: { label: 'Extract', color: 'bg-teal-500/20 text-teal-600 border-teal-500/30' },
 };
 
-function CrawlJobCard({ job, onClick, onDelete }: { job: CrawlJobItem; onClick: () => void; onDelete: () => void }) {
+function CrawlJobCard({
+  job,
+  onClick,
+  onDelete,
+  canDelete,
+}: {
+  job: CrawlJobItem;
+  onClick: () => void;
+  onDelete: () => void;
+  canDelete: boolean;
+}) {
   const status = job.status as keyof typeof statusConfig;
   const config = statusConfig[status] || statusConfig["pending"];
   const StatusIcon = config.icon;
@@ -257,17 +256,19 @@ function CrawlJobCard({ job, onClick, onDelete }: { job: CrawlJobItem; onClick: 
                 <div>{new Date(job.created_at).toLocaleTimeString()}</div>
               </div>
             )}
-            <Button
-              variant="ghost"
-              size="icon"
-              className="h-8 w-8 text-muted-foreground hover:text-destructive"
-              onClick={(e) => {
-                e.stopPropagation();
-                onDelete();
-              }}
-            >
-              <Trash2 className="h-4 w-4" />
-            </Button>
+            {canDelete && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete();
+                }}
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            )}
             <ChevronRight className="h-5 w-5 text-muted-foreground" />
           </div>
         </div>

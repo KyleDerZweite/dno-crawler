@@ -689,7 +689,7 @@ export function DNOsPage() {
 }
 
 const DNOCard = memo(function DNOCard({ dno }: { dno: DNO }) {
-  const importance = dno.importance_score ?? Math.min(Math.round(((dno.netzentgelte_count ?? 0) + (dno.hlzf_count ?? 0)) / 50 * 100), 100)
+  const completeness = dno.score ?? Math.min(Math.round(((dno.netzentgelte_count ?? 0) + (dno.hlzf_count ?? 0)) / 50 * 100), 100)
 
   const getStatusBadge = () => {
     // First check if it's protected (crawlable = false)
@@ -796,7 +796,7 @@ const DNOCard = memo(function DNOCard({ dno }: { dno: DNO }) {
           </div>
           <div className="flex items-center justify-center gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
             <span className="text-base font-bold text-green-600 dark:text-green-400">
-              {Math.round(importance)}%
+              {Math.round(completeness)}%
             </span>
           </div>
         </div>
