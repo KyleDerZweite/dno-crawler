@@ -27,7 +27,9 @@ def upgrade() -> None:
     op.add_column("dnos", sa.Column("importance_confidence", sa.Float(), nullable=True))
     op.add_column("dnos", sa.Column("importance_version", sa.String(length=32), nullable=True))
     op.add_column("dnos", sa.Column("importance_factors", sa.JSON(), nullable=True))
-    op.add_column("dnos", sa.Column("importance_updated_at", sa.DateTime(timezone=True), nullable=True))
+    op.add_column(
+        "dnos", sa.Column("importance_updated_at", sa.DateTime(timezone=True), nullable=True)
+    )
     op.create_index(op.f("ix_dnos_importance_score"), "dnos", ["importance_score"], unique=False)
 
 

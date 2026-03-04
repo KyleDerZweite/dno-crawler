@@ -881,7 +881,9 @@ async def get_dno_details(
 
     importance_payload = {
         "score": importance_result.score if importance_result else dno.importance_score,
-        "confidence": importance_result.confidence if importance_result else dno.importance_confidence,
+        "confidence": importance_result.confidence
+        if importance_result
+        else dno.importance_confidence,
         "version": importance_result.version if importance_result else dno.importance_version,
         "factors": importance_result.factors if importance_result else dno.importance_factors,
         "updated_at": dno.importance_updated_at.isoformat() if dno.importance_updated_at else None,
