@@ -180,6 +180,7 @@ class BaseProvider(ABC):
                 if isinstance(value, str) and value.strip():
                     return value.strip()
 
+        if isinstance(result, (dict, list)):
             flattened_strings: list[str] = []
 
             def _collect_leaf_strings(value: Any) -> None:

@@ -725,10 +725,11 @@ async def trigger_bulk_extract(
         force_override=request.mode == "force_override",
     )
 
+    await db.commit()
+
     try:
         jobs_queued = await enqueue_extract_jobs(str(settings.redis_url), jobs_to_enqueue)
     except Exception as exc:
-        await db.rollback()
         logger.error(
             "bulk_extract_enqueue_failed",
             mode=request.mode,
@@ -741,8 +742,6 @@ async def trigger_bulk_extract(
             message="Failed to enqueue extraction jobs",
             data={"jobs_queued": 0, "files_scanned": files_scanned},
         )
-
-    await db.commit()
 
     for job_info in jobs_to_enqueue:
         logger.info(

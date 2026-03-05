@@ -549,7 +549,7 @@ async def list_dnos_detailed(
     ),
     sort_by: str = Query(
         "name_asc",
-        description="Sort by: name_asc, name_desc, importance_asc, importance_desc, score_asc, score_desc, region_asc",
+        description="Sort by: name_asc, name_desc, importance_asc, importance_desc, score_asc, score_desc, region_asc, region_desc",
     ),
 ) -> APIResponse:
     """

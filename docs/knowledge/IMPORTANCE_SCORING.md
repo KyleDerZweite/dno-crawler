@@ -68,7 +68,7 @@ This keeps admin API focused on observability and avoids adding orchestration be
 ## Principles Alignment
 
 - KISS: one recompute path (script) + one diagnostics path (read-only endpoint)
-- DRY: scoring logic lives in one service (`app/services/importance.py`) and is reused by seed/update/reporting flows
+- DRY: scoring logic lives in the importance scoring service (`app.services.importance`) and is reused by seed/update/reporting flows
 - YAGNI: no admin write endpoint for recompute until a concrete need appears
 - SoC: compute logic, persistence triggers, and UI diagnostics are separated
 

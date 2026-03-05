@@ -162,7 +162,7 @@ Estimated long-term storage footprint: approximately 20 GB.
 | Manual research | Automated extraction pipeline |
 | Netztransparenz.de | Broad DNO coverage and modern UX |
 
-Core moat: open source distribution plus AI-assisted extraction and community-driven improvements.
+Core moat: open-source distribution plus AI-assisted extraction and community-driven improvements.
 
 ---
 

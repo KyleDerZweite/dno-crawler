@@ -7,6 +7,7 @@ Primary AI provider using native OpenRouter SDK with:
 - Async context manager for proper resource cleanup
 """
 
+import os
 import time
 import uuid
 from typing import Any
@@ -24,7 +25,7 @@ logger = structlog.get_logger()
 class OpenRouterProvider(BaseProvider):
     """OpenRouter provider using native SDK with reasoning token support."""
 
-    DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview"
+    DEFAULT_MODEL = "google/gemini-2.0-flash"
     API_URL = "https://openrouter.ai/api/v1"
     MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models"
 
@@ -82,7 +83,7 @@ class OpenRouterProvider(BaseProvider):
 
     @classmethod
     def get_default_model(cls) -> str:
-        return cls.DEFAULT_MODEL
+        return os.getenv("OPENROUTER_DEFAULT_MODEL", cls.DEFAULT_MODEL)
 
     @classmethod
     def get_default_url(cls) -> str | None:

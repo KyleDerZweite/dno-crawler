@@ -212,7 +212,9 @@ export function AdminPage() {
                     className="flex items-center justify-between rounded border p-2 hover:bg-muted/30"
                   >
                     <span className="text-sm truncate">{item.name}</span>
-                    <span className="text-sm font-semibold text-primary">{item.importance_score.toFixed(1)}</span>
+                    <span className="text-sm font-semibold text-primary">
+                      {typeof item.importance_score === "number" ? item.importance_score.toFixed(1) : "-"}
+                    </span>
                   </Link>
                 ))}
               </div>

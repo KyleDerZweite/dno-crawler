@@ -213,7 +213,7 @@ class CustomProvider(BaseProvider):
         started_at = time.perf_counter()
 
         logger.info(
-            event="extract_plain_text.start",
+            event="custom.extract_plain_text.start",
             provider=self.config.name,
             model=self.config.model,
             mime_type=mime_type,
@@ -242,7 +242,7 @@ class CustomProvider(BaseProvider):
         output_token_count = response.usage.completion_tokens if response.usage else None
 
         logger.info(
-            event="extract_plain_text.success",
+            event="custom.extract_plain_text.success",
             provider=self.config.name,
             model=self.config.model,
             mime_type=mime_type,
@@ -250,7 +250,6 @@ class CustomProvider(BaseProvider):
             elapsed_ms=elapsed_ms,
             output_token_count=output_token_count,
             response_length=len(extracted_text),
-            response_snippet=extracted_text[:120],
         )
 
         return extracted_text

@@ -220,9 +220,11 @@ def compute_importance_for_dno(dno: object) -> ImportanceResult:
 def apply_importance_to_dno(dno: object) -> ImportanceResult:
     """Compute and assign importance fields on a DNO ORM instance."""
     result = compute_importance_for_dno(dno)
+    computed_at = datetime.now(UTC)
+    result.factors["computed_at"] = computed_at.isoformat()
     dno.importance_score = result.score
     dno.importance_confidence = result.confidence
     dno.importance_version = result.version
     dno.importance_factors = result.factors
-    dno.importance_updated_at = datetime.now(UTC)
+    dno.importance_updated_at = computed_at
     return result
