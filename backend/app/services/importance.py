@@ -13,6 +13,7 @@ If area/customer count are missing, we do not fail scoring. We apply conservativ
 fallback factors and record this in the explainability payload.
 """
 
+import copy
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from math import log1p
@@ -130,7 +131,9 @@ def compute_importance(
     calibration: dict[str, float] | None = None,
 ) -> ImportanceResult:
     """Compute canonical importance score and explainability payload."""
-    calibration_data = calibration or DEFAULT_CALIBRATION
+    calibration_data = copy.deepcopy(DEFAULT_CALIBRATION)
+    if calibration:
+        calibration_data.update(calibration)
 
     area_normalized = _normalize_log(inputs.area_km2, calibration_data["area_km2_p90"])
     area_factor, area_fallback = _factor_with_fallback(
@@ -157,8 +160,8 @@ def compute_importance(
     confidence = round(_clip(1.0 - (fallback_count / 3.0) * 0.6), 2)
 
     factors = {
-        "weights": WEIGHTS,
-        "calibration": calibration_data,
+        "weights": copy.deepcopy(WEIGHTS),
+        "calibration": copy.deepcopy(calibration_data),
         "inputs": {
             "area_km2": inputs.area_km2,
             "connection_points": inputs.connection_points,

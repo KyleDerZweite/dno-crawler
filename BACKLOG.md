@@ -118,13 +118,16 @@
 ## 5. Strategic Context
 
 ### Primary Data Sources (Implemented)
+
 | Source | Purpose | Status |
 |--------|---------|--------|
 | MaStR (Marktstammdatenregister) | Official German registry of approximately 800 DNOs | ✅ CSV import pipeline |
 | VNB-digital GraphQL | Grid polygons for address to DNO mapping | ✅ Implemented |
 | BDEW-Codes.de | BDEW codes and EDIFACT contact data | ✅ Implemented |
 
+
 ### Capability Snapshot (Implemented)
+
 | Capability | Status |
 |------------|--------|
 | VNB-digital GraphQL integration | ✅ |
@@ -140,14 +143,18 @@
 | Pattern learning | ✅ |
 | Wide Events logging | ✅ |
 
+
 ### Data Retention Principles
+
 1. Never delete raw data. Keep original PDFs and HTML even after extraction.
 2. Log operational context. Preserve crawl timestamps, relevant HTTP metadata, and response outcomes.
 3. Track changes over time. Store version history for comparisons, audits, and recovery.
 
 Estimated long-term storage footprint: approximately 20 GB.
 
+
 ### Competitive Positioning
+
 | Competitor | DNO Crawler Advantage |
 |------------|------------------------|
 | GET AG | Free and open source |

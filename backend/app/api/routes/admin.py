@@ -160,7 +160,7 @@ async def get_importance_distribution(
     scores: list[float] = []
     fallback_customers = 0
     fallback_area = 0
-    top_items: list[dict] = []
+    top_candidates: list[dict] = []
 
     for dno in dnos:
         if dno.importance_score is None:
@@ -178,18 +178,17 @@ async def get_importance_distribution(
         if score is not None:
             score_value = float(score)
             scores.append(score_value)
-
-            if len(top_items) < 20:
-                top_items.append(
-                    {
-                        "id": dno.id,
-                        "slug": dno.slug,
-                        "name": dno.name,
-                        "importance_score": round(score_value, 2),
-                        "importance_confidence": confidence,
-                        "connection_points_count": dno.connection_points_count,
-                    }
-                )
+            top_candidates.append(
+                {
+                    "id": dno.id,
+                    "slug": dno.slug,
+                    "name": dno.name,
+                    "importance_score": round(score_value, 2),
+                    "importance_confidence": confidence,
+                    "connection_points_count": dno.connection_points_count,
+                    "score_value": score_value,
+                }
+            )
 
         fallback_map = factors.get("fallbacks") if isinstance(factors, dict) else None
         if isinstance(fallback_map, dict):
@@ -216,7 +215,18 @@ async def get_importance_distribution(
     p50 = sorted_scores[int((total - 1) * 0.5)] if total else 0.0
     p90 = sorted_scores[int((total - 1) * 0.9)] if total else 0.0
 
-    top_items.sort(key=lambda item: item["importance_score"], reverse=True)
+    top_candidates.sort(key=lambda item: item["score_value"], reverse=True)
+    top_items = [
+        {
+            "id": item["id"],
+            "slug": item["slug"],
+            "name": item["name"],
+            "importance_score": item["importance_score"],
+            "importance_confidence": item["importance_confidence"],
+            "connection_points_count": item["connection_points_count"],
+        }
+        for item in top_candidates[:20]
+    ]
 
     return APIResponse(
         success=True,
@@ -715,8 +725,24 @@ async def trigger_bulk_extract(
         force_override=request.mode == "force_override",
     )
 
+    try:
+        jobs_queued = await enqueue_extract_jobs(str(settings.redis_url), jobs_to_enqueue)
+    except Exception as exc:
+        await db.rollback()
+        logger.error(
+            "bulk_extract_enqueue_failed",
+            mode=request.mode,
+            files_scanned=files_scanned,
+            jobs_attempted=len(jobs_to_enqueue),
+            error=str(exc),
+        )
+        return APIResponse(
+            success=False,
+            message="Failed to enqueue extraction jobs",
+            data={"jobs_queued": 0, "files_scanned": files_scanned},
+        )
+
     await db.commit()
-    jobs_queued = await enqueue_extract_jobs(str(settings.redis_url), jobs_to_enqueue)
 
     for job_info in jobs_to_enqueue:
         logger.info(

@@ -62,7 +62,8 @@ async def resolve_dno_creation_data(
             resolved_official_name = resolved_official_name or vnb_details.name
 
     address_to_enrich: str | None = None
-    if not resolved_contact_address and vnb_details and vnb_details.address and resolved_website:
+    if not resolved_contact_address and vnb_details and vnb_details.address:
+        resolved_contact_address = vnb_details.address
         address_to_enrich = vnb_details.address
 
     if resolved_website:
@@ -84,8 +85,6 @@ async def resolve_dno_creation_data(
 
         if address_to_enrich:
             resolved_contact_address = enrichment.enriched_address or address_to_enrich
-        elif not resolved_contact_address and vnb_details:
-            resolved_contact_address = vnb_details.address
 
     return DNOCreationResolvedData(
         official_name=resolved_official_name,

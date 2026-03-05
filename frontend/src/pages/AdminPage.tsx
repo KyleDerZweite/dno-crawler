@@ -185,8 +185,10 @@ export function AdminPage() {
               </div>
 
               <div className="space-y-2">
-                {(importance?.histogram || []).map((bucket) => {
-                  const maxCount = Math.max(...(importance?.histogram || []).map((b) => b.count), 1);
+                {(() => {
+                  const histogram = importance?.histogram || [];
+                  const maxCount = Math.max(...histogram.map((b) => b.count), 1);
+                  return histogram.map((bucket) => {
                   const width = (bucket.count / maxCount) * 100;
                   return (
                     <div key={bucket.range} className="flex items-center gap-3">
@@ -197,7 +199,8 @@ export function AdminPage() {
                       <span className="w-8 text-xs text-muted-foreground text-right">{bucket.count}</span>
                     </div>
                   );
-                })}
+                  });
+                })()}
               </div>
 
               <div className="space-y-2">
@@ -824,7 +827,7 @@ function CachedFilesSection() {
                 {selectedMode === "default" && "Default mode - verified data is protected"}
                 {selectedMode === "force_override" && (
                   <span className="text-red-500">
-                    ⚠️ Force Override - ALL data including {previewData.will_override_verified} verified records will be overwritten!
+                    Force override: all data, including {previewData.will_override_verified} verified records, will be overwritten.
                   </span>
                 )}
               </div>

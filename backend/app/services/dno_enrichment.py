@@ -75,7 +75,7 @@ async def enrich_dno_from_web(
                 result.robots = await fetch_and_verify_robots(
                     http_client,
                     homepage_url,
-                    verify_sitemap=False,
+                    verify_sitemap=True,
                 )
             else:
                 result.robots = await fetch_robots_txt(http_client, homepage_url)

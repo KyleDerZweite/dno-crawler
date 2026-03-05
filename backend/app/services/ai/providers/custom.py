@@ -10,6 +10,8 @@ Use cases:
 - Any OpenAI-compatible API
 """
 
+import time
+import uuid
 from typing import Any
 
 import structlog
@@ -207,6 +209,17 @@ class CustomProvider(BaseProvider):
         prompt: str,
     ) -> str:
         """Extract plain text from image/document using OpenAI-compatible endpoint."""
+        request_id = uuid.uuid4().hex[:12]
+        started_at = time.perf_counter()
+
+        logger.info(
+            event="extract_plain_text.start",
+            provider=self.config.name,
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+        )
+
         client = self._get_client()
         response = await client.chat.completions.create(
             model=self.config.model,
@@ -224,7 +237,23 @@ class CustomProvider(BaseProvider):
             ],
             max_tokens=self.MAX_OUTPUT_TOKENS,
         )
-        return response.choices[0].message.content or ""
+        extracted_text = response.choices[0].message.content or ""
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        output_token_count = response.usage.completion_tokens if response.usage else None
+
+        logger.info(
+            event="extract_plain_text.success",
+            provider=self.config.name,
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+            elapsed_ms=elapsed_ms,
+            output_token_count=output_token_count,
+            response_length=len(extracted_text),
+            response_snippet=extracted_text[:120],
+        )
+
+        return extracted_text
 
     async def health_check(self) -> bool:
         """Check if custom endpoint is reachable."""

@@ -142,10 +142,10 @@ def _calculate_dno_live_status(
         return "running"
     if pending_jobs > 0:
         return "pending"
-    if data_points_count > 0:
-        return "crawled"
     if not crawlable:
         return "protected"
+    if data_points_count > 0:
+        return "crawled"
     return "uncrawled"
 
 
@@ -687,6 +687,10 @@ async def list_dnos_detailed(
         query = query.order_by(DNOModel.region.asc().nullslast(), DNOModel.name)
     elif sort_by == "region_desc":
         query = query.order_by(DNOModel.region.desc().nullslast(), DNOModel.name)
+    elif sort_by in {"importance_desc", "score_desc"}:
+        query = query.order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    elif sort_by in {"importance_asc", "score_asc"}:
+        query = query.order_by(DNOModel.importance_score.asc().nullsfirst(), DNOModel.name)
     else:  # Default: name_asc
         query = query.order_by(DNOModel.name)
 
@@ -784,12 +788,6 @@ async def list_dnos_detailed(
 
         data.append(dno_data)
 
-    # Sort by importance if requested (score_* kept as backward-compatible aliases)
-    if sort_by in {"importance_desc", "score_desc"}:
-        data.sort(key=lambda x: x.get("importance_score") or 0.0, reverse=True)
-    elif sort_by in {"importance_asc", "score_asc"}:
-        data.sort(key=lambda x: x.get("importance_score") or 0.0, reverse=False)
-
     return APIResponse(
         success=True,
         data=data,
@@ -864,16 +862,12 @@ async def get_dno_details(
     vnb_data = _serialize_vnb_data(dno)
     bdew_data = _serialize_bdew_data_list(dno)
 
-    if running_j > 0:
-        live_status = "running"
-    elif pending_j > 0:
-        live_status = "pending"
-    elif (netz_c + hlzf_c) > 0:
-        live_status = "crawled"
-    elif not dno.crawlable:
-        live_status = "protected"
-    else:
-        live_status = "uncrawled"
+    live_status = _calculate_dno_live_status(
+        crawlable=dno.crawlable,
+        data_points_count=(netz_c + hlzf_c),
+        running_jobs=running_j,
+        pending_jobs=pending_j,
+    )
 
     importance_result = None
     if dno.importance_score is None:

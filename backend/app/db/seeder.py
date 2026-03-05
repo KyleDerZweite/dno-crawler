@@ -313,7 +313,7 @@ async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, A
     mastr = result.scalar_one_or_none()
 
     if mastr is None:
-        mastr = DNOMastrData(dno_id=dno.id)
+        mastr = DNOMastrData(dno=dno)
         db.add(mastr)
 
     # Update fields

@@ -35,17 +35,9 @@ Importance is updated in these paths:
 
 ## Operations
 
-Recompute all scores from backend:
+Run the importance recompute workflow from backend operations (see [backend.importance.recompute](IMPORTANCE_RECOMPUTE_WORKFLOW.md)).
 
-```bash
-python scripts/recompute_importance.py
-```
-
-Dry run:
-
-```bash
-python scripts/recompute_importance.py --dry-run
-```
+For validation-only runs, use the dry-run variant from the same [backend.importance.recompute](IMPORTANCE_RECOMPUTE_WORKFLOW.md) workflow.
 
 Admin endpoints:
 
@@ -58,7 +50,7 @@ Async ORM caveat:
 
 Notes:
 
-- Recompute is intentionally script-only (`scripts/recompute_importance.py`) to keep admin API surface minimal (YAGNI).
+- Recompute is intentionally operational workflow-only (see [backend.importance.recompute](IMPORTANCE_RECOMPUTE_WORKFLOW.md)) to keep admin API surface minimal (YAGNI).
 - Admin UI exposes read-only distribution and diagnostics.
 
 ## Design Decision (YAGNI)

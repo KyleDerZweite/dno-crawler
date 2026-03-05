@@ -187,7 +187,7 @@ def normalize_voltage_level(level: str) -> str | None:
 # =============================================================================
 
 # Types of data that can be extracted
-DATA_TYPES = ("netzentgelte", "hlzf", "all")
+DATA_TYPES = tuple(member.value for member in DataTypeEnum)
 DataType = DataTypeEnum
 
 # =============================================================================
@@ -199,7 +199,7 @@ JOB_TYPES = ("full", "crawl", "extract")
 JobType = Literal["full", "crawl", "extract"]
 
 # Job statuses
-JOB_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
+JOB_STATUSES = tuple(member.value for member in JobStatusEnum)
 JobStatus = JobStatusEnum
 
 # Default job priority
@@ -213,7 +213,7 @@ BULK_JOB_PRIORITY = 100
 # =============================================================================
 
 # NOTE: core/models.py VerificationStatus enum also includes "rejected"
-VERIFICATION_STATUSES = ("unverified", "verified", "flagged")
+VERIFICATION_STATUSES = tuple(member.value for member in VerificationStatusEnum)
 VerificationStatus = VerificationStatusEnum
 
 # =============================================================================
@@ -256,5 +256,5 @@ ExtractionFormat = Literal["html", "pdf"]
 # DNO Status
 # =============================================================================
 
-DNO_STATUSES = ("uncrawled", "pending", "running", "crawled", "failed")
+DNO_STATUSES = tuple(member.value for member in DNOStatusEnum)
 DNOStatus = DNOStatusEnum

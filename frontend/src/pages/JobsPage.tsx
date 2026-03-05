@@ -70,7 +70,12 @@ export function JobsPage() {
     },
   });
 
+  const isDeleting = deleteMutation.isPending;
+
   const handleDelete = (jobId: string) => {
+    if (isDeleting) {
+      return;
+    }
     deleteMutation.mutate(jobId);
   };
 
@@ -134,6 +139,7 @@ export function JobsPage() {
               onClick={() => { handleJobClick(job); }}
               onDelete={() => { setJobToDelete(job.job_id); }}
               canDelete={isAdminUser}
+              isDeleting={isDeleting}
             />
           ))}
         </div>
@@ -153,8 +159,10 @@ export function JobsPage() {
               <Button variant="outline" onClick={() => { setJobToDelete(null); }}>Cancel</Button>
               <Button
                 variant="destructive"
+                disabled={isDeleting || !jobToDelete}
                 onClick={() => jobToDelete && handleDelete(jobToDelete)}
               >
+                {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
                 Delete
               </Button>
             </DialogFooter>
@@ -196,11 +204,13 @@ function CrawlJobCard({
   onClick,
   onDelete,
   canDelete,
+  isDeleting,
 }: {
   job: CrawlJobItem;
   onClick: () => void;
   onDelete: () => void;
   canDelete: boolean;
+  isDeleting: boolean;
 }) {
   const status = job.status as keyof typeof statusConfig;
   const config = statusConfig[status] || statusConfig["pending"];
@@ -261,8 +271,13 @@ function CrawlJobCard({
                 variant="ghost"
                 size="icon"
                 className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                aria-label="Delete job"
+                disabled={isDeleting}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (isDeleting) {
+                    return;
+                  }
                   onDelete();
                 }}
               >

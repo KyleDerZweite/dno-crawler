@@ -49,8 +49,8 @@ class UpdateDNORequest(BaseModel):
     phone: str | None = None
     email: str | None = None
     contact_address: str | None = None
-    service_area_km2: float | None = None
-    customer_count: int | None = None
+    service_area_km2: float | None = Field(None, ge=0)
+    customer_count: int | None = Field(None, ge=0)
 
 
 class UpdateNetzentgelteRequest(BaseModel):

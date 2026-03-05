@@ -7,6 +7,8 @@ Primary AI provider using native OpenRouter SDK with:
 - Async context manager for proper resource cleanup
 """
 
+import time
+import uuid
 from typing import Any
 
 import httpx
@@ -281,6 +283,26 @@ class OpenRouterProvider(BaseProvider):
         prompt: str,
     ) -> str:
         """Extract plain text (no JSON response format)."""
+        request_id = uuid.uuid4().hex[:12]
+        started_at = time.perf_counter()
+
+        logger.info(
+            event="openrouter.extract_plain_text.request",
+            model=self.config.model,
+            mime_type=mime_type,
+            prompt_length=len(prompt),
+            image_data_length=len(image_data),
+            request_id=request_id,
+        )
+
+        logger.info(
+            event="openrouter.extract_plain_text.start",
+            model=self.config.model,
+            mime_type=mime_type,
+            prompt_length=len(prompt),
+            request_id=request_id,
+        )
+
         reasoning = self._build_reasoning_config()
         request_kwargs: dict[str, Any] = {
             "model": self.config.model,
@@ -303,7 +325,21 @@ class OpenRouterProvider(BaseProvider):
         async with OpenRouter(api_key=self._get_api_key()) as client:
             response = await client.chat.send_async(**request_kwargs)
 
-        return response.choices[0].message.content or ""
+        response_text = response.choices[0].message.content or ""
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        trace_id = getattr(response, "id", None)
+
+        logger.info(
+            event="openrouter.extract_plain_text.success",
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+            trace_id=trace_id,
+            elapsed_ms=elapsed_ms,
+            response_length=len(response_text),
+        )
+
+        return response_text
 
     async def health_check(self) -> bool:
         """Check if OpenRouter is reachable."""

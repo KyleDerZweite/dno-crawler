@@ -170,12 +170,39 @@ class BaseProvider(ABC):
         plain-text OCR/transcription requests.
         """
         result = await self.extract_vision(image_data, mime_type, prompt)
+
+        if isinstance(result, str):
+            return result
+
         if isinstance(result, dict):
-            if isinstance(result.get("text"), str):
-                return result["text"]
-            if isinstance(result.get("content"), str):
-                return result["content"]
-        return json.dumps(result, ensure_ascii=False)
+            for key in ("text", "content", "transcript", "ocr"):
+                value = result.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+            flattened_strings: list[str] = []
+
+            def _collect_leaf_strings(value: Any) -> None:
+                if isinstance(value, str):
+                    stripped = value.strip()
+                    if stripped:
+                        flattened_strings.append(stripped)
+                    return
+                if isinstance(value, dict):
+                    for child_key, child_value in value.items():
+                        if child_key == "_extraction_meta":
+                            continue
+                        _collect_leaf_strings(child_value)
+                    return
+                if isinstance(value, list):
+                    for item in value:
+                        _collect_leaf_strings(item)
+
+            _collect_leaf_strings(result)
+            if flattened_strings:
+                return "\n".join(flattened_strings)
+
+        return ""
 
     # -------------------------------------------------------------------------
     # Helper Methods

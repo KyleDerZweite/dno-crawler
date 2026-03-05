@@ -99,7 +99,11 @@ async def _verify_record(
     await db.commit()
 
     logger.info(
-        f"{label}_record_verified", record_id=record_id, user_id=user.id, user_email=user.email
+        "verification.record_verified",
+        record_id=record_id,
+        user_id=user.id,
+        label=label.lower(),
+        notes_present=bool(request and request.notes),
     )
     return _to_verification_response(record, "Record verified successfully")
 
@@ -123,11 +127,12 @@ async def _flag_record(
     await db.commit()
 
     logger.info(
-        f"{label}_record_flagged",
+        "verification.record_flagged",
         record_id=record_id,
         user_id=user.id,
-        user_email=user.email,
-        reason=request.reason,
+        label=label.lower(),
+        reason_present=bool(request.reason),
+        reason_redacted=True,
     )
     return _to_verification_response(record, "Record flagged successfully")
 
@@ -153,7 +158,10 @@ async def _unflag_record(
     await db.commit()
 
     logger.info(
-        f"{label}_record_unflagged", record_id=record_id, user_id=user.id, user_email=user.email
+        "verification.record_unflagged",
+        record_id=record_id,
+        user_id=user.id,
+        label=label.lower(),
     )
     return _to_verification_response(record, "Flag removed successfully")
 

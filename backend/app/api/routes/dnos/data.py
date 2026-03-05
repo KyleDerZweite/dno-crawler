@@ -106,22 +106,10 @@ async def get_dno_data(
                 "sommer": sommer_val,
                 "herbst": herbst_val,
                 # Parsed time ranges
-                "winter_ranges": [
-                    {"start": r["start"], "end": r["end"]}
-                    for r in (parse_hlzf_time_ranges(winter_val) or [])
-                ],
-                "fruehling_ranges": [
-                    {"start": r["start"], "end": r["end"]}
-                    for r in (parse_hlzf_time_ranges(fruehling_val) or [])
-                ],
-                "sommer_ranges": [
-                    {"start": r["start"], "end": r["end"]}
-                    for r in (parse_hlzf_time_ranges(sommer_val) or [])
-                ],
-                "herbst_ranges": [
-                    {"start": r["start"], "end": r["end"]}
-                    for r in (parse_hlzf_time_ranges(herbst_val) or [])
-                ],
+                "winter_ranges": parse_hlzf_time_ranges(winter_val) or [],
+                "fruehling_ranges": parse_hlzf_time_ranges(fruehling_val) or [],
+                "sommer_ranges": parse_hlzf_time_ranges(sommer_val) or [],
+                "herbst_ranges": parse_hlzf_time_ranges(herbst_val) or [],
                 "verification_status": row[7],
                 # Extraction source fields
                 "extraction_source": row[8],

@@ -19,24 +19,43 @@ async def recompute(dry_run: bool) -> dict[str, int]:
     from app.db.models import DNOModel
     from app.services.importance import apply_importance_to_dno
 
+    batch_size = 200
+
     stats = {
         "total": 0,
         "updated": 0,
     }
 
     async with async_session_maker() as session:
-        result = await session.execute(select(DNOModel).options(selectinload(DNOModel.mastr_data)))
-        dnos = result.scalars().all()
-        stats["total"] = len(dnos)
+        last_id = 0
 
-        for dno in dnos:
-            apply_importance_to_dno(dno)
-            stats["updated"] += 1
+        while True:
+            result = await session.execute(
+                select(DNOModel)
+                .options(selectinload(DNOModel.mastr_data))
+                .where(DNOModel.id > last_id)
+                .order_by(DNOModel.id.asc())
+                .limit(batch_size)
+            )
+            dnos = result.scalars().all()
+            if not dnos:
+                break
+
+            for dno in dnos:
+                apply_importance_to_dno(dno)
+                stats["updated"] += 1
+
+            stats["total"] += len(dnos)
+            last_id = dnos[-1].id
+
+            if dry_run:
+                await session.flush()
+                session.expunge_all()
+            else:
+                await session.commit()
 
         if dry_run:
             await session.rollback()
-        else:
-            await session.commit()
 
     return stats
 

@@ -1,8 +1,8 @@
 """
 Jobs API - Dedicated endpoint for job management.
 
-Accessible to all authenticated users (not admin-only).
-Provides a unified interface for viewing and managing crawl jobs.
+Listing and viewing jobs are accessible to all authenticated users.
+Deletion is admin-only (see `delete_job`).
 """
 
 from typing import Annotated

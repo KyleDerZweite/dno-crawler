@@ -5,12 +5,15 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import structlog
 from arq import create_pool
 from arq.connections import RedisSettings
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import CrawlJobModel, HLZFModel, NetzentgelteModel
+
+logger = structlog.get_logger()
 
 
 @dataclass
@@ -101,6 +104,13 @@ def scan_bulk_candidates(
 ) -> list[BulkCandidate]:
     """Scan file cache and return candidates eligible for extraction for the given mode."""
     candidates: list[BulkCandidate] = []
+
+    if not downloads_path.exists() or not downloads_path.is_dir():
+        logger.warning(
+            "bulk_extract_downloads_path_missing",
+            downloads_path=str(downloads_path),
+        )
+        return candidates
 
     for dno_dir in downloads_path.iterdir():
         if not dno_dir.is_dir():
@@ -212,6 +222,7 @@ async def create_bulk_extract_jobs(
         )
         db.add(job)
         await db.flush()
+        active_job_set.add((dno_id, year, data_type))
 
         jobs_to_enqueue.append(
             {
