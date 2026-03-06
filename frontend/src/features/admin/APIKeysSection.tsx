@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { adminKeys } from "@/features/admin/query-keys";
 import type { APIKeyInfo, APIKeyCreateResponse } from "@/types";
 import {
     Card,
@@ -55,7 +56,7 @@ export function APIKeysSection() {
     const [createdKey, setCreatedKey] = useState<APIKeyCreateResponse | null>(null);
 
     const { data: keysResponse, isLoading } = useQuery({
-        queryKey: ["admin", "api-keys"],
+        queryKey: adminKeys.apiKeys,
         queryFn: api.admin.getAPIKeys,
     });
 
@@ -64,7 +65,7 @@ export function APIKeysSection() {
     const deleteMutation = useMutation({
         mutationFn: (id: number) => api.admin.deleteAPIKey(id),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin", "api-keys"] });
+            queryClient.invalidateQueries({ queryKey: adminKeys.apiKeys });
         },
     });
 
@@ -133,7 +134,7 @@ export function APIKeysSection() {
                 onCreated={(response) => {
                     setShowCreateDialog(false);
                     setCreatedKey(response);
-                    queryClient.invalidateQueries({ queryKey: ["admin", "api-keys"] });
+                    queryClient.invalidateQueries({ queryKey: adminKeys.apiKeys });
                 }}
             />
 

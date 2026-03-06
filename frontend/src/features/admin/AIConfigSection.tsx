@@ -4,6 +4,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useErrorToast } from "@/hooks/use-error-toast";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { adminKeys } from "@/features/admin/query-keys";
 import type {
     AIProviderConfig,
     AIProviderType,
@@ -532,7 +533,7 @@ function ProviderDialog({
     // Fetch available providers (for dynamic UI)
     // Fetch models for selected provider (also returns provider_info)
     const { data: modelsData } = useQuery({
-        queryKey: ["admin", "ai-models", providerType],
+        queryKey: adminKeys.ai.models(providerType),
         queryFn: () => api.admin.getAIModels(providerType),
         enabled: open,
     });
@@ -1022,7 +1023,7 @@ export function AIConfigSection() {
 
     // Fetch AI configs
     const { data: configsResponse, isLoading } = useQuery({
-        queryKey: ["admin", "ai-config"],
+        queryKey: adminKeys.ai.config,
         queryFn: api.admin.getAIConfigs,
     });
 
@@ -1042,7 +1043,7 @@ export function AIConfigSection() {
     const testMutation = useMutation({
         mutationFn: (configId: number) => api.admin.testAIConfig(configId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin", "ai-config"] });
+            queryClient.invalidateQueries({ queryKey: adminKeys.ai.config });
         },
         onSettled: () => {
             setTestingId(null);
@@ -1053,7 +1054,7 @@ export function AIConfigSection() {
     const deleteMutation = useMutation({
         mutationFn: (configId: number) => api.admin.deleteAIConfig(configId),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin", "ai-config"] });
+            queryClient.invalidateQueries({ queryKey: adminKeys.ai.config });
         },
     });
 
@@ -1062,7 +1063,7 @@ export function AIConfigSection() {
         mutationFn: ({ id, enabled }: { id: number; enabled: boolean }) =>
             api.admin.updateAIConfig(id, { is_enabled: enabled }),
         onSuccess: () => {
-            queryClient.invalidateQueries({ queryKey: ["admin", "ai-config"] });
+            queryClient.invalidateQueries({ queryKey: adminKeys.ai.config });
         },
     });
 
@@ -1141,7 +1142,7 @@ export function AIConfigSection() {
                 onOpenChange={setShowDialog}
                 onSuccess={() => {
                     setShowDialog(false);
-                    queryClient.invalidateQueries({ queryKey: ["admin", "ai-config"] });
+                    queryClient.invalidateQueries({ queryKey: adminKeys.ai.config });
                 }}
                 initialConfig={editingConfig}
             />

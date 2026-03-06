@@ -59,24 +59,25 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { AIConfigSection } from "@/features/admin/AIConfigSection";
 import { APIKeysSection } from "@/features/admin/APIKeysSection";
+import { adminKeys } from "@/features/admin/query-keys";
 
 export function AdminPage() {
   const { isAdmin } = useAuth();
 
   const { data: dashboardResponse, isLoading: statsLoading } = useQuery({
-    queryKey: ["admin", "dashboard"],
+    queryKey: adminKeys.dashboard,
     queryFn: api.admin.getDashboard,
     enabled: isAdmin(),
   });
 
   const { data: flaggedResponse, isLoading: flaggedLoading } = useQuery({
-    queryKey: ["admin", "flagged"],
+    queryKey: adminKeys.flagged,
     queryFn: api.admin.getFlagged,
     enabled: isAdmin(),
   });
 
   const { data: importanceResponse, isLoading: importanceLoading } = useQuery({
-    queryKey: ["admin", "importance", "distribution"],
+    queryKey: adminKeys.importance.distribution,
     queryFn: api.admin.getImportanceDistribution,
     enabled: isAdmin(),
   });
@@ -454,14 +455,14 @@ function CachedFilesSection() {
 
   // Fetch cached files stats
   const { data: filesResponse, isLoading: filesLoading } = useQuery({
-    queryKey: ["admin", "cached-files"],
+    queryKey: adminKeys.cachedFiles,
     queryFn: api.admin.getCachedFiles,
     refetchInterval: 30000, // Refresh every 30s
   });
 
   // Fetch bulk extract status
   const { data: bulkStatusResponse } = useQuery({
-    queryKey: ["admin", "bulk-extract-status"],
+    queryKey: adminKeys.bulkExtractStatus,
     queryFn: api.admin.getBulkExtractStatus,
     refetchInterval: 5000, // Refresh every 5s for progress
   });
@@ -484,7 +485,7 @@ function CachedFilesSection() {
     }),
     onSuccess: () => {
       setShowPreview(false);
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
@@ -492,7 +493,7 @@ function CachedFilesSection() {
   const cancelMutation = useMutation({
     mutationFn: api.admin.cancelBulkExtract,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
@@ -500,7 +501,7 @@ function CachedFilesSection() {
   const resetMutation = useMutation({
     mutationFn: api.admin.resetBulkExtract,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
