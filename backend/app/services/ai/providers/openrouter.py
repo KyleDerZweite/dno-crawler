@@ -7,6 +7,9 @@ Primary AI provider using native OpenRouter SDK with:
 - Async context manager for proper resource cleanup
 """
 
+import os
+import time
+import uuid
 from typing import Any
 
 import httpx
@@ -22,7 +25,8 @@ logger = structlog.get_logger()
 class OpenRouterProvider(BaseProvider):
     """OpenRouter provider using native SDK with reasoning token support."""
 
-    DEFAULT_MODEL = "google/gemini-2.5-flash-lite-preview-09-2025"
+    # Intentional: flash-lite-preview chosen over gemini-2.5-flash for better extraction quality.
+    DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview"
     API_URL = "https://openrouter.ai/api/v1"
     MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models"
 
@@ -80,7 +84,7 @@ class OpenRouterProvider(BaseProvider):
 
     @classmethod
     def get_default_model(cls) -> str:
-        return cls.DEFAULT_MODEL
+        return os.getenv("OPENROUTER_DEFAULT_MODEL", cls.DEFAULT_MODEL)
 
     @classmethod
     def get_default_url(cls) -> str | None:
@@ -273,6 +277,63 @@ class OpenRouterProvider(BaseProvider):
         }
 
         return result
+
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text (no JSON response format)."""
+        request_id = uuid.uuid4().hex[:12]
+        started_at = time.perf_counter()
+
+        logger.info(
+            "openrouter_extract_plain_text_start",
+            model=self.config.model,
+            mime_type=mime_type,
+            prompt_length=len(prompt),
+            image_data_length=len(image_data),
+            request_id=request_id,
+        )
+
+        reasoning = self._build_reasoning_config()
+        request_kwargs: dict[str, Any] = {
+            "model": self.config.model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
+        }
+        if reasoning:
+            request_kwargs["reasoning"] = reasoning
+
+        async with OpenRouter(api_key=self._get_api_key()) as client:
+            response = await client.chat.send_async(**request_kwargs)
+
+        response_text = response.choices[0].message.content or ""
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        trace_id = getattr(response, "id", None)
+
+        logger.info(
+            "openrouter_extract_plain_text_success",
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+            trace_id=trace_id,
+            elapsed_ms=elapsed_ms,
+            response_length=len(response_text),
+        )
+
+        return response_text
 
     async def health_check(self) -> bool:
         """Check if OpenRouter is reachable."""

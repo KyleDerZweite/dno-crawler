@@ -79,7 +79,7 @@ export function DNOsPage() {
 
   // Filter and sort state
   const [statusFilter, setStatusFilter] = useState<'uncrawled' | 'crawled' | 'running' | 'pending' | 'protected' | undefined>(undefined);
-  const [sortBy, setSortBy] = useState<'name_asc' | 'name_desc' | 'score_asc' | 'score_desc' | 'region_asc'>('name_asc');
+  const [sortBy, setSortBy] = useState<'name_asc' | 'name_desc' | 'importance_asc' | 'importance_desc' | 'region_asc'>('name_asc');
 
   // Debounce search term (200ms for snappy feel)
   useEffect(() => {
@@ -483,8 +483,8 @@ export function DNOsPage() {
             <SelectContent>
               <SelectItem value="name_asc">Name (A-Z)</SelectItem>
               <SelectItem value="name_desc">Name (Z-A)</SelectItem>
-              <SelectItem value="score_desc">Score (High-Low)</SelectItem>
-              <SelectItem value="score_asc">Score (Low-High)</SelectItem>
+              <SelectItem value="importance_desc">Importance (High-Low)</SelectItem>
+              <SelectItem value="importance_asc">Importance (Low-High)</SelectItem>
               <SelectItem value="region_asc">Region (A-Z)</SelectItem>
             </SelectContent>
           </Select>
@@ -689,6 +689,8 @@ export function DNOsPage() {
 }
 
 const DNOCard = memo(function DNOCard({ dno }: { dno: DNO }) {
+  const completeness = dno.score ?? Math.min(Math.round(((dno.netzentgelte_count ?? 0) + (dno.hlzf_count ?? 0)) / 50 * 100), 100)
+
   const getStatusBadge = () => {
     // First check if it's protected (crawlable = false)
     if (dno.crawlable === false) {
@@ -794,7 +796,7 @@ const DNOCard = memo(function DNOCard({ dno }: { dno: DNO }) {
           </div>
           <div className="flex items-center justify-center gap-2 p-2 rounded-lg bg-green-500/10 border border-green-500/20">
             <span className="text-base font-bold text-green-600 dark:text-green-400">
-              {Math.min(Math.round(((dno.netzentgelte_count ?? 0) + (dno.hlzf_count ?? 0)) / 50 * 100), 100)}%
+              {Math.round(completeness)}%
             </span>
           </div>
         </div>

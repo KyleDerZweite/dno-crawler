@@ -14,9 +14,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.core.parsers import parse_hlzf_time_ranges
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_rate_limiter
 from app.db import DNOModel, HLZFModel, LocationModel, NetzentgelteModel, get_db
-from app.services.completeness import compute_completeness
+from app.services.completeness import build_completeness_payload, connection_points_from_mastr
 from app.services.vnb import (
     NormalizedAddress,
     VNBDigitalClient,
@@ -127,65 +128,6 @@ class HLZFTimeRange(BaseModel):
 
     start: str  # e.g., "12:15:00"
     end: str  # e.g., "13:15:00"
-
-
-def _parse_hlzf_times(value: str | None) -> list[HLZFTimeRange] | None:
-    """
-    Parse HLZF time string into structured time ranges.
-
-    Handles various formats:
-    - "12:15-13:15, 16:45-19:45" (comma-separated, hyphen)
-    - "12:15-13:15\n16:45-19:45" (newline-separated)
-    - "08:00 - 12:00" (en-dash with spaces)
-    - "18:00 20:00" (space instead of hyphen - AI error)
-    - "entfällt" or "-" (no data)
-
-    Returns list of HLZFTimeRange or None if no valid ranges.
-    """
-    import re
-
-    if not value or value.strip() == "-" or value.strip().lower() == "entfällt":
-        return None
-
-    ranges = []
-
-    # Normalize time helper
-    def normalize_time(t: str) -> str:
-        parts = t.split(":")
-        hour = parts[0].zfill(2)
-        minute = parts[1] if len(parts) > 1 else "00"
-        second = parts[2] if len(parts) > 2 else "00"
-        return f"{hour}:{minute}:{second}"
-
-    # Split by comma OR newline to get individual periods
-    # This handles both "12:15-13:15, 16:45-19:45" and "12:15-13:15\n16:45-19:45"
-    periods = re.split(r"[,\n]", value)
-
-    for period in periods:
-        period = period.strip()
-        if not period:
-            continue
-
-        # Match any dash type: hyphen (-), en-dash (–), em-dash (—)
-        # Allow optional spaces around the dash
-        match = re.match(
-            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$", period
-        )
-
-        if match:
-            start_time = normalize_time(match.group(1))
-            end_time = normalize_time(match.group(2))
-            ranges.append(HLZFTimeRange(start=start_time, end=end_time))
-            continue
-
-        # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
-        space_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$", period)
-        if space_match:
-            start_time = normalize_time(space_match.group(1))
-            end_time = normalize_time(space_match.group(2))
-            ranges.append(HLZFTimeRange(start=start_time, end=end_time))
-
-    return ranges if ranges else None
 
 
 class HLZFData(BaseModel):
@@ -726,10 +668,10 @@ async def _build_response(
             fruehling=h.fruehling,
             sommer=h.sommer,
             herbst=h.herbst,
-            winter_ranges=_parse_hlzf_times(h.winter),
-            fruehling_ranges=_parse_hlzf_times(h.fruehling),
-            sommer_ranges=_parse_hlzf_times(h.sommer),
-            herbst_ranges=_parse_hlzf_times(h.herbst),
+            winter_ranges=parse_hlzf_time_ranges(h.winter),
+            fruehling_ranges=parse_hlzf_time_ranges(h.fruehling),
+            sommer_ranges=parse_hlzf_time_ranges(h.sommer),
+            herbst_ranges=parse_hlzf_time_ranges(h.herbst),
             verification_status=getattr(h, "verification_status", None),
         )
         for h in hlzf_result.scalars().all()
@@ -737,27 +679,16 @@ async def _build_response(
 
     has_data = len(netzentgelte) > 0 or len(hlzf) > 0
 
-    # Compute completeness score from data already loaded above
-    actual_netz_levels = {n.voltage_level for n in netzentgelte}
-    actual_hlzf_levels = {h.voltage_level for h in hlzf}
-
-    connection_points = None
-    if dno.mastr_data:
-        connection_points = {
-            "ns": dno.mastr_data.connection_points_ns,
-            "ms": dno.mastr_data.connection_points_ms,
-            "hs": dno.mastr_data.connection_points_hs,
-            "hoe": dno.mastr_data.connection_points_hoe,
-        }
-
-    completeness_result = compute_completeness(
-        connection_points, actual_netz_levels, actual_hlzf_levels
+    completeness_payload = build_completeness_payload(
+        connection_points=connection_points_from_mastr(dno.mastr_data),
+        actual_netz_levels={n.voltage_level for n in netzentgelte},
+        actual_hlzf_levels={h.voltage_level for h in hlzf},
     )
     completeness_info = CompletenessInfo(
-        score=completeness_result.score,
-        has_expectations=completeness_result.has_expectations,
-        expected_count=completeness_result.expected_count,
-        covered_count=completeness_result.covered_count,
+        score=completeness_payload["score"],
+        has_expectations=completeness_payload["has_expectations"],
+        expected_count=completeness_payload["expected_count"],
+        covered_count=completeness_payload["covered_count"],
     )
 
     # Build message for skeleton DNOs

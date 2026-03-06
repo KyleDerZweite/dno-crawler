@@ -10,10 +10,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import Response
 
-from app.api.middleware import WideEventMiddleware
+from app.api.middleware import SecurityHeadersMiddleware, WideEventMiddleware
 from app.api.routes import (
     admin,
     ai,
@@ -138,19 +136,6 @@ def create_app() -> FastAPI:
         redoc_url="/redoc" if settings.debug else None,
         lifespan=lifespan,
     )
-
-    # Security headers middleware
-    class SecurityHeadersMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request: Request, call_next) -> Response:
-            response = await call_next(request)
-            response.headers["X-Content-Type-Options"] = "nosniff"
-            response.headers["X-Frame-Options"] = "DENY"
-            response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
-            if settings.is_production:
-                response.headers["Strict-Transport-Security"] = (
-                    "max-age=31536000; includeSubDomains"
-                )
-            return response
 
     app.add_middleware(SecurityHeadersMiddleware)
 

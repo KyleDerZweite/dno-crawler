@@ -157,6 +157,54 @@ class BaseProvider(ABC):
         """Check if provider is reachable and working."""
         ...
 
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text from vision input.
+
+        Default implementation reuses `extract_vision` and best-effort flattens
+        the JSON-like result into text. Providers can override this for native
+        plain-text OCR/transcription requests.
+        """
+        result = await self.extract_vision(image_data, mime_type, prompt)
+
+        if isinstance(result, str):
+            return result
+
+        if isinstance(result, dict):
+            for key in ("text", "content", "transcript", "ocr"):
+                value = result.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+
+        if isinstance(result, (dict, list)):
+            flattened_strings: list[str] = []
+
+            def _collect_leaf_strings(value: Any) -> None:
+                if isinstance(value, str):
+                    stripped = value.strip()
+                    if stripped:
+                        flattened_strings.append(stripped)
+                    return
+                if isinstance(value, dict):
+                    for child_key, child_value in value.items():
+                        if child_key == "_extraction_meta":
+                            continue
+                        _collect_leaf_strings(child_value)
+                    return
+                if isinstance(value, list):
+                    for item in value:
+                        _collect_leaf_strings(item)
+
+            _collect_leaf_strings(result)
+            if flattened_strings:
+                return "\n".join(flattened_strings)
+
+        return ""
+
     # -------------------------------------------------------------------------
     # Helper Methods
     # -------------------------------------------------------------------------

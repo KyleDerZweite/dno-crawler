@@ -108,13 +108,15 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     """
     records = []
 
-    # Pattern 1: Standard format - voltage level with 4 numbers on same line
+    # Pattern 1: Standard four-number row format.
+    # Why: larger DNO tariff sheets often render one voltage row with four values
+    # (unter/über 2500h x Leistung/Arbeit) on a single line after PDF text extraction.
     # Example: Hochspannungsnetz   26,88  8,58  230,39  0,44
     pattern1 = r"((?:Hochspannung|Mittelspannung|Niederspannung|Umspannung|MSP|NSP|HS|MS|NS)[^\n\d]*)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)"
 
-    # Pattern 2: Format with units embedded - extract just the number
-    # Example: Mittelspannung (MSP)  17,84 EUR / kW a  5,12 Ct / kWh
-    # Match: voltage level, then pairs of (number, unit)
+    # Pattern 2 fallback is section-based extraction with embedded units.
+    # Why: many municipal utility PDFs split "bis/über 2.500 Stunden" into separate
+    # sections and include units inline; simple row regex then misses combinations.
 
     # Try Pattern 1 first
     matches = re.findall(pattern1, text, re.IGNORECASE)

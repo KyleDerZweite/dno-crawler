@@ -171,7 +171,7 @@ export const api = {
       per_page?: number;
       q?: string;
       status?: 'uncrawled' | 'crawled' | 'running' | 'pending' | 'protected';
-      sort_by?: 'name_asc' | 'name_desc' | 'score_asc' | 'score_desc' | 'region_asc';
+      sort_by?: 'name_asc' | 'name_desc' | 'importance_asc' | 'importance_desc' | 'score_asc' | 'score_desc' | 'region_asc';
     }): Promise<ApiResponse<DNO[]>> {
       const { data } = await apiClient.get("/dnos/", {
         params: {
@@ -241,6 +241,8 @@ export const api = {
         description?: string;
         region?: string;
         website?: string;
+        service_area_km2?: number;
+        customer_count?: number;
       }
     ): Promise<ApiResponse<{ id: string }>> {
       const { data } = await apiClient.patch(`/dnos/${dno_id}`, payload);
@@ -446,6 +448,32 @@ export const api = {
       }>
     > {
       const { data } = await apiClient.get("/admin/flagged");
+      return data;
+    },
+
+    async getImportanceDistribution(): Promise<
+      ApiResponse<{
+        total: number;
+        scored: number;
+        p50: number;
+        p90: number;
+        histogram: { range: string; count: number }[];
+        top: {
+          id: number;
+          slug: string;
+          name: string;
+          importance_score: number;
+          importance_confidence: number | null;
+          connection_points_count: number | null;
+        }[];
+        quality: {
+          missing_score: number;
+          fallback_customers: number;
+          fallback_area: number;
+        };
+      }>
+    > {
+      const { data } = await apiClient.get("/admin/importance/distribution");
       return data;
     },
 

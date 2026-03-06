@@ -4,6 +4,79 @@
 
 Production deployment uses `docker-compose.prod.yml` with `podman-compose` on a rootless Podman host. Pangolin handles TLS termination and reverse proxying; Newt tunnels traffic from Pangolin to the local stack.
 
+## Release Workflow (Dev to Prod)
+
+Use two long-lived branches:
+
+| Branch | Purpose | Environment |
+|--------|---------|-------------|
+| `dev` | Active development and integration | Local/staging (`docker-compose.yml`) |
+| `main` | Production-ready code only | Production (`docker-compose.prod.yml`) |
+
+### Standard flow
+
+1. Implement and validate changes on `dev`.
+2. Open PR from `dev` to `main` for production release.
+3. Require CI checks to pass before merge.
+4. Deploy from `main` on the production host.
+
+### CI and branch protection baseline
+
+- CI workflow (`.github/workflows/ci.yml`) runs on pull requests to both `main` and `dev`.
+- `main` branch protection should require:
+  - Pull request before merge
+  - Required checks: Backend Lint & Typecheck, Backend Tests, Frontend Build & Lint, Frontend Tests
+  - Branch up-to-date before merge
+
+## Promotion Checklist
+
+Before merging `dev` into `main`, validate:
+
+- `cd backend && uv run ruff check . && uv run ruff format --check .`
+- `cd backend && uv run mypy app`
+- `cd backend && uv run pytest -x --tb=short`
+- `cd frontend && npm run lint`
+- `cd frontend && npm run build`
+- `cd frontend && npm test`
+- CI pipeline green on PR
+- Migration file present and reviewed if schema changed (`backend/alembic/versions/`)
+- No secrets in diff (`.env`, API keys, credentials)
+
+## Environment Strategy
+
+### Environment files
+
+| File | Purpose | Tracked |
+|------|---------|---------|
+| `.env.example` | Canonical template and variable documentation | Yes |
+| `.env` | Active environment values used by compose | No |
+| `.env.prod` | Production values source | No |
+
+Recommended practice:
+
+- Dev machines: keep development settings in `.env`.
+- Production host: copy `.env.prod` to `.env` immediately before deploy.
+
+```bash
+cp .env.prod .env
+podman-compose -f docker-compose.prod.yml up -d --build
+```
+
+If supported by your compose binary, `--env-file .env.prod` is an alternative.
+
+### Required production values
+
+| Variable | Required production value |
+|----------|---------------------------|
+| `ENVIRONMENT` | `production` |
+| `USE_ALEMBIC_MIGRATIONS` | `true` |
+| `DEBUG` | `false` |
+| `LOG_LEVEL` | `INFO` |
+| `ZITADEL_DOMAIN` | Real Zitadel domain (not `auth.example.com`) |
+| `TRUSTED_PROXY_COUNT` | `2` (Pangolin + Newt) |
+| `VITE_API_URL` | `/api/v1` |
+| `CORS_ORIGINS` | `["https://<your-domain>"]` |
+
 ## Prerequisites
 
 ### 1. Podman short-name resolution
@@ -79,12 +152,34 @@ Note: `data/postgres` and `data/redis` are owned by root when created by a runni
 podman-compose -f docker-compose.prod.yml up -d --build
 ```
 
+## Environment-Specific Commands
+
+### Dev deploy
+
+```bash
+git checkout dev
+podman-compose up -d --build
+```
+
+### Prod deploy
+
+```bash
+git checkout main
+git pull origin main
+cp .env.prod .env
+podman-compose -f docker-compose.prod.yml up -d --build
+```
+
+### Rollback
+
+Use `git revert` on `main` and redeploy. If a migration caused the regression, run the matching Alembic downgrade before restart.
+
 ### Startup order
 
 1. `db` and `redis` start, pass healthchecks
 2. `backend` entrypoint runs `alembic upgrade head` (creates/migrates all tables), then uvicorn starts
-3. `worker-crawl` starts, calls `init_db()` with `USE_ALEMBIC_MIGRATIONS=false` (no-op since tables exist), then seeds DNOs from parquet
-4. `worker-extract` starts, calls `init_db()` (no-op)
+3. `worker-crawl` starts, calls `init_db()` with `USE_ALEMBIC_MIGRATIONS=true` (skips `create_all()`), then seeds DNOs from parquet
+4. `worker-extract` starts, calls `init_db()` with `USE_ALEMBIC_MIGRATIONS=true` (skips `create_all()`)
 5. `frontend` builds and serves via nginx on port 80
 6. `newt` connects to Pangolin and exposes the stack
 
@@ -161,3 +256,4 @@ mkdir -p data/postgres data/redis
 | `dno.kylehub.dev` returns HTTP 526 | Pangolin site not yet configured | Create site + resources in Pangolin |
 | Seeding skipped with "No seed data file found" | Parquet missing from `data/seed-data/` | Regenerate via SEEDING.md stages 5+6 |
 | `ai_encryption_no_key` critical log on startup | `AI_ENCRYPTION_KEY` or `SESSION_SECRET` not set | Add either variable to `.env`; without it, AI provider credentials stored in DB are not encrypted |
+| API returns 503 on protected routes in production | Auth still in mock mode (`ZITADEL_DOMAIN=auth.example.com`) | Set real `ZITADEL_DOMAIN`; production startup should fail-fast if auth is disabled |

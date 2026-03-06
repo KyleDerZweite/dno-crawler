@@ -22,6 +22,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { useAuth } from "@/lib/use-auth";
 
 export function JobDetailsPage() {
     const { id } = useParams<{ id: string }>();
@@ -29,6 +30,8 @@ export function JobDetailsPage() {
     const navigate = useNavigate();
     const queryClient = useQueryClient();
     const { toast } = useToast();
+    const { isAdmin } = useAuth();
+    const isAdminUser = isAdmin();
 
     const { data, isLoading, error } = useQuery<ApiResponse<JobDetails>>({
         queryKey: ["job", id],
@@ -118,18 +121,20 @@ export function JobDetailsPage() {
                         </Badge>
                     </p>
                 </div>
-                <Button
-                    variant="destructive"
-                    onClick={() => { deleteMutation.mutate(); }}
-                    disabled={deleteMutation.isPending}
-                >
-                    {deleteMutation.isPending ? (
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    ) : (
-                        <XCircle className="mr-2 h-4 w-4" />
-                    )}
-                    Delete
-                </Button>
+                {isAdminUser && (
+                    <Button
+                        variant="destructive"
+                        onClick={() => { deleteMutation.mutate(); }}
+                        disabled={deleteMutation.isPending}
+                    >
+                        {deleteMutation.isPending ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                            <XCircle className="mr-2 h-4 w-4" />
+                        )}
+                        Delete
+                    </Button>
+                )}
             </div>
 
             {/* Linked Jobs Info */}

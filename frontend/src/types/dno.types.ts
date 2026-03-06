@@ -103,6 +103,14 @@ export interface MastrStats {
     computed_at?: string | null;
 }
 
+export interface DNOImportance {
+    score?: number | null;
+    confidence?: number | null;
+    version?: string | null;
+    factors?: Record<string, unknown> | null;
+    updated_at?: string | null;
+}
+
 // DNO status type
 export type DNOStatus = "uncrawled" | "pending" | "running" | "crawled" | "failed" | "protected";
 
@@ -176,6 +184,12 @@ export interface DNO {
     netzentgelte_count?: number;
     hlzf_count?: number;
     score?: number;  // Completeness score (0-100%)
+    importance?: DNOImportance;
+    importance_score?: number | null;
+    importance_confidence?: number | null;
+    importance_version?: string | null;
+    service_area_km2?: number | null;
+    customer_count?: number | null;
     created_at?: string;
     updated_at?: string;
 }

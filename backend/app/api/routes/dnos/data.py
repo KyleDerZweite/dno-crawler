@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user, require_admin
 from app.core.models import APIResponse
+from app.core.parsers import parse_hlzf_time_ranges
 from app.db import DNOModel, get_db
 
 from .schemas import UpdateHLZFRequest, UpdateNetzentgelteRequest
@@ -88,9 +89,6 @@ async def get_dno_data(
     result = await db.execute(hlzf_query, {"dno_id": dno_id})
     hlzf_rows = result.fetchall()
 
-    # Import time parsing function from search module
-    from app.api.routes.search import _parse_hlzf_times
-
     hlzf = []
     for row in hlzf_rows:
         winter_val = row[3]
@@ -108,19 +106,10 @@ async def get_dno_data(
                 "sommer": sommer_val,
                 "herbst": herbst_val,
                 # Parsed time ranges
-                "winter_ranges": [
-                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(winter_val) or [])
-                ],
-                "fruehling_ranges": [
-                    {"start": r.start, "end": r.end}
-                    for r in (_parse_hlzf_times(fruehling_val) or [])
-                ],
-                "sommer_ranges": [
-                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(sommer_val) or [])
-                ],
-                "herbst_ranges": [
-                    {"start": r.start, "end": r.end} for r in (_parse_hlzf_times(herbst_val) or [])
-                ],
+                "winter_ranges": parse_hlzf_time_ranges(winter_val) or [],
+                "fruehling_ranges": parse_hlzf_time_ranges(fruehling_val) or [],
+                "sommer_ranges": parse_hlzf_time_ranges(sommer_val) or [],
+                "herbst_ranges": parse_hlzf_time_ranges(herbst_val) or [],
                 "verification_status": row[7],
                 # Extraction source fields
                 "extraction_source": row[8],

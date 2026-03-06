@@ -52,6 +52,30 @@ class TimestampMixin:
     )
 
 
+class ExtractionSourceMixin:
+    """Shared extraction source metadata columns."""
+
+    extraction_source: Mapped[str | None] = mapped_column(String(20))
+    extraction_model: Mapped[str | None] = mapped_column(String(100))
+    extraction_source_format: Mapped[str | None] = mapped_column(String(20))
+    last_edited_by: Mapped[str | None] = mapped_column(String(255))
+    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class VerificationMixin:
+    """Shared verification and flagging columns."""
+
+    verification_status: Mapped[str] = mapped_column(
+        String(20), default=VerificationStatus.UNVERIFIED.value
+    )
+    verified_by: Mapped[str | None] = mapped_column(String(255))
+    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    verification_notes: Mapped[str | None] = mapped_column(Text)
+    flagged_by: Mapped[str | None] = mapped_column(String(255))
+    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    flag_reason: Mapped[str | None] = mapped_column(Text)
+
+
 # ==============================================================================
 # DNO - Core "Golden Record" Hub
 # ==============================================================================
@@ -121,6 +145,13 @@ class DNOModel(Base, TimestampMixin):
     )  # Netzbetreiber code
     connection_points_count: Mapped[int | None] = mapped_column(Integer)
     total_capacity_mw: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    service_area_km2: Mapped[float | None] = mapped_column(Float)
+    customer_count: Mapped[int | None] = mapped_column(Integer)
+    importance_score: Mapped[float | None] = mapped_column(Float, index=True)
+    importance_confidence: Mapped[float | None] = mapped_column(Float)
+    importance_version: Mapped[str | None] = mapped_column(String(32))
+    importance_factors: Mapped[dict | None] = mapped_column(JSON)
+    importance_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     # -------------------------------------------------------------------------
     # Operational Status
@@ -378,7 +409,7 @@ class LocationModel(Base, TimestampMixin):
 # ==============================================================================
 
 
-class NetzentgelteModel(Base, TimestampMixin):
+class NetzentgelteModel(Base, TimestampMixin, ExtractionSourceMixin, VerificationMixin):
     """Netzentgelte (network tariffs) data."""
 
     __tablename__ = "netzentgelte"
@@ -400,34 +431,10 @@ class NetzentgelteModel(Base, TimestampMixin):
     arbeit_unter_2500h: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
     leistung_unter_2500h: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
-    # Extraction source tracking
-    extraction_source: Mapped[str | None] = mapped_column(
-        String(20)
-    )  # ai | html_parser | pdf_regex | manual
-    extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
-    extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
-
-    # Manual edit tracking
-    last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
-    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Verification
-    verification_status: Mapped[str] = mapped_column(
-        String(20), default=VerificationStatus.UNVERIFIED.value
-    )
-    verified_by: Mapped[str | None] = mapped_column(String(255))  # Zitadel user sub
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    verification_notes: Mapped[str | None] = mapped_column(Text)
-
-    # Flagging (when users report data as wrong)
-    flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
-    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    flag_reason: Mapped[str | None] = mapped_column(Text)  # Why it's flagged as wrong
-
     dno: Mapped["DNOModel"] = relationship(back_populates="netzentgelte")
 
 
-class HLZFModel(Base, TimestampMixin):
+class HLZFModel(Base, TimestampMixin, ExtractionSourceMixin, VerificationMixin):
     """HLZF (Hochlastzeitfenster) data per voltage level.
 
     Each row = one voltage level for one year.
@@ -450,30 +457,6 @@ class HLZFModel(Base, TimestampMixin):
     fruehling: Mapped[str | None] = mapped_column(Text)
     sommer: Mapped[str | None] = mapped_column(Text)
     herbst: Mapped[str | None] = mapped_column(Text)
-
-    # Extraction source tracking
-    extraction_source: Mapped[str | None] = mapped_column(
-        String(20)
-    )  # ai | html_parser | pdf_regex | manual
-    extraction_model: Mapped[str | None] = mapped_column(String(100))  # e.g., "gemini-2.0-flash"
-    extraction_source_format: Mapped[str | None] = mapped_column(String(20))  # html | pdf
-
-    # Manual edit tracking
-    last_edited_by: Mapped[str | None] = mapped_column(String(255))  # User sub who last edited
-    last_edited_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-
-    # Verification
-    verification_status: Mapped[str] = mapped_column(
-        String(20), default=VerificationStatus.UNVERIFIED.value
-    )
-    verified_by: Mapped[str | None] = mapped_column(String(255))
-    verified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    verification_notes: Mapped[str | None] = mapped_column(Text)
-
-    # Flagging (when users report data as wrong)
-    flagged_by: Mapped[str | None] = mapped_column(String(255))  # User sub who flagged
-    flagged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    flag_reason: Mapped[str | None] = mapped_column(Text)  # Why it's flagged as wrong
 
     dno: Mapped["DNOModel"] = relationship(back_populates="hlzf")
 

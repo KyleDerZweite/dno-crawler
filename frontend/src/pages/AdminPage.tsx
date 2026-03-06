@@ -59,24 +59,32 @@ import { Button } from "@/components/ui/button";
 import { useState } from "react";
 import { AIConfigSection } from "@/features/admin/AIConfigSection";
 import { APIKeysSection } from "@/features/admin/APIKeysSection";
+import { adminKeys } from "@/features/admin/query-keys";
 
 export function AdminPage() {
   const { isAdmin } = useAuth();
 
   const { data: dashboardResponse, isLoading: statsLoading } = useQuery({
-    queryKey: ["admin", "dashboard"],
+    queryKey: adminKeys.dashboard,
     queryFn: api.admin.getDashboard,
     enabled: isAdmin(),
   });
 
   const { data: flaggedResponse, isLoading: flaggedLoading } = useQuery({
-    queryKey: ["admin", "flagged"],
+    queryKey: adminKeys.flagged,
     queryFn: api.admin.getFlagged,
+    enabled: isAdmin(),
+  });
+
+  const { data: importanceResponse, isLoading: importanceLoading } = useQuery({
+    queryKey: adminKeys.importance.distribution,
+    queryFn: api.admin.getImportanceDistribution,
     enabled: isAdmin(),
   });
 
   const stats = dashboardResponse?.data;
   const flaggedItems = flaggedResponse?.data?.items || [];
+  const importance = importanceResponse?.data;
 
   // Parse structured flag reason for display
   const parseFlagReason = (reason?: string | null) => {
@@ -152,6 +160,69 @@ export function AdminPage() {
           loading={statsLoading}
         />
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Database className="h-5 w-5 text-primary" />
+            Importance Scoring
+          </CardTitle>
+          <CardDescription>Canonical DNO importance distribution and factor quality</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {importanceLoading ? (
+            <p className="text-sm text-muted-foreground">Loading importance distribution...</p>
+          ) : (
+            <>
+              <div className="grid gap-3 md:grid-cols-4">
+                <StatMini label="Scored DNOs" value={`${importance?.scored || 0}/${importance?.total || 0}`} />
+                <StatMini label="Median (p50)" value={`${importance?.p50?.toFixed(1) || "0.0"}`} />
+                <StatMini label="High (p90)" value={`${importance?.p90?.toFixed(1) || "0.0"}`} />
+                <StatMini
+                  label="Fallbacks"
+                  value={`${importance?.quality?.fallback_customers || 0}/${importance?.quality?.fallback_area || 0}`}
+                  subtitle="customers / area"
+                />
+              </div>
+
+              <div className="space-y-2">
+                {(() => {
+                  const histogram = importance?.histogram || [];
+                  const maxCount = Math.max(...histogram.map((b) => b.count), 1);
+                  return histogram.map((bucket) => {
+                  const width = (bucket.count / maxCount) * 100;
+                  return (
+                    <div key={bucket.range} className="flex items-center gap-3">
+                      <span className="w-16 text-xs text-muted-foreground">{bucket.range}</span>
+                      <div className="h-2 flex-1 rounded bg-muted overflow-hidden">
+                        <div className="h-full bg-primary" style={{ width: `${width}%` }} />
+                      </div>
+                      <span className="w-8 text-xs text-muted-foreground text-right">{bucket.count}</span>
+                    </div>
+                  );
+                  });
+                })()}
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm font-medium">Top Important DNOs</p>
+                {(importance?.top || []).slice(0, 8).map((item) => (
+                  <Link
+                    key={item.id}
+                    to={`/dnos/${item.id}`}
+                    className="flex items-center justify-between rounded border p-2 hover:bg-muted/30"
+                  >
+                    <span className="text-sm truncate">{item.name}</span>
+                    <span className="text-sm font-semibold text-primary">
+                      {typeof item.importance_score === "number" ? item.importance_score.toFixed(1) : "-"}
+                    </span>
+                  </Link>
+                ))}
+              </div>
+            </>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Flagged Items Section */}
       <Card>
@@ -290,6 +361,16 @@ export function AdminPage() {
   );
 }
 
+function StatMini({ label, value, subtitle }: { label: string; value: string; subtitle?: string }) {
+  return (
+    <div className="rounded border border-border/50 p-3">
+      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-lg font-semibold mt-1">{value}</p>
+      {subtitle ? <p className="text-xs text-muted-foreground">{subtitle}</p> : null}
+    </div>
+  );
+}
+
 function StatCard({ icon: Icon, title, value, color, bg, loading }: {
   icon: React.ComponentType<{ className?: string }>;
   title: string;
@@ -374,14 +455,14 @@ function CachedFilesSection() {
 
   // Fetch cached files stats
   const { data: filesResponse, isLoading: filesLoading } = useQuery({
-    queryKey: ["admin", "cached-files"],
+    queryKey: adminKeys.cachedFiles,
     queryFn: api.admin.getCachedFiles,
     refetchInterval: 30000, // Refresh every 30s
   });
 
   // Fetch bulk extract status
   const { data: bulkStatusResponse } = useQuery({
-    queryKey: ["admin", "bulk-extract-status"],
+    queryKey: adminKeys.bulkExtractStatus,
     queryFn: api.admin.getBulkExtractStatus,
     refetchInterval: 5000, // Refresh every 5s for progress
   });
@@ -404,7 +485,7 @@ function CachedFilesSection() {
     }),
     onSuccess: () => {
       setShowPreview(false);
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
@@ -412,7 +493,7 @@ function CachedFilesSection() {
   const cancelMutation = useMutation({
     mutationFn: api.admin.cancelBulkExtract,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
@@ -420,7 +501,7 @@ function CachedFilesSection() {
   const resetMutation = useMutation({
     mutationFn: api.admin.resetBulkExtract,
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["admin", "bulk-extract-status"] });
+      queryClient.invalidateQueries({ queryKey: adminKeys.bulkExtractStatus });
     },
   });
 
@@ -749,7 +830,7 @@ function CachedFilesSection() {
                 {selectedMode === "default" && "Default mode - verified data is protected"}
                 {selectedMode === "force_override" && (
                   <span className="text-red-500">
-                    ⚠️ Force Override - ALL data including {previewData.will_override_verified} verified records will be overwritten!
+                    Force override: all data, including {previewData.will_override_verified} verified records, will be overwritten.
                   </span>
                 )}
               </div>

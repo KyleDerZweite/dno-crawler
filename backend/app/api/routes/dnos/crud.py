@@ -14,7 +14,8 @@ from app.core.auth import get_current_user
 from app.core.config import settings
 from app.core.models import APIResponse
 from app.db import CrawlJobModel, DNOModel, HLZFModel, NetzentgelteModel, get_db
-from app.services.completeness import compute_completeness
+from app.services.completeness import build_completeness_payload, connection_points_from_mastr
+from app.services.importance import apply_importance_to_dno, compute_importance_for_dno
 
 from .schemas import CreateDNORequest, UpdateDNORequest
 from .utils import slugify
@@ -108,34 +109,200 @@ async def _build_completeness_payload(
     actual_netz = {row[0] for row in netz_result.fetchall()}
     actual_hlzf = {row[0] for row in hlzf_result.fetchall()}
 
-    # Get MaStR connection points (if available)
-    connection_points = None
-    if dno.mastr_data:
-        connection_points = {
-            "ns": dno.mastr_data.connection_points_ns,
-            "ms": dno.mastr_data.connection_points_ms,
-            "hs": dno.mastr_data.connection_points_hs,
-            "hoe": dno.mastr_data.connection_points_hoe,
+    return build_completeness_payload(
+        connection_points=connection_points_from_mastr(dno.mastr_data),
+        actual_netz_levels=actual_netz,
+        actual_hlzf_levels=actual_hlzf,
+        include_levels=True,
+    )
+
+
+def _compute_similarity_threshold(query_length: int) -> float:
+    """Return tuned trigram threshold by query length.
+
+    These thresholds were chosen to reduce false negatives for short German city names
+    (e.g. "Ulm", "Bonn") where trigram similarity naturally under-scores exact intent.
+    """
+    if query_length <= 3:
+        return 0.08
+    if query_length <= 6:
+        return 0.12
+    return 0.2
+
+
+def _calculate_dno_live_status(
+    *,
+    crawlable: bool,
+    data_points_count: int,
+    running_jobs: int,
+    pending_jobs: int,
+) -> str:
+    """Calculate DNO live status from preloaded counters."""
+    if running_jobs > 0:
+        return "running"
+    if pending_jobs > 0:
+        return "pending"
+    if not crawlable:
+        return "protected"
+    if data_points_count > 0:
+        return "crawled"
+    return "uncrawled"
+
+
+def _serialize_dno_list_item(
+    *,
+    dno: DNOModel,
+    netzentgelte_count: int,
+    hlzf_count: int,
+    include_stats: bool,
+    live_status: str,
+) -> dict:
+    """Serialize one DNO list item payload."""
+    data_points_count = netzentgelte_count + hlzf_count
+    score = min(round((data_points_count / 50) * 100), 100) if data_points_count > 0 else 0
+
+    importance_result = None
+    if dno.importance_score is None:
+        importance_result = compute_importance_for_dno(dno)
+
+    importance_score = importance_result.score if importance_result else dno.importance_score
+    importance_confidence = (
+        importance_result.confidence if importance_result else dno.importance_confidence
+    )
+    importance_version = importance_result.version if importance_result else dno.importance_version
+
+    dno_data = {
+        "id": str(dno.id),
+        "slug": dno.slug,
+        "name": dno.name,
+        "official_name": dno.official_name,
+        "vnb_id": dno.vnb_id,
+        "status": live_status,
+        "description": dno.description,
+        "region": dno.region,
+        "website": dno.website,
+        "crawlable": dno.crawlable,
+        "crawl_blocked_reason": dno.crawl_blocked_reason,
+        "data_points_count": data_points_count,
+        "netzentgelte_count": netzentgelte_count,
+        "hlzf_count": hlzf_count,
+        "score": score,
+        "importance_score": importance_score,
+        "importance_confidence": importance_confidence,
+        "importance_version": importance_version,
+        "created_at": dno.created_at.isoformat() if dno.created_at else None,
+        "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
+    }
+
+    if include_stats:
+        dno_data["stats"] = {
+            "years_available": [],
+            "last_crawl": None,
+            "mastr": _build_mastr_stats_payload(dno),
         }
 
-    result = compute_completeness(connection_points, actual_netz, actual_hlzf)
+    return dno_data
 
+
+def _serialize_mastr_data(dno: DNOModel) -> dict | None:
+    """Serialize MaStR source payload for detail endpoint."""
+    if not dno.mastr_data:
+        return None
+
+    m = dno.mastr_data
     return {
-        "score": result.score,
-        "has_expectations": result.has_expectations,
-        "expected_count": result.expected_count,
-        "covered_count": result.covered_count,
-        "levels": [
-            {
-                "level": lvl.level,
-                "expected": lvl.expected,
-                "has_netzentgelte": lvl.has_netzentgelte,
-                "has_hlzf": lvl.has_hlzf,
-                "covered": lvl.covered,
-            }
-            for lvl in result.levels
-        ],
+        "mastr_nr": m.mastr_nr,
+        "download_url": getattr(m, "download_url", None),
+        "federal_state": getattr(m, "federal_state", None),
+        "operator_name": getattr(m, "operator_name", None),
+        "operator_legal_form": getattr(m, "operator_legal_form", None),
+        "operator_address": getattr(m, "operator_address", None),
+        "operator_city": getattr(m, "operator_city", None),
+        "operator_zip": getattr(m, "operator_zip", None),
+        "operator_country": getattr(m, "operator_country", None),
+        "connection_points_ns": m.connection_points_ns,
+        "connection_points_ms": m.connection_points_ms,
+        "connection_points_hs": m.connection_points_hs,
+        "connection_points_hoe": m.connection_points_hoe,
+        "connection_points_total": m.connection_points_total,
+        "connection_points_by_level": m.connection_points_by_level,
+        "networks_count": m.networks_count,
+        "has_customers": m.has_customers,
+        "closed_distribution_network": m.closed_distribution_network,
+        "solar_units": m.solar_units,
+        "solar_capacity_mw": float(m.solar_capacity_mw)
+        if m.solar_capacity_mw is not None
+        else None,
+        "wind_units": m.wind_units,
+        "wind_capacity_mw": float(m.wind_capacity_mw) if m.wind_capacity_mw is not None else None,
+        "storage_units": m.storage_units,
+        "storage_capacity_mw": float(m.storage_capacity_mw)
+        if m.storage_capacity_mw is not None
+        else None,
+        "biomass_units": getattr(m, "biomass_units", None),
+        "biomass_capacity_mw": float(m.biomass_capacity_mw)
+        if m.biomass_capacity_mw is not None
+        else None,
+        "hydro_units": getattr(m, "hydro_units", None),
+        "hydro_capacity_mw": float(m.hydro_capacity_mw)
+        if m.hydro_capacity_mw is not None
+        else None,
+        "total_capacity_mw": float(m.total_capacity_mw)
+        if m.total_capacity_mw is not None
+        else None,
+        "stats_data_quality": m.stats_data_quality,
+        "stats_computed_at": m.stats_computed_at.isoformat() if m.stats_computed_at else None,
+        "mastr_last_updated": m.mastr_last_updated.isoformat() if m.mastr_last_updated else None,
+        "last_synced_at": m.last_synced_at.isoformat() if m.last_synced_at else None,
     }
+
+
+def _serialize_vnb_data(dno: DNOModel) -> dict | None:
+    """Serialize VNB source payload for detail endpoint."""
+    if not dno.vnb_data:
+        return None
+
+    v = dno.vnb_data
+    return {
+        "vnb_id": v.vnb_id,
+        "name": v.name,
+        "official_name": v.official_name,
+        "homepage_url": v.homepage_url,
+        "phone": v.phone,
+        "email": v.email,
+        "address": v.address,
+        "types": v.types,
+        "voltage_types": v.voltage_types,
+        "logo_url": v.logo_url,
+        "is_electricity": v.is_electricity,
+        "last_synced_at": v.last_synced_at.isoformat() if v.last_synced_at else None,
+    }
+
+
+def _serialize_bdew_data_list(dno: DNOModel) -> list[dict]:
+    """Serialize BDEW source records for detail endpoint."""
+    if not dno.bdew_data:
+        return []
+
+    return [
+        {
+            "bdew_code": b.bdew_code,
+            "bdew_internal_id": b.bdew_internal_id,
+            "bdew_company_uid": b.bdew_company_uid,
+            "company_name": b.company_name,
+            "market_function": b.market_function,
+            "contact_name": b.contact_name,
+            "contact_phone": b.contact_phone,
+            "contact_email": b.contact_email,
+            "street": b.street,
+            "zip_code": b.zip_code,
+            "city": b.city,
+            "website": b.website,
+            "is_grid_operator": b.is_grid_operator,
+            "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
+        }
+        for b in dno.bdew_data
+    ]
 
 
 @router.get("/search-vnb")
@@ -247,7 +414,7 @@ async def create_dno(
     If slug is not provided, it will be auto-generated from the name.
     If vnb_id is provided, validates against VNB Digital and fetches missing details.
     """
-    from app.services.vnb import VNBDigitalClient
+    from app.services.dno_creation import resolve_dno_creation_data
 
     # Generate slug if not provided
     slug = request.slug if request.slug else slugify(request.name)
@@ -272,90 +439,38 @@ async def create_dno(
                 detail=f"A DNO with VNB ID '{request.vnb_id}' already exists: {existing_dno.name}",
             )
 
-    # Fetch VNB details if vnb_id provided and some fields are missing
-    website = request.website
-    phone = request.phone
-    email = request.email
-    contact_address = request.contact_address
-    official_name = request.official_name
-
-    if request.vnb_id and not all([website, phone, email]):
-        vnb_client = VNBDigitalClient(request_delay=0.5)
-        try:
-            vnb_details = await vnb_client.get_vnb_details(request.vnb_id)
-        finally:
-            await vnb_client.close()
-        if vnb_details:
-            website = website or vnb_details.homepage_url
-            phone = phone or vnb_details.phone
-            email = email or vnb_details.email
-
-            # Try to enrich address with postal code + city from Impressum
-            if not contact_address and vnb_details.address and vnb_details.homepage_url:
-                from app.services.impressum_extractor import impressum_extractor
-
-                full_addr = await impressum_extractor.extract_full_address(
-                    vnb_details.homepage_url,
-                    vnb_details.address,
-                )
-                contact_address = full_addr.formatted if full_addr else vnb_details.address
-            elif not contact_address:
-                contact_address = vnb_details.address
-
-    # Check robots.txt for Cloudflare/JS protection if we have a website
-    crawlable = True
-    crawl_blocked_reason = None
-    robots_txt = None
-    sitemap_urls = None
-    disallow_paths = None
-
-    tech_info = None
-
-    if website:
-        import httpx
-
-        from app.services.robots_parser import fetch_and_verify_robots, fetch_site_tech_info
-
-        async with httpx.AsyncClient(
-            headers={"User-Agent": "DNO-Crawler/1.0"},
-            follow_redirects=True,
-            timeout=10.0,
-        ) as http_client:
-            robots_result = await fetch_and_verify_robots(
-                http_client, website, verify_sitemap=False
-            )
-
-            tech_info = await fetch_site_tech_info(http_client, website)
-
-            if robots_result:
-                crawlable = robots_result.crawlable
-                crawl_blocked_reason = robots_result.blocked_reason
-                robots_txt = robots_result.raw_content
-                sitemap_urls = robots_result.sitemap_urls
-                disallow_paths = robots_result.disallow_paths
+    resolved = await resolve_dno_creation_data(
+        vnb_id=request.vnb_id,
+        official_name=request.official_name,
+        website=request.website,
+        phone=request.phone,
+        email=request.email,
+        contact_address=request.contact_address,
+    )
 
     # Create DNO
     dno = DNOModel(
         name=request.name,
         slug=slug,
-        official_name=official_name,
+        official_name=resolved.official_name,
         description=request.description,
         region=request.region,
-        website=website,
+        website=resolved.website,
         vnb_id=request.vnb_id,
-        phone=phone,
-        email=email,
-        contact_address=contact_address,
+        phone=resolved.phone,
+        email=resolved.email,
+        contact_address=resolved.contact_address,
         # Crawlability info
-        crawlable=crawlable,
-        crawl_blocked_reason=crawl_blocked_reason,
-        robots_txt=robots_txt,
-        sitemap_urls=sitemap_urls,
-        disallow_paths=disallow_paths,
+        crawlable=resolved.crawlable,
+        crawl_blocked_reason=resolved.crawl_blocked_reason,
+        robots_txt=resolved.robots_txt,
+        sitemap_urls=resolved.sitemap_urls,
+        disallow_paths=resolved.disallow_paths,
         # Tech Info
-        cms_system=tech_info.get("cms") if tech_info else None,
-        tech_stack_details=tech_info,
+        cms_system=resolved.tech_info.get("cms") if resolved.tech_info else None,
+        tech_stack_details=resolved.tech_info,
     )
+    apply_importance_to_dno(dno)
     db.add(dno)
     await db.commit()
     await db.refresh(dno)
@@ -433,7 +548,8 @@ async def list_dnos_detailed(
         description="Filter by status: uncrawled, crawled, running, pending, protected",
     ),
     sort_by: str = Query(
-        "name_asc", description="Sort by: name_asc, name_desc, score_asc, score_desc, region_asc"
+        "name_asc",
+        description="Sort by: name_asc, name_desc, importance_asc, importance_desc, score_asc, score_desc, region_asc, region_desc",
     ),
 ) -> APIResponse:
     """
@@ -467,14 +583,7 @@ async def list_dnos_detailed(
         q_normalized = q.strip().lower()
         q_len = len(q_normalized)
 
-        # Dynamic similarity threshold based on query length
-        # Short queries need lower threshold since trigrams work poorly
-        if q_len <= 3:
-            similarity_threshold = 0.08  # Very permissive for short terms
-        elif q_len <= 6:
-            similarity_threshold = 0.12  # Moderate for medium terms
-        else:
-            similarity_threshold = 0.2  # Stricter for long terms
+        similarity_threshold = _compute_similarity_threshold(q_len)
 
         # Trigram similarity score
         similarity = func.similarity(DNOModel.name, q)
@@ -578,6 +687,10 @@ async def list_dnos_detailed(
         query = query.order_by(DNOModel.region.asc().nullslast(), DNOModel.name)
     elif sort_by == "region_desc":
         query = query.order_by(DNOModel.region.desc().nullslast(), DNOModel.name)
+    elif sort_by in {"importance_desc", "score_desc"}:
+        query = query.order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    elif sort_by in {"importance_asc", "score_asc"}:
+        query = query.order_by(DNOModel.importance_score.asc().nullsfirst(), DNOModel.name)
     else:  # Default: name_asc
         query = query.order_by(DNOModel.name)
 
@@ -658,56 +771,22 @@ async def list_dnos_detailed(
 
         # Compute live status from batch-loaded job data
         job_status = job_statuses.get(dno.id, {"running": 0, "pending": 0})
-        if job_status["running"] > 0:
-            live_status = "running"
-        elif job_status["pending"] > 0:
-            live_status = "pending"
-        elif data_points_count > 0:
-            live_status = "crawled"
-        elif not getattr(dno, "crawlable", True):
-            live_status = "protected"
-        else:
-            live_status = "uncrawled"
+        live_status = _calculate_dno_live_status(
+            crawlable=dno.crawlable,
+            data_points_count=data_points_count,
+            running_jobs=job_status["running"],
+            pending_jobs=job_status["pending"],
+        )
 
-        # List-view completeness score: simple presence-based heuristic.
-        # The full voltage-level-aware breakdown is only computed in
-        # the detail endpoint to avoid N+1 per-DNO queries here.
-        score = min(round((data_points_count / 50) * 100), 100) if data_points_count > 0 else 0
-
-        dno_data = {
-            "id": str(dno.id),
-            "slug": dno.slug,
-            "name": dno.name,
-            "official_name": dno.official_name,
-            "vnb_id": dno.vnb_id,
-            "status": live_status,
-            "description": dno.description,
-            "region": dno.region,
-            "website": dno.website,
-            "crawlable": getattr(dno, "crawlable", True),
-            "crawl_blocked_reason": getattr(dno, "crawl_blocked_reason", None),
-            "data_points_count": data_points_count,
-            "netzentgelte_count": netzentgelte_count,
-            "hlzf_count": hlzf_count,
-            "score": score,
-            "created_at": dno.created_at.isoformat() if dno.created_at else None,
-            "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
-        }
-
-        if include_stats:
-            dno_data["stats"] = {
-                "years_available": [],
-                "last_crawl": None,
-                "mastr": _build_mastr_stats_payload(dno),
-            }
+        dno_data = _serialize_dno_list_item(
+            dno=dno,
+            netzentgelte_count=netzentgelte_count,
+            hlzf_count=hlzf_count,
+            include_stats=include_stats,
+            live_status=live_status,
+        )
 
         data.append(dno_data)
-
-    # Sort by score if requested (post-fetch since score is computed)
-    if sort_by == "score_desc":
-        data.sort(key=lambda x: x["score"], reverse=True)
-    elif sort_by == "score_asc":
-        data.sort(key=lambda x: x["score"], reverse=False)
 
     return APIResponse(
         success=True,
@@ -779,83 +858,30 @@ async def get_dno_details(
     stats_res = await db.execute(stats_query, {"dno_id": dno.id})
     netz_c, hlzf_c, running_j, pending_j = stats_res.fetchone()
 
-    data_points_total = netz_c + hlzf_c
+    mastr_data = _serialize_mastr_data(dno)
+    vnb_data = _serialize_vnb_data(dno)
+    bdew_data = _serialize_bdew_data_list(dno)
 
-    if running_j > 0:
-        live_status = "running"
-    elif pending_j > 0:
-        live_status = "pending"
-    elif data_points_total > 0:
-        live_status = "crawled"
-    elif not getattr(dno, "crawlable", True):
-        live_status = "protected"
-    else:
-        live_status = "uncrawled"
+    live_status = _calculate_dno_live_status(
+        crawlable=dno.crawlable,
+        data_points_count=(netz_c + hlzf_c),
+        running_jobs=running_j,
+        pending_jobs=pending_j,
+    )
 
-    # Build MaStR source data
-    mastr_data = None
-    if dno.mastr_data:
-        m = dno.mastr_data
-        mastr_data = {
-            "mastr_nr": m.mastr_nr,
-            "acer_code": m.acer_code,
-            "registered_name": m.registered_name,
-            "region": m.region,
-            "address_components": m.address_components,
-            "contact_address": m.contact_address,
-            "marktrollen": m.marktrollen,
-            "is_active": m.is_active,
-            "closed_network": m.closed_network,
-            "activity_start": m.activity_start.isoformat() if m.activity_start else None,
-            "activity_end": m.activity_end.isoformat() if m.activity_end else None,
-            "registration_date": m.registration_date.isoformat() if m.registration_date else None,
-            "mastr_last_updated": m.mastr_last_updated.isoformat()
-            if m.mastr_last_updated
-            else None,
-            "last_synced_at": m.last_synced_at.isoformat() if m.last_synced_at else None,
-        }
+    importance_result = None
+    if dno.importance_score is None:
+        importance_result = compute_importance_for_dno(dno)
 
-    # Build VNB source data
-    vnb_data = None
-    if dno.vnb_data:
-        v = dno.vnb_data
-        vnb_data = {
-            "vnb_id": v.vnb_id,
-            "name": v.name,
-            "official_name": v.official_name,
-            "homepage_url": v.homepage_url,
-            "phone": v.phone,
-            "email": v.email,
-            "address": v.address,
-            "types": v.types,
-            "voltage_types": v.voltage_types,
-            "logo_url": v.logo_url,
-            "is_electricity": v.is_electricity,
-            "last_synced_at": v.last_synced_at.isoformat() if v.last_synced_at else None,
-        }
-
-    # Build BDEW source data (one-to-many)
-    bdew_data = []
-    if dno.bdew_data:
-        for b in dno.bdew_data:
-            bdew_data.append(
-                {
-                    "bdew_code": b.bdew_code,
-                    "bdew_internal_id": b.bdew_internal_id,
-                    "bdew_company_uid": b.bdew_company_uid,
-                    "company_name": b.company_name,
-                    "market_function": b.market_function,
-                    "contact_name": b.contact_name,
-                    "contact_phone": b.contact_phone,
-                    "contact_email": b.contact_email,
-                    "street": b.street,
-                    "zip_code": b.zip_code,
-                    "city": b.city,
-                    "website": b.website,
-                    "is_grid_operator": b.is_grid_operator,
-                    "last_synced_at": b.last_synced_at.isoformat() if b.last_synced_at else None,
-                }
-            )
+    importance_payload = {
+        "score": importance_result.score if importance_result else dno.importance_score,
+        "confidence": importance_result.confidence
+        if importance_result
+        else dno.importance_confidence,
+        "version": importance_result.version if importance_result else dno.importance_version,
+        "factors": importance_result.factors if importance_result else dno.importance_factors,
+        "updated_at": dno.importance_updated_at.isoformat() if dno.importance_updated_at else None,
+    }
 
     return APIResponse(
         success=True,
@@ -873,7 +899,6 @@ async def get_dno_details(
             "website": dno.website,
             "phone": dno.phone,
             "email": dno.email,
-            # Computed display fields
             "display_name": dno.display_name,
             "display_website": dno.display_website,
             "display_phone": dno.display_phone,
@@ -883,25 +908,28 @@ async def get_dno_details(
             "marktrollen": dno.marktrollen,
             "acer_code": dno.acer_code,
             "grid_operator_bdew_code": dno.grid_operator_bdew_code,
-            # Crawlability info
-            "crawlable": getattr(dno, "crawlable", True),
-            "crawl_blocked_reason": getattr(dno, "crawl_blocked_reason", None),
+            "crawlable": dno.crawlable,
+            "crawl_blocked_reason": dno.crawl_blocked_reason,
             "has_local_files": has_local_files,
-            "robots_txt": getattr(dno, "robots_txt", None),
-            "sitemap_urls": getattr(dno, "sitemap_urls", []),
-            "cms_system": getattr(dno, "cms_system", None),
-            "tech_stack_details": getattr(dno, "tech_stack_details", None),
-            # Source data availability
+            "robots_txt": dno.robots_txt,
+            "sitemap_urls": dno.sitemap_urls,
+            "cms_system": dno.cms_system,
+            "tech_stack_details": dno.tech_stack_details,
             "has_mastr": dno.has_mastr,
             "has_vnb": dno.has_vnb,
             "has_bdew": dno.has_bdew,
             "enrichment_sources": dno.enrichment_sources,
-            # Source data objects
             "mastr_data": mastr_data,
             "vnb_data": vnb_data,
             "bdew_data": bdew_data,
             "stats": _build_mastr_stats_payload(dno),
             "completeness": await _build_completeness_payload(db, dno),
+            "service_area_km2": dno.service_area_km2,
+            "customer_count": dno.customer_count,
+            "importance": importance_payload,
+            "importance_score": importance_payload["score"],
+            "importance_confidence": importance_payload["confidence"],
+            "importance_version": importance_payload["version"],
             "created_at": dno.created_at.isoformat() if dno.created_at else None,
             "updated_at": dno.updated_at.isoformat() if dno.updated_at else None,
         },
@@ -943,6 +971,12 @@ async def update_dno(
         dno.email = request.email
     if request.contact_address is not None:
         dno.contact_address = request.contact_address
+    if request.service_area_km2 is not None:
+        dno.service_area_km2 = request.service_area_km2
+    if request.customer_count is not None:
+        dno.customer_count = request.customer_count
+
+    apply_importance_to_dno(dno)
 
     await db.commit()
     await db.refresh(dno)

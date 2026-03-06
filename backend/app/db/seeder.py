@@ -20,6 +20,7 @@ from sqlalchemy.orm import selectinload
 
 from app.db.models import DNOModel
 from app.db.source_models import DNOBdewData, DNOMastrData, DNOVnbData
+from app.services.importance import apply_importance_to_dno
 
 logger = structlog.get_logger()
 
@@ -292,6 +293,8 @@ async def upsert_dno_from_seed(db: AsyncSession, record: dict[str, Any]) -> str:
     if record.get("disallow_paths"):
         dno.disallow_paths = record["disallow_paths"]
 
+    apply_importance_to_dno(dno)
+
     # Create BDEW data if present in enriched record
     if record.get("bdew_code"):
         await upsert_bdew_data(db, dno, record)
@@ -310,7 +313,7 @@ async def upsert_mastr_data(db: AsyncSession, dno: DNOModel, record: dict[str, A
     mastr = result.scalar_one_or_none()
 
     if mastr is None:
-        mastr = DNOMastrData(dno_id=dno.id)
+        mastr = DNOMastrData(dno=dno)
         db.add(mastr)
 
     # Update fields

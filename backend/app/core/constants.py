@@ -8,6 +8,19 @@ imported from here to ensure consistency.
 import re
 from typing import Literal
 
+from app.core.models import (
+    DataType as DataTypeEnum,
+)
+from app.core.models import (
+    DNOStatus as DNOStatusEnum,
+)
+from app.core.models import (
+    JobStatus as JobStatusEnum,
+)
+from app.core.models import (
+    VerificationStatus as VerificationStatusEnum,
+)
+
 # =============================================================================
 # Voltage Levels
 # =============================================================================
@@ -170,13 +183,12 @@ def normalize_voltage_level(level: str) -> str | None:
 
 # =============================================================================
 # Data Types
-# NOTE: Literal types below must stay in sync with Enum classes in core/models.py.
-# Enums are used by SQLAlchemy ORM; Literals are used for Pydantic/type hints.
+# Use enum aliases from core.models as single source of truth for type hints.
 # =============================================================================
 
 # Types of data that can be extracted
-DATA_TYPES = ("netzentgelte", "hlzf", "all")
-DataType = Literal["netzentgelte", "hlzf", "all"]
+DATA_TYPES = tuple(member.value for member in DataTypeEnum)
+DataType = DataTypeEnum
 
 # =============================================================================
 # Job Configuration
@@ -187,8 +199,8 @@ JOB_TYPES = ("full", "crawl", "extract")
 JobType = Literal["full", "crawl", "extract"]
 
 # Job statuses
-JOB_STATUSES = ("pending", "running", "completed", "failed", "cancelled")
-JobStatus = Literal["pending", "running", "completed", "failed", "cancelled"]
+JOB_STATUSES = tuple(member.value for member in JobStatusEnum)
+JobStatus = JobStatusEnum
 
 # Default job priority
 DEFAULT_JOB_PRIORITY = 10
@@ -201,8 +213,8 @@ BULK_JOB_PRIORITY = 100
 # =============================================================================
 
 # NOTE: core/models.py VerificationStatus enum also includes "rejected"
-VERIFICATION_STATUSES = ("unverified", "verified", "flagged")
-VerificationStatus = Literal["unverified", "verified", "flagged"]
+VERIFICATION_STATUSES = tuple(member.value for member in VerificationStatusEnum)
+VerificationStatus = VerificationStatusEnum
 
 # =============================================================================
 # Pagination
@@ -244,5 +256,5 @@ ExtractionFormat = Literal["html", "pdf"]
 # DNO Status
 # =============================================================================
 
-DNO_STATUSES = ("uncrawled", "pending", "running", "crawled", "failed")
-DNOStatus = Literal["uncrawled", "pending", "running", "crawled", "failed"]
+DNO_STATUSES = tuple(member.value for member in DNOStatusEnum)
+DNOStatus = DNOStatusEnum

@@ -10,6 +10,8 @@ Use cases:
 - Any OpenAI-compatible API
 """
 
+import time
+import uuid
 from typing import Any
 
 import structlog
@@ -199,6 +201,58 @@ class CustomProvider(BaseProvider):
         }
 
         return result
+
+    async def extract_plain_text(
+        self,
+        image_data: str,
+        mime_type: str,
+        prompt: str,
+    ) -> str:
+        """Extract plain text from image/document using OpenAI-compatible endpoint."""
+        request_id = uuid.uuid4().hex[:12]
+        started_at = time.perf_counter()
+
+        logger.info(
+            event="custom.extract_plain_text.start",
+            provider=self.config.name,
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+        )
+
+        client = self._get_client()
+        response = await client.chat.completions.create(
+            model=self.config.model,
+            messages=[
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{image_data}"},
+                        },
+                    ],
+                }
+            ],
+            max_tokens=self.MAX_OUTPUT_TOKENS,
+        )
+        extracted_text = response.choices[0].message.content or ""
+        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+        output_token_count = response.usage.completion_tokens if response.usage else None
+
+        logger.info(
+            event="custom.extract_plain_text.success",
+            provider=self.config.name,
+            model=self.config.model,
+            mime_type=mime_type,
+            request_id=request_id,
+            elapsed_ms=elapsed_ms,
+            output_token_count=output_token_count,
+            response_length=len(extracted_text),
+        )
+
+        return extracted_text
 
     async def health_check(self) -> bool:
         """Check if custom endpoint is reachable."""

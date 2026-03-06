@@ -11,12 +11,11 @@ from pathlib import Path
 from typing import Annotated, Literal
 
 import structlog
-from arq import create_pool
-from arq.connections import RedisSettings
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 from sqlalchemy import and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import selectinload
 
 from app.core.auth import User as AuthUser
 from app.core.auth import require_admin
@@ -30,6 +29,15 @@ from app.db import (
     NetzentgelteModel,
     get_db,
 )
+from app.services.bulk_extraction import (
+    build_active_job_set,
+    build_failed_job_set,
+    build_verification_status_lookup,
+    create_bulk_extract_jobs,
+    enqueue_extract_jobs,
+    scan_bulk_candidates,
+)
+from app.services.importance import compute_importance_for_dno
 
 logger = structlog.get_logger()
 
@@ -119,6 +127,126 @@ async def admin_dashboard(
                 "netzentgelte": flagged_netzentgelte or 0,
                 "hlzf": flagged_hlzf or 0,
                 "total": (flagged_netzentgelte or 0) + (flagged_hlzf or 0),
+            },
+        },
+    )
+
+
+@router.get("/importance/distribution")
+async def get_importance_distribution(
+    db: Annotated[AsyncSession, Depends(get_db)],
+    admin: Annotated[AuthUser, Depends(require_admin)],
+) -> APIResponse:
+    """Get distribution and diagnostics for DNO importance scoring."""
+    query = (
+        select(DNOModel)
+        .options(selectinload(DNOModel.mastr_data))
+        .order_by(DNOModel.importance_score.desc().nullslast(), DNOModel.name)
+    )
+    result = await db.execute(query)
+    dnos = result.scalars().all()
+
+    if not dnos:
+        return APIResponse(
+            success=True,
+            data={
+                "total": 0,
+                "scored": 0,
+                "p50": 0.0,
+                "p90": 0.0,
+                "histogram": [],
+                "top": [],
+                "quality": {"missing_score": 0, "fallback_customers": 0, "fallback_area": 0},
+            },
+        )
+
+    persisted_scores: list[float] = []
+    fallback_customers = 0
+    fallback_area = 0
+    top_candidates: list[dict] = []
+
+    for dno in dnos:
+        if dno.importance_score is None:
+            # YAGNI: keep this endpoint read-only. We compute transient values for visibility
+            # instead of writing to DB from admin HTTP paths. Persist via recompute script.
+            computed = compute_importance_for_dno(dno)
+            score = computed.score
+            factors = computed.factors
+            confidence = computed.confidence
+            is_persisted = False
+        else:
+            score = dno.importance_score
+            factors = dno.importance_factors or {}
+            confidence = dno.importance_confidence
+            is_persisted = True
+
+        if score is not None:
+            score_value = float(score)
+            if is_persisted:
+                persisted_scores.append(score_value)
+            top_candidates.append(
+                {
+                    "id": dno.id,
+                    "slug": dno.slug,
+                    "name": dno.name,
+                    "importance_score": round(score_value, 2),
+                    "importance_confidence": confidence,
+                    "connection_points_count": dno.connection_points_count,
+                    "score_value": score_value,
+                }
+            )
+
+        fallback_map = factors.get("fallbacks") if isinstance(factors, dict) else None
+        if isinstance(fallback_map, dict):
+            if fallback_map.get("customers"):
+                fallback_customers += 1
+            if fallback_map.get("area"):
+                fallback_area += 1
+
+    histogram_buckets = [0] * 10
+    for value in persisted_scores:
+        idx = min(int(value // 10), 9)
+        histogram_buckets[idx] += 1
+
+    histogram = [
+        {
+            "range": f"{i * 10}-{i * 10 + 9}",
+            "count": histogram_buckets[i],
+        }
+        for i in range(10)
+    ]
+
+    sorted_scores = sorted(persisted_scores)
+    total = len(sorted_scores)
+    p50 = sorted_scores[int((total - 1) * 0.5)] if total else 0.0
+    p90 = sorted_scores[int((total - 1) * 0.9)] if total else 0.0
+
+    top_candidates.sort(key=lambda item: item["score_value"], reverse=True)
+    top_items = [
+        {
+            "id": item["id"],
+            "slug": item["slug"],
+            "name": item["name"],
+            "importance_score": item["importance_score"],
+            "importance_confidence": item["importance_confidence"],
+            "connection_points_count": item["connection_points_count"],
+        }
+        for item in top_candidates[:20]
+    ]
+
+    return APIResponse(
+        success=True,
+        data={
+            "total": len(dnos),
+            "scored": len(persisted_scores),
+            "p50": round(p50, 2),
+            "p90": round(p90, 2),
+            "histogram": histogram,
+            "top": top_items,
+            "quality": {
+                "missing_score": len(dnos) - len(persisted_scores),
+                "fallback_customers": fallback_customers,
+                "fallback_area": fallback_area,
             },
         },
     )
@@ -283,30 +411,7 @@ async def list_cached_files(
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
 
-    # Batch-load all verification statuses upfront (eliminates N+1 queries)
-    netz_status_result = await db.execute(
-        select(
-            NetzentgelteModel.dno_id,
-            NetzentgelteModel.year,
-            NetzentgelteModel.verification_status,
-        )
-    )
-    hlzf_status_result = await db.execute(
-        select(
-            HLZFModel.dno_id,
-            HLZFModel.year,
-            HLZFModel.verification_status,
-        )
-    )
-
-    # Build lookup: (data_type, dno_id, year) -> list of statuses
-    status_lookup: dict[tuple, list[str]] = {}
-    for row in netz_status_result.all():
-        key = ("netzentgelte", row[0], row[1])
-        status_lookup.setdefault(key, []).append(row[2])
-    for row in hlzf_status_result.all():
-        key = ("hlzf", row[0], row[1])
-        status_lookup.setdefault(key, []).append(row[2])
+    status_lookup = await build_verification_status_lookup(db)
 
     files = []
     by_data_type = {"netzentgelte": 0, "hlzf": 0}
@@ -441,28 +546,8 @@ async def preview_bulk_extract(
     dno_result = await db.execute(dno_query)
     dnos = {row.slug: {"id": row.id, "name": row.name} for row in dno_result.all()}
 
-    # Batch-load verification statuses upfront (eliminates N+1)
-    netz_st = await db.execute(
-        select(
-            NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status
-        )
-    )
-    hlzf_st = await db.execute(
-        select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
-    )
-    preview_status_lookup: dict[tuple, list[str]] = {}
-    for row in netz_st.all():
-        preview_status_lookup.setdefault(("netzentgelte", row[0], row[1]), []).append(row[2])
-    for row in hlzf_st.all():
-        preview_status_lookup.setdefault(("hlzf", row[0], row[1]), []).append(row[2])
-
-    # Batch-load failed job markers
-    failed_jobs_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
-        .where(CrawlJobModel.status == "failed")
-        .distinct()
-    )
-    failed_job_set = {(row[0], row[1], row[2]) for row in failed_jobs_result.all()}
+    preview_status_lookup = await build_verification_status_lookup(db)
+    failed_job_set = await build_failed_job_set(db)
 
     total_files = 0
     will_extract = 0
@@ -620,170 +705,72 @@ async def trigger_bulk_extract(
         for row in dno_result.all()
     }
 
-    # Batch-load verification statuses upfront (eliminates N+1)
-    bulk_netz_st = await db.execute(
-        select(
-            NetzentgelteModel.dno_id, NetzentgelteModel.year, NetzentgelteModel.verification_status
-        )
-    )
-    bulk_hlzf_st = await db.execute(
-        select(HLZFModel.dno_id, HLZFModel.year, HLZFModel.verification_status)
-    )
-    bulk_status_lookup: dict[tuple, list[str]] = {}
-    for row in bulk_netz_st.all():
-        bulk_status_lookup.setdefault(("netzentgelte", row[0], row[1]), []).append(row[2])
-    for row in bulk_hlzf_st.all():
-        bulk_status_lookup.setdefault(("hlzf", row[0], row[1]), []).append(row[2])
+    bulk_status_lookup = await build_verification_status_lookup(db)
+    bulk_failed_set = await build_failed_job_set(db)
+    active_jobs_set = await build_active_job_set(db)
 
-    # Batch-load failed job markers
-    bulk_failed_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
-        .where(CrawlJobModel.status == "failed")
-        .distinct()
+    candidates = scan_bulk_candidates(
+        downloads_path=downloads_path,
+        dnos=dnos,
+        parse_file_info=_parse_file_info,
+        supported_extensions=SUPPORTED_EXTENSIONS,
+        data_types=request.data_types,
+        years=request.years,
+        formats=request.formats,
+        mode=request.mode,
+        status_lookup=bulk_status_lookup,
+        failed_job_set=bulk_failed_set,
     )
-    bulk_failed_set = {(row[0], row[1], row[2]) for row in bulk_failed_result.all()}
 
-    # Batch-load existing pending/running jobs
-    active_jobs_result = await db.execute(
-        select(CrawlJobModel.dno_id, CrawlJobModel.year, CrawlJobModel.data_type)
-        .where(CrawlJobModel.status.in_(["pending", "running"]))
-        .distinct()
+    jobs_to_enqueue, files_scanned = await create_bulk_extract_jobs(
+        db=db,
+        candidates=candidates,
+        active_job_set=active_jobs_set,
+        admin_email=admin.email,
+        priority=BULK_EXTRACT_PRIORITY,
+        force_override=request.mode == "force_override",
     )
-    active_jobs_set = {(row[0], row[1], row[2]) for row in active_jobs_result.all()}
 
-    jobs_queued = 0
-    files_scanned = 0
-    jobs_to_enqueue = []
-
-    # Connect to Redis for job queueing
-    redis_pool = await create_pool(RedisSettings.from_dsn(str(settings.redis_url)))
+    await db.commit()
 
     try:
-        for dno_dir in downloads_path.iterdir():
-            if not dno_dir.is_dir():
-                continue
+        jobs_queued = await enqueue_extract_jobs(str(settings.redis_url), jobs_to_enqueue)
+    except Exception as exc:
+        # Compensate: mark committed-but-unenqueued jobs as failed so they
+        # are not left as orphaned "pending" rows that will never execute.
+        failed_ids = [job_info["id"] for job_info in jobs_to_enqueue]
+        if failed_ids:
+            failed_query = select(CrawlJobModel).where(CrawlJobModel.id.in_(failed_ids))
+            failed_result = await db.execute(failed_query)
+            for job in failed_result.scalars():
+                job.status = "failed"
+                job.error_message = f"Enqueue failed: {exc}"
+                job.completed_at = datetime.now(UTC)
+            await db.commit()
 
-            dno_slug = dno_dir.name
-            dno_info = dnos.get(dno_slug)
-            if not dno_info:
-                continue
+        logger.error(
+            "bulk_extract_enqueue_failed",
+            mode=request.mode,
+            files_scanned=files_scanned,
+            jobs_attempted=len(jobs_to_enqueue),
+            jobs_compensated=len(failed_ids),
+            error=str(exc),
+        )
+        return APIResponse(
+            success=False,
+            message="Failed to enqueue extraction jobs",
+            data={"jobs_queued": 0, "files_scanned": files_scanned},
+        )
 
-            for file_path in dno_dir.iterdir():
-                if not file_path.is_file():
-                    continue
-                if file_path.suffix.lower() not in SUPPORTED_EXTENSIONS:
-                    continue
-
-                file_info = _parse_file_info(file_path, dno_slug)
-                if not file_info:
-                    continue
-
-                # Apply filters
-                if file_info["data_type"] not in request.data_types:
-                    continue
-                if request.years and file_info["year"] not in request.years:
-                    continue
-                if request.formats and file_info["format"] not in request.formats:
-                    continue
-
-                files_scanned += 1
-
-                # Look up statuses from batch-loaded data
-                statuses = bulk_status_lookup.get(
-                    (file_info["data_type"], dno_info["id"], file_info["year"]), []
-                )
-                has_verified = any(s == "verified" for s in statuses)
-                has_flagged = any(s == "flagged" for s in statuses)
-                has_data = len(statuses) > 0
-                has_failed_job = (
-                    dno_info["id"],
-                    file_info["year"],
-                    file_info["data_type"],
-                ) in bulk_failed_set
-
-                # Determine if this file should be extracted based on mode
-                should_extract = False
-
-                if request.mode == "flagged_only":
-                    should_extract = has_flagged
-                elif request.mode == "default":
-                    should_extract = not has_data or has_flagged or not has_verified
-                elif request.mode == "force_override":
-                    should_extract = True
-                elif request.mode == "no_data_and_failed":
-                    should_extract = not has_data or has_failed_job
-
-                if not should_extract:
-                    continue
-
-                # Check if there's already a pending/running job (from batch-loaded set)
-                if (dno_info["id"], file_info["year"], file_info["data_type"]) in active_jobs_set:
-                    logger.debug(
-                        "job_already_exists", dno_id=dno_info["id"], year=file_info["year"]
-                    )
-                    continue
-
-                # Create job context
-                job_context = {
-                    "downloaded_file": str(file_path),
-                    "file_to_process": str(file_path),
-                    "dno_slug": dno_slug,
-                    "dno_name": dno_info["name"],
-                    "dno_website": dno_info["website"],
-                    "strategy": "use_cache",
-                    "bulk_extract": True,  # Mark as bulk extract job
-                    "force_override": request.mode == "force_override",
-                    "initiated_by_admin": admin.email,
-                }
-
-                # Create job in database
-                job = CrawlJobModel(
-                    dno_id=dno_info["id"],
-                    year=file_info["year"],
-                    data_type=file_info["data_type"],
-                    job_type="extract",
-                    priority=BULK_EXTRACT_PRIORITY,
-                    current_step=f"Bulk extract by {admin.email}",
-                    triggered_by=admin.email,
-                    context=job_context,
-                )
-                db.add(job)
-                await db.flush()  # Get the job ID
-
-                # Collect job for enqueueing after commit
-                jobs_to_enqueue.append(
-                    {
-                        "id": job.id,
-                        "job_id": f"bulk_extract_{job.id}",
-                        "dno_slug": dno_slug,
-                        "year": file_info["year"],
-                        "data_type": file_info["data_type"],
-                    }
-                )
-
-        # Commit all jobs to DB first
-        await db.commit()
-
-        # Now enqueue them to Redis
-        for job_info in jobs_to_enqueue:
-            await redis_pool.enqueue_job(
-                "process_extract",
-                job_info["id"],
-                _job_id=job_info["job_id"],
-                _queue_name="extract",
-            )
-            jobs_queued += 1
-            logger.info(
-                "bulk_extract_job_queued",
-                job_id=job_info["id"],
-                dno_slug=job_info["dno_slug"],
-                year=job_info["year"],
-                data_type=job_info["data_type"],
-                mode=request.mode,
-            )
-
-    finally:
-        await redis_pool.close()
+    for job_info in jobs_to_enqueue:
+        logger.info(
+            "bulk_extract_job_queued",
+            job_id=job_info["id"],
+            dno_slug=job_info["dno_slug"],
+            year=job_info["year"],
+            data_type=job_info["data_type"],
+            mode=request.mode,
+        )
 
     return APIResponse(
         success=True,
