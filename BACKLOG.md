@@ -105,7 +105,6 @@
 - [ ] Historical data storage and multi-year comparison (covered by TASK-002).
 - [ ] Bulk export API.
 - [ ] HLZF iCal export.
-- [ ] HLZF window export as SQTV CSV (selectable source name/identifier plus quantity mapping).
 - [ ] Price alert system.
 - [ ] Cost calculator.
 - [ ] EV charging integration (evcc).

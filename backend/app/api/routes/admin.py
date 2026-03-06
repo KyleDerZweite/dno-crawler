@@ -151,13 +151,16 @@ async def get_importance_distribution(
             success=True,
             data={
                 "total": 0,
+                "scored": 0,
+                "p50": 0.0,
+                "p90": 0.0,
                 "histogram": [],
                 "top": [],
                 "quality": {"missing_score": 0, "fallback_customers": 0, "fallback_area": 0},
             },
         )
 
-    scores: list[float] = []
+    persisted_scores: list[float] = []
     fallback_customers = 0
     fallback_area = 0
     top_candidates: list[dict] = []
@@ -170,14 +173,17 @@ async def get_importance_distribution(
             score = computed.score
             factors = computed.factors
             confidence = computed.confidence
+            is_persisted = False
         else:
             score = dno.importance_score
             factors = dno.importance_factors or {}
             confidence = dno.importance_confidence
+            is_persisted = True
 
         if score is not None:
             score_value = float(score)
-            scores.append(score_value)
+            if is_persisted:
+                persisted_scores.append(score_value)
             top_candidates.append(
                 {
                     "id": dno.id,
@@ -198,7 +204,7 @@ async def get_importance_distribution(
                 fallback_area += 1
 
     histogram_buckets = [0] * 10
-    for value in scores:
+    for value in persisted_scores:
         idx = min(int(value // 10), 9)
         histogram_buckets[idx] += 1
 
@@ -210,7 +216,7 @@ async def get_importance_distribution(
         for i in range(10)
     ]
 
-    sorted_scores = sorted(scores)
+    sorted_scores = sorted(persisted_scores)
     total = len(sorted_scores)
     p50 = sorted_scores[int((total - 1) * 0.5)] if total else 0.0
     p90 = sorted_scores[int((total - 1) * 0.9)] if total else 0.0
@@ -232,13 +238,13 @@ async def get_importance_distribution(
         success=True,
         data={
             "total": len(dnos),
-            "scored": len(scores),
+            "scored": len(persisted_scores),
             "p50": round(p50, 2),
             "p90": round(p90, 2),
             "histogram": histogram,
             "top": top_items,
             "quality": {
-                "missing_score": len(dnos) - len(scores),
+                "missing_score": len(dnos) - len(persisted_scores),
                 "fallback_customers": fallback_customers,
                 "fallback_area": fallback_area,
             },
@@ -730,11 +736,24 @@ async def trigger_bulk_extract(
     try:
         jobs_queued = await enqueue_extract_jobs(str(settings.redis_url), jobs_to_enqueue)
     except Exception as exc:
+        # Compensate: mark committed-but-unenqueued jobs as failed so they
+        # are not left as orphaned "pending" rows that will never execute.
+        failed_ids = [job_info["id"] for job_info in jobs_to_enqueue]
+        if failed_ids:
+            failed_query = select(CrawlJobModel).where(CrawlJobModel.id.in_(failed_ids))
+            failed_result = await db.execute(failed_query)
+            for job in failed_result.scalars():
+                job.status = "failed"
+                job.error_message = f"Enqueue failed: {exc}"
+                job.completed_at = datetime.now(UTC)
+            await db.commit()
+
         logger.error(
             "bulk_extract_enqueue_failed",
             mode=request.mode,
             files_scanned=files_scanned,
             jobs_attempted=len(jobs_to_enqueue),
+            jobs_compensated=len(failed_ids),
             error=str(exc),
         )
         return APIResponse(

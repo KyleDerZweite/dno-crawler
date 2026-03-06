@@ -25,7 +25,8 @@ logger = structlog.get_logger()
 class OpenRouterProvider(BaseProvider):
     """OpenRouter provider using native SDK with reasoning token support."""
 
-    DEFAULT_MODEL = "google/gemini-2.0-flash"
+    # Intentional: flash-lite-preview chosen over gemini-2.5-flash for better extraction quality.
+    DEFAULT_MODEL = "google/gemini-3.1-flash-lite-preview"
     API_URL = "https://openrouter.ai/api/v1"
     MODELS_ENDPOINT = "https://openrouter.ai/api/v1/models"
 
@@ -288,19 +289,11 @@ class OpenRouterProvider(BaseProvider):
         started_at = time.perf_counter()
 
         logger.info(
-            event="openrouter.extract_plain_text.request",
+            "openrouter_extract_plain_text_start",
             model=self.config.model,
             mime_type=mime_type,
             prompt_length=len(prompt),
             image_data_length=len(image_data),
-            request_id=request_id,
-        )
-
-        logger.info(
-            event="openrouter.extract_plain_text.start",
-            model=self.config.model,
-            mime_type=mime_type,
-            prompt_length=len(prompt),
             request_id=request_id,
         )
 
@@ -331,7 +324,7 @@ class OpenRouterProvider(BaseProvider):
         trace_id = getattr(response, "id", None)
 
         logger.info(
-            event="openrouter.extract_plain_text.success",
+            "openrouter_extract_plain_text_success",
             model=self.config.model,
             mime_type=mime_type,
             request_id=request_id,
