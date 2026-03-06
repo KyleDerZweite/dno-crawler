@@ -104,8 +104,22 @@ async def process_crawl(
                     dt: path for dt, path in cached_files.items() if dt not in imported
                 }
 
-                if not needs_extract and imported:
-                    # All cached data types are already imported and not flagged — skip entirely
+                # Check if any data types are completely missing (no cache + no import).
+                # If so, we must still crawl to discover them.
+                all_types = {"netzentgelte", "hlzf"}
+                covered = set(cached_files.keys()) | imported
+                missing_types = all_types - covered
+
+                if missing_types:
+                    log.info(
+                        "Data types missing from cache and DB, crawl required",
+                        missing=list(missing_types),
+                        cached=list(cached_files.keys()),
+                        imported=list(imported),
+                    )
+
+                if not needs_extract and imported and not missing_types:
+                    # All data types are either cached+imported or imported — skip entirely
                     skip_crawl = True
                     log.info(
                         "All data already imported, skipping crawl",
@@ -120,7 +134,7 @@ async def process_crawl(
                         "message": f"Data already imported for {', '.join(imported)}",
                     }
 
-                if needs_extract:
+                if needs_extract and not missing_types:
                     # Files exist but data not imported — skip crawl, go straight to extract
                     skip_crawl = True
                     log.info(
