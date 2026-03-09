@@ -76,20 +76,19 @@ def score_url(
             if kw not in keywords_found:
                 keywords_found.append(kw)
 
-    # Negative keywords (for "all", only gas penalty applies via NEGATIVE_KEYWORDS["all"])
-    neg_keywords = NEGATIVE_KEYWORDS.get(data_type, [])
-    for neg_kw, penalty in neg_keywords:
-        if neg_kw.lower() in url_lower or neg_kw.lower() in link_text_lower:
+    # Negative keywords (single flat list for all modes)
+    for neg_kw, penalty in NEGATIVE_KEYWORDS:
+        if neg_kw in url_lower or neg_kw in link_text_lower:
             score += penalty  # penalty is already negative
 
-    # Target year bonus
+    # Target year bonus (strong) + any-year bonus (moderate)
     if target_year:
         year_str = str(target_year)
         if year_str in url:
-            score += 25
+            score += 50
             has_year = True
         elif year_str in link_text:
-            score += 10
+            score += 25
             has_year = True
 
     return score, keywords_found, has_year

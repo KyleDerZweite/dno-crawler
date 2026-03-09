@@ -34,13 +34,16 @@ IMPORTANT: Extract ALL voltage levels present in the document - the number varie
 - TSOs may have HöS (Höchstspannung) instead of NS
 
 Map these voltage level names to standardized abbreviations:
-- Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
-- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
-- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" → output as "MS"
-- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" → output as "MS/NS"
-- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" → output as "NS"
-- Höchstspannung / "HöS" → output as "HöS" (rare, TSO only)
+- Hochspannung / Hochspannungsnetz / "inHS" / "HS" / "110 kV" → output as "HS"
+- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" / "110/20 kV" / "110/10 kV" → output as "HS/MS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" / "20 kV" / "10 kV" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" / "20/0,4 kV" / "10/0,4 kV" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" / "0,4 kV" → output as "NS"
+- Höchstspannung / "HöS" / "220 kV" / "380 kV" → output as "HöS" (rare, TSO only)
 - Umspannung Höchst-/Hochspannung / "ausHöS" / "HöS/HS" → output as "HöS/HS" (rare, TSO only)
+
+NOTE: Some DNOs label voltage levels using kV values instead of names (e.g. "Umspannung 20/0,4kV" = MS/NS).
+Standard German grid voltages: NS=0,4kV, MS=10/20kV, HS=110kV, HöS=220/380kV.
 
 SKIP any "ausHÖS" or upstream TSO entries if extracting for a DNO (not TSO).
 
@@ -100,15 +103,22 @@ IMPORTANT: Extract ALL voltage levels present in the document - the number varie
 - TSOs may have HöS (Höchstspannung) instead of NS
 
 Map these voltage level names to standardized abbreviations:
-- Hochspannung / Hochspannungsnetz / "inHS" / "HS" → output as "HS"
-- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" → output as "HS/MS"
-- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" → output as "MS"
-- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" → output as "MS/NS"
-- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" → output as "NS"
-- Höchstspannung / "HöS" → output as "HöS" (rare, TSO only)
+- Hochspannung / Hochspannungsnetz / "inHS" / "HS" / "110 kV" → output as "HS"
+- Umspannung Hoch-/Mittelspannung / "ausHS" / "HS/MS" / "110/20 kV" / "110/10 kV" → output as "HS/MS"
+- Mittelspannung / Mittelspannungsnetz / "inMS" / "MS" / "MSP" / "20 kV" / "10 kV" → output as "MS"
+- Umspannung Mittel-/Niederspannung / "ausMS" / "MS/NS" / "MSP/NSP" / "20/0,4 kV" / "10/0,4 kV" → output as "MS/NS"
+- Niederspannung / Niederspannungsnetz / "inNS" / "NS" / "NSP" / "0,4 kV" → output as "NS"
+- Höchstspannung / "HöS" / "220 kV" / "380 kV" → output as "HöS" (rare, TSO only)
 - Umspannung Höchst-/Hochspannung / "ausHöS" / "HöS/HS" → output as "HöS/HS" (rare, TSO only)
 
+NOTE: Some DNOs label voltage levels using kV values instead of names (e.g. "Umspannung 20/0,4kV" = MS/NS).
+Standard German grid voltages: NS=0,4kV, MS=10/20kV, HS=110kV, HöS=220/380kV.
+
 SKIP any upstream TSO entries if extracting for a DNO (not TSO).
+
+CRITICAL: Output exactly ONE row per voltage level. If the document has separate tables
+per voltage level or repeats the same level in different sections, COMBINE all time windows
+for the same level into a single row.
 
 NOTE: In PDF tables, voltage level names may be split across multiple lines.
 The document may have ONE combined table OR SEPARATE tables per voltage level.
@@ -121,14 +131,11 @@ For EACH voltage level found, extract:
 - sommer: Time window(s) for Jun-Aug
 - herbst: Time window(s) for Sep-Nov
 
-Values for each season:
-- Time window format: Extract as shown in document (e.g. "07:30-15:30" or "07:30 - 15:30")
-- Multiple windows: Separate with "\\n" (e.g., "07:30-13:00\\n17:00-19:30")
-- No peak load times: Use "-" for any of these markers:
-  - "entfällt" (not applicable)
-  - "k.A." or "keine Angabe" (no information)
-  - Empty cells or missing data
-- Note: It is NORMAL for Spring (Frühling) and Summer (Sommer) to have no peak times (use "-")
+SEASON VALUE FORMAT — use JSON arrays:
+- Each season is a JSON array of time range objects: [{{"start": "HH:MM", "end": "HH:MM"}}]
+- Multiple windows: [{{"start": "07:30", "end": "13:00"}}, {{"start": "17:00", "end": "19:30"}}]
+- No peak load times: null (for "entfällt", "k.A.", "keine Angabe", empty cells)
+- Note: It is NORMAL for Spring (Frühling) and Summer (Sommer) to have no peak times (use null)
 
 Return the structure:
 {{
@@ -138,8 +145,8 @@ Return the structure:
   "notes": "<observations about the table format and which voltage levels were found>",
   "voltage_levels_found": <number of voltage levels>,
   "data": [
-    {{"voltage_level": "HS", "winter": "07:30-15:30\\n17:15-19:15", "fruehling": "-", "sommer": "-", "herbst": "11:15-14:00"}},
-    {{"voltage_level": "HS/MS", "winter": "07:30-15:45\\n16:30-18:15", "fruehling": "-", "sommer": "-", "herbst": "16:45-17:30"}},
+    {{"voltage_level": "HS", "winter": [{{"start": "07:30", "end": "15:30"}}, {{"start": "17:15", "end": "19:15"}}], "fruehling": null, "sommer": null, "herbst": [{{"start": "11:15", "end": "14:00"}}]}},
+    {{"voltage_level": "HS/MS", "winter": [{{"start": "07:30", "end": "15:45"}}, {{"start": "16:30", "end": "18:15"}}], "fruehling": null, "sommer": null, "herbst": [{{"start": "16:45", "end": "17:30"}}]}},
     ...
   ]
 }}

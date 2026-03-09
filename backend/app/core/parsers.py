@@ -115,7 +115,7 @@ def parse_time_window(value: str | None) -> str | None:
     s = re.sub(r"\s*bis\s*", "-", s, flags=re.IGNORECASE)
 
     # Remove spaces around dashes (e.g., "16:30 - 19:30" -> "16:30-19:30")
-    s = re.sub(r"\s*-\s*", "-", s)
+    s = re.sub(r"\s*[-‐]\s*", "-", s)  # hyphen-minus + U+2010 hyphen
     s = re.sub(r"\s*–\s*", "-", s)  # en-dash
     s = re.sub(r"\s*—\s*", "-", s)  # em-dash
 
@@ -146,7 +146,7 @@ def parse_hlzf_time_ranges(value: str | None) -> list[dict[str, str]] | None:
     - hyphen/en-dash/em-dash separators
     - occasional AI output using whitespace instead of a dash
     """
-    if not value or value.strip() == "-" or value.strip().lower() == "entfällt":
+    if not value or value.strip() == "-" or value.strip().lower() in ("entfällt", "keine"):
         return None
 
     ranges: list[dict[str, str]] = []
@@ -166,7 +166,7 @@ def parse_hlzf_time_ranges(value: str | None) -> list[dict[str, str]] | None:
             continue
 
         dash_match = re.match(
-            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—]\s*(\d{1,2}:\d{2}(?::\d{2})?)$",
+            r"^(\d{1,2}:\d{2}(?::\d{2})?)\s*[-–—‐]\s*(\d{1,2}:\d{2}(?::\d{2})?)$",
             period,
         )
         if dash_match:
@@ -333,7 +333,10 @@ def _clean_netzentgelte_records(records: list[dict]) -> list[dict]:
 
 
 def _clean_hlzf_records(records: list[dict]) -> list[dict]:
-    """Clean HLZF time window records from AI extraction."""
+    """Clean HLZF time window records from AI extraction.
+
+    Handles both new structured format (list of dicts) and legacy string format.
+    """
     time_fields = ["winter", "fruehling", "sommer", "herbst"]
 
     cleaned = []
@@ -341,8 +344,16 @@ def _clean_hlzf_records(records: list[dict]) -> list[dict]:
         cleaned_record = record.copy()
 
         for field in time_fields:
-            if field in cleaned_record:
-                cleaned_record[field] = _clean_time_value(cleaned_record[field])
+            val = cleaned_record.get(field)
+            if val is None:
+                continue
+            if isinstance(val, list):
+                # Already structured — validate entries
+                valid = [r for r in val if isinstance(r, dict) and r.get("start") and r.get("end")]
+                cleaned_record[field] = valid if valid else None
+            else:
+                # Legacy string fallback — clean and convert
+                cleaned_record[field] = _clean_time_value(val)
 
         cleaned.append(cleaned_record)
 

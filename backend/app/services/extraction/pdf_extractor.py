@@ -112,7 +112,8 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
     # Why: larger DNO tariff sheets often render one voltage row with four values
     # (unter/über 2500h x Leistung/Arbeit) on a single line after PDF text extraction.
     # Example: Hochspannungsnetz   26,88  8,58  230,39  0,44
-    pattern1 = r"((?:Hochspannung|Mittelspannung|Niederspannung|Umspannung|MSP|NSP|HS|MS|NS)[^\n\d]*)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)"
+    # Also matches kV-based names: "Umspannung 20/0,4kV   26,88  8,58  230,39  0,44"
+    pattern1 = r"((?:Hochspannung|Mittelspannung|Niederspannung|Umspannung|MSP|NSP|HS|MS|NS)(?:\s+\d+(?:[,\.]\d+)?(?:\s*/\s*\d+(?:[,\.]\d+)?)?\s*kV)?[^\n\d]*)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)\s+([\d,\.]+)"
 
     # Pattern 2 fallback is section-based extraction with embedded units.
     # Why: many municipal utility PDFs split "bis/über 2.500 Stunden" into separate
@@ -238,46 +239,123 @@ def _parse_netzentgelte_text(text: str, page_num: int) -> list[dict[str, Any]]:
 
 
 def _parse_netzentgelte_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
-    """Parse Netzentgelte data from a table."""
-    records = []
+    """Parse Netzentgelte data from a table.
 
+    Handles two table layouts:
+    1. Standard: voltage level in column 0, 4 price columns
+    2. Split sections: unter/über 2500h as separate sub-tables within one table,
+       voltage level in column 1 (column 0 is a row number like "4", "5"), 2 prices each
+       (e.g. EWE NETZ format)
+    """
     if not table or len(table) < 2:
-        return records
+        return []
 
-    # Try to identify header row and data rows
+    # Long keywords safe for substring matching
+    _VL_KEYWORDS_LONG = ["spannung", "umspann", "netz"]
+    # Short keywords need word boundary matching to avoid false positives
+    # (e.g. "hs" in "Verbrauchseinrichtung", "ns" in "sonstige")
+    _VL_KEYWORDS_SHORT_RE = re.compile(r"\b(?:hs|ms|ns|msp|nsp|kv)\b")
+
+    def _find_voltage_col(row: list) -> int | None:
+        """Find the column index containing a voltage level keyword."""
+        for ci, cell in enumerate(row):
+            cell_lower = str(cell or "").lower()
+            if any(v in cell_lower for v in _VL_KEYWORDS_LONG):
+                return ci
+            if _VL_KEYWORDS_SHORT_RE.search(cell_lower):
+                return ci
+        return None
+
+    def _extract_numbers(row: list, start_col: int) -> list[float]:
+        """Extract numeric values from columns starting at start_col."""
+        numbers = []
+        for cell in row[start_col:]:
+            if cell:
+                cell_str = str(cell).replace(",", ".").strip()
+                try:
+                    numbers.append(float(cell_str))
+                except ValueError:
+                    continue
+        return numbers
+
+    # Track unter/über 2500h sections for split-table format
+    current_section: str | None = None  # "unter" or "uber"
+    vl_data: dict[str, dict[str, Any]] = {}
+
+    # Track pending multi-row voltage labels: some PDFs (e.g. EWR Netz)
+    # split the voltage label across two rows:
+    #   Row 1: "Umspannung"    + prices (42,20 / 5,55 / 169,09 / 0,48)
+    #   Row 2: "110 kV / 20 kV" (no prices)
+    # We hold numbers from row 1 and resolve the label on row 2.
+    pending_numbers: list[float] | None = None
+
     for row in table:
-        if not row or len(row) < 3:
+        if not row or len(row) < 2:
             continue
 
-        # Check if first column looks like a voltage level
-        # Also match MSP/NSP naming used by some municipal utilities
-        first_col = str(row[0] or "").lower()
-        if any(v in first_col for v in ["spannung", "hs", "ms", "ns", "umspann", "msp", "nsp"]):
-            # Try to extract numbers from remaining columns
-            numbers = []
-            for cell in row[1:]:
-                if cell:
-                    cell_str = str(cell).replace(",", ".").strip()
-                    try:
-                        numbers.append(float(cell_str))
-                    except ValueError:
-                        continue
+        row_text = " ".join(str(c or "") for c in row).lower()
 
-            if len(numbers) >= 4:
-                # Normalize voltage level to standard abbreviation
-                voltage_level = normalize_voltage_level(str(row[0]).strip())
-                records.append(
-                    {
-                        "voltage_level": voltage_level,
-                        "leistung_unter_2500h": numbers[0],
-                        "arbeit_unter_2500h": numbers[1],
-                        "leistung": numbers[2],
-                        "arbeit": numbers[3],
-                        "source_page": page_num,
-                    }
-                )
+        # Detect section markers (< 2500h / >= 2500h)
+        if "2500" in row_text or "2.500" in row_text:
+            if any(m in row_text for m in ["< 2", "bis", "unter"]):
+                current_section = "unter"
+                continue
+            if any(m in row_text for m in ["≥ 2", ">= 2", "über", "ab 2"]):
+                current_section = "uber"
+                continue
 
-    return records
+        # Find voltage level in any column
+        vl_col = _find_voltage_col(row)
+        if vl_col is None:
+            continue
+
+        voltage_level = normalize_voltage_level(str(row[vl_col]).strip())
+        numbers = _extract_numbers(row, vl_col + 1)
+
+        if not voltage_level:
+            # Unresolved label (e.g. just "Umspannung") — hold numbers for next row
+            if numbers:
+                pending_numbers = numbers
+            continue
+
+        # Resolved voltage level — use pending numbers if this row has none
+        if not numbers and pending_numbers is not None:
+            numbers = pending_numbers
+        pending_numbers = None  # Clear regardless
+
+        if not numbers:
+            continue
+
+        if voltage_level not in vl_data:
+            vl_data[voltage_level] = {
+                "voltage_level": voltage_level,
+                "leistung_unter_2500h": None,
+                "arbeit_unter_2500h": None,
+                "leistung": None,
+                "arbeit": None,
+                "source_page": page_num,
+            }
+
+        if len(numbers) >= 4:
+            # All 4 prices in one row (standard format)
+            vl_data[voltage_level]["leistung_unter_2500h"] = numbers[0]
+            vl_data[voltage_level]["arbeit_unter_2500h"] = numbers[1]
+            vl_data[voltage_level]["leistung"] = numbers[2]
+            vl_data[voltage_level]["arbeit"] = numbers[3]
+        elif len(numbers) >= 2:
+            # Split format — assign to unter or über section
+            if current_section == "unter":
+                vl_data[voltage_level]["leistung_unter_2500h"] = numbers[0]
+                vl_data[voltage_level]["arbeit_unter_2500h"] = numbers[1]
+            elif current_section == "uber":
+                vl_data[voltage_level]["leistung"] = numbers[0]
+                vl_data[voltage_level]["arbeit"] = numbers[1]
+            else:
+                # No section detected — assume main prices
+                vl_data[voltage_level]["leistung"] = numbers[0]
+                vl_data[voltage_level]["arbeit"] = numbers[1]
+
+    return list(vl_data.values())
 
 
 def find_pdf_url_for_dno(dno_name: str, year: int, pdf_type: str = "netzentgelte") -> str | None:
@@ -500,7 +578,7 @@ def _parse_hlzf_fragmented_tables(tables: list[list[list]], page_num: int) -> li
 
         # Parse rows: first col is voltage level label, rest are von/bis pairs
         current_vl: str | None = None
-        vl_times: dict[str, list[str | None]] = {}  # vl -> list of season values
+        vl_times: dict[str, list[list[dict[str, str]]]] = {}  # vl -> list of season arrays
 
         for row in table:
             label = str(row[0] or "").strip()
@@ -509,11 +587,11 @@ def _parse_hlzf_fragmented_tables(tables: list[list[list]], page_num: int) -> li
             # Check if this row starts a new voltage level
             if label and any(
                 v in label_lower
-                for v in ["spannung", "netz", "umspann", "msp", "nsp", "ms", "ns", "hs"]
+                for v in ["spannung", "netz", "umspann", "msp", "nsp", "ms", "ns", "hs", "kv"]
             ):
                 current_vl = normalize_voltage_level(label)
                 if current_vl and current_vl not in vl_times:
-                    vl_times[current_vl] = [None] * num_seasons
+                    vl_times[current_vl] = [[] for _ in range(num_seasons)]
 
             if not current_vl:
                 continue
@@ -531,16 +609,11 @@ def _parse_hlzf_fragmented_tables(tables: list[list[list]], page_num: int) -> li
                         and re.match(r"\d{1,2}:\d{2}", von)
                         and re.match(r"\d{1,2}:\d{2}", bis)
                     ):
-                        time_range = f"{von}-{bis}"
-                        existing = vl_times[current_vl][s_idx]
-                        if existing:
-                            vl_times[current_vl][s_idx] = f"{existing}\n{time_range}"
-                        else:
-                            vl_times[current_vl][s_idx] = time_range
+                        vl_times[current_vl][s_idx].append({"start": von, "end": bis})
 
         # Build records from collected data
         for vl, times in vl_times.items():
-            season_dict: dict[str, str | None] = {
+            season_dict: dict[str, list[dict[str, str]] | None] = {
                 "winter": None,
                 "fruehling": None,
                 "sommer": None,
@@ -563,24 +636,61 @@ def _parse_hlzf_fragmented_tables(tables: list[list[list]], page_num: int) -> li
     return records
 
 
+def _split_hlzf_table_by_year(table: list[list]) -> list[tuple[int, list[list]]] | None:
+    """Split a multi-year HLZF table into per-year sub-tables.
+
+    Detects rows containing "Hochlastzeitfenster YYYY" and splits the table
+    at those boundaries. Returns None if fewer than 2 year sections found
+    (i.e. single-year or no year markers).
+    """
+    year_indices: list[tuple[int, int]] = []
+    for i, row in enumerate(table):
+        row_text = " ".join(str(c or "") for c in row)
+        match = re.search(r"[Hh]ochlastzeitfenster\s+(\d{4})", row_text)
+        if match:
+            year_indices.append((i, int(match.group(1))))
+
+    if len(year_indices) < 2:
+        return None
+
+    sections = []
+    for idx, (start_row, year_val) in enumerate(year_indices):
+        end_row = year_indices[idx + 1][0] if idx + 1 < len(year_indices) else len(table)
+        sub_table = table[start_row:end_row]
+        if len(sub_table) >= 2:  # Need at least header + one data row
+            sections.append((year_val, sub_table))
+
+    return sections if sections else None
+
+
 def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
     """
     Parse HLZF data from a table.
 
-    Handles TWO table orientations:
-    1. Standard: Voltage levels as rows, seasons as columns
-    2. Inverted: Seasons as rows, voltage levels as columns (e.g., Stadtwerke Norderstedt)
+    Handles:
+    1. Multi-year tables: splits by "Hochlastzeitfenster YYYY" sections
+    2. Standard orientation: Voltage levels as rows, seasons as columns
+    3. Inverted orientation: Seasons as rows, voltage levels as columns
     """
-    records = []
-
     if not table or len(table) < 2:
-        return records
+        return []
 
-    # First, detect table orientation by checking header row
+    # Check for multi-year sections ("Hochlastzeitfenster YYYY" rows)
+    year_sections = _split_hlzf_table_by_year(table)
+    if year_sections:
+        all_records: list[dict[str, Any]] = []
+        for year_val, sub_table in year_sections:
+            # Recurse — sub-tables have only 1 year marker so won't split again
+            section_records = _parse_hlzf_table(sub_table, page_num)
+            for r in section_records:
+                r["year"] = year_val
+            all_records.extend(section_records)
+        return all_records
+
+    # Detect table orientation by checking header row
     header_row = table[0]
     header_str = " ".join(str(cell or "").lower() for cell in header_row)
 
-    # Check if header contains voltage level names (inverted table)
     voltage_keywords = [
         "mittelspannung",
         "niederspannung",
@@ -588,18 +698,26 @@ def _parse_hlzf_table(table: list[list], page_num: int) -> list[dict[str, Any]]:
         "umspannung",
         "msp",
         "nsp",
+        "kv",
     ]
     season_keywords = ["winter", "frühling", "fruehling", "sommer", "herbst"]
 
     has_voltage_in_header = any(kw in header_str for kw in voltage_keywords)
     has_season_in_header = any(kw in header_str for kw in season_keywords)
 
+    # Fallback: try normalizing individual cells for short VL abbreviations
+    # (catches "MS", "NS", "U HS/MS", etc. that long keywords miss)
+    if not has_voltage_in_header:
+        for cell in header_row:
+            cell_str = str(cell or "").strip()
+            if cell_str and normalize_voltage_level(cell_str):
+                has_voltage_in_header = True
+                break
+
     if has_voltage_in_header and not has_season_in_header:
-        # INVERTED TABLE: Voltage levels as columns, seasons as rows
         logger.debug("HLZF table detected as INVERTED (voltage levels as columns)")
         return _parse_hlzf_table_inverted(table, page_num)
     else:
-        # STANDARD TABLE: Seasons as columns, voltage levels as rows
         logger.debug("HLZF table detected as STANDARD (seasons as columns)")
         return _parse_hlzf_table_standard(table, page_num)
 
@@ -608,67 +726,89 @@ def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[st
     """
     Parse HLZF table where voltage levels are columns and seasons are rows.
 
-    Example format (Stadtwerke Norderstedt):
-    |           | Mittelspannung | Umspannung MSP/NSP | Niederspannung |
-    |-----------|----------------|---------------------|----------------|
-    | Frühling  | 17:30-20:30    | k.A.                | 18:00-20:00    |
-    | Sommer    | k.A.           | k.A.                | k.A.           |
-    | Herbst    | 16:45-19:30    | k.A.                | 16:45-19:30    |
-    | Winter    | 16:30-19:45    | k.A.                | 16:30-19:30    |
+    Handles:
+    - Long VL names ("Mittelspannung") and short abbreviations ("MS", "U HS/MS")
+    - Single-column times ("07:00-19:30") and paired columns ("07:00" | "19:30")
+    - Multiple rows per season (accumulated into time window lists)
     """
-    records_dict = {}  # voltage_level -> {winter: ..., fruehling: ..., etc.}
+    records_dict: dict[str, dict[str, Any]] = {}
 
     # Parse header row to get voltage level columns
     header_row = table[0]
-    voltage_columns = {}  # column_index -> normalized voltage level
+    voltage_columns: dict[int, str] = {}
 
     for col_idx, cell in enumerate(header_row):
         cell_str = str(cell or "").strip()
-        cell_lower = cell_str.lower()
+        if not cell_str:
+            continue
 
-        # Check if this column is a voltage level
-        if any(kw in cell_lower for kw in ["spannung", "msp", "nsp", "umspann"]):
-            vl = normalize_voltage_level(cell_str)
-            if vl:
-                voltage_columns[col_idx] = vl
-                records_dict[vl] = {
-                    "voltage_level": vl,
-                    "winter": None,
-                    "fruehling": None,
-                    "sommer": None,
-                    "herbst": None,
-                    "source_page": page_num,
-                }
+        # Try normalizing — handles both long names and short abbreviations
+        vl = normalize_voltage_level(cell_str)
+        if vl and vl not in voltage_columns.values():
+            voltage_columns[col_idx] = vl
+            records_dict[vl] = {
+                "voltage_level": vl,
+                "winter": None,
+                "fruehling": None,
+                "sommer": None,
+                "herbst": None,
+                "source_page": page_num,
+            }
 
     if not voltage_columns:
         return []
 
-    # Parse data rows (seasons)
+    # Detect paired columns: VL header in col N, data extends to col N+1
+    # (e.g., separate "von" and "bis" columns per voltage level)
+    paired_columns = False
+    if len(voltage_columns) >= 2:
+        vl_cols = sorted(voltage_columns.keys())
+        gaps = [vl_cols[i + 1] - vl_cols[i] for i in range(len(vl_cols) - 1)]
+        paired_columns = all(g == 2 for g in gaps)
+
+    # Parse data rows — track current season across rows for multi-window support
+    current_season: str | None = None
     for row in table[1:]:
         if not row or len(row) < 2:
             continue
 
-        first_col = str(row[0] or "").lower()
+        # Detect season from first few columns (handles label in any early column)
+        row_prefix = " ".join(str(c or "") for c in row[:4]).lower()
 
-        # Determine which season this row represents
-        season_key = None
-        if "winter" in first_col:
-            season_key = "winter"
-        elif "frühling" in first_col or "fruehling" in first_col or "frühjahr" in first_col:
-            season_key = "fruehling"
-        elif "sommer" in first_col:
-            season_key = "sommer"
-        elif "herbst" in first_col:
-            season_key = "herbst"
+        if re.search(r"\bwinter\b", row_prefix):
+            current_season = "winter"
+        elif re.search(r"\b(?:frühling|fruehling|frühjahr)\b", row_prefix):
+            current_season = "fruehling"
+        elif re.search(r"\bsommer\b", row_prefix):
+            current_season = "sommer"
+        elif re.search(r"\bherbst\b", row_prefix):
+            current_season = "herbst"
 
-        if not season_key:
+        if not current_season:
             continue
 
         # Extract values for each voltage level column
         for col_idx, vl in voltage_columns.items():
-            if col_idx < len(row):
+            if col_idx >= len(row):
+                continue
+
+            if paired_columns and col_idx + 1 < len(row):
+                # Combine paired columns into a time range
+                cell1 = str(row[col_idx] or "").strip()
+                cell2 = str(row[col_idx + 1] or "").strip()
+                if cell1 and cell2:
+                    combined = f"{cell1}-{cell2}"
+                else:
+                    combined = cell1 or cell2
+                time_value = _clean_time_value(combined)
+            else:
                 time_value = _clean_time_value(row[col_idx])
-                records_dict[vl][season_key] = time_value
+
+            # Accumulate time windows (multiple rows per season)
+            if time_value:
+                if records_dict[vl][current_season] is None:
+                    records_dict[vl][current_season] = []
+                records_dict[vl][current_season].extend(time_value)
 
     return list(records_dict.values())
 
@@ -727,7 +867,7 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
         first_col = str(row[0] or "").lower()
 
         # Check if this is a voltage level row
-        if any(v in first_col for v in ["spannung", "netz", "umspann", "msp", "nsp"]):
+        if any(v in first_col for v in ["spannung", "netz", "umspann", "msp", "nsp", "kv"]):
             voltage_level = normalize_voltage_level(str(row[0]).strip())
 
             # Extract seasonal values using the column mapping from header
@@ -751,15 +891,49 @@ def _parse_hlzf_table_standard(table: list[list], page_num: int) -> list[dict[st
     return records
 
 
+def _split_hlzf_text_by_year(text: str) -> list[tuple[int, str]] | None:
+    """Split text into per-year sections at 'Hochlastzeitfenster YYYY' boundaries.
+
+    Returns None if fewer than 2 year sections found (single-year or no markers).
+    """
+    matches = list(re.finditer(r"[Hh]ochlastzeitfenster\s+(\d{4})", text))
+    if len(matches) < 2:
+        return None
+
+    sections = []
+    for i, m in enumerate(matches):
+        year_val = int(m.group(1))
+        start = m.start()
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
+        sections.append((year_val, text[start:end]))
+
+    return sections
+
+
 def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
     """Parse HLZF data from raw text when table extraction fails.
 
-    Uses a two-pass approach:
+    Handles multi-year documents by splitting at "Hochlastzeitfenster YYYY"
+    boundaries first, then parsing each section independently.
+
+    Uses a two-pass approach per section:
     1. Find voltage level positions in text (full names and abbreviations)
     2. Find time ranges (HH:MM patterns) and associate them with the nearest
        preceding voltage level, mapping to seasons by column position.
     """
-    records = []
+    # Check for multi-year sections
+    year_sections = _split_hlzf_text_by_year(text)
+    if year_sections:
+        all_records: list[dict[str, Any]] = []
+        for year_val, section_text in year_sections:
+            # Recurse — single sections won't trigger splitting again
+            records = _parse_hlzf_text(section_text)
+            for r in records:
+                r["year"] = year_val
+            all_records.extend(records)
+        return all_records
+
+    records: list[dict[str, Any]] = []
 
     # Voltage level labels to search for — sorted longest first to avoid
     # short labels (e.g. "MS") claiming positions inside longer ones ("MS/NS")
@@ -780,6 +954,14 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
             ("Niederspannung", "NS"),
             ("NS", "NS"),
             ("HS", "HS"),
+            # kV-based naming (e.g. EWE)
+            ("Umspannung 110/20kV", "HS/MS"),
+            ("Umspannung 110/10kV", "HS/MS"),
+            ("Umspannung 20/0,4kV", "MS/NS"),
+            ("Umspannung 10/0,4kV", "MS/NS"),
+            ("110kV", "HS"),
+            ("20kV", "MS"),
+            ("10kV", "MS"),
         ],
         key=lambda x: len(x[0]),
         reverse=True,
@@ -847,7 +1029,7 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
         return records
 
     # Find all time ranges in the text: HH:MM - HH:MM (with various separators or just whitespace)
-    time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—\s]\s*(\d{1,2}:\d{2})"
+    time_range_pattern = r"(\d{1,2}:\d{2})\s*[-–—‐\s]\s*(\d{1,2}:\d{2})"
     time_matches = [
         (m.start(), m.group(1), m.group(2)) for m in re.finditer(time_range_pattern, text)
     ]
@@ -868,19 +1050,16 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
 
         # Map time ranges to seasons
         # Each season gets one time range (von-bis), assigned in season_order
-        season_values: dict[str, str | None] = dict.fromkeys(
+        season_values: dict[str, list[dict[str, str]] | None] = dict.fromkeys(
             ["winter", "fruehling", "sommer", "herbst"], None
         )
 
         for j, (_, start_time, end_time) in enumerate(vl_times):
             if j < num_seasons:
                 season_key = season_order[j]
-                time_str = f"{start_time}-{end_time}"
                 if season_values[season_key] is None:
-                    season_values[season_key] = time_str
-                else:
-                    # Multiple time ranges for same season
-                    season_values[season_key] += f"\n{time_str}"
+                    season_values[season_key] = []
+                season_values[season_key].append({"start": start_time, "end": end_time})
 
         records.append(
             {
@@ -893,14 +1072,11 @@ def _parse_hlzf_text(text: str) -> list[dict[str, Any]]:
     return records
 
 
-def _clean_time_value(value: Any) -> str | None:
+def _clean_time_value(value: Any) -> list[dict[str, str]] | None:
     """
-    Clean and normalize a time window value.
+    Clean and normalize a time window value from a PDF cell.
 
-    Returns:
-        - Cleaned time string like "08:15-18:00" or "12:15-13:15\\n16:45-19:45"
-        - "-" if marked as not applicable (entfällt, k.A., etc.)
-        - None if empty or missing
+    Returns a structured list of time range dicts, or None if no valid data.
     """
     if value is None:
         return None
@@ -911,37 +1087,28 @@ def _clean_time_value(value: Any) -> str | None:
     if s in {"", "-"}:
         return None
 
-    # Handle "no value" markers - return "-" for consistency
+    # Handle "no value" markers
     s_lower = s.lower()
-    if "entfällt" in s_lower or "k.a." in s_lower or "keine angabe" in s_lower:
-        return "-"
+    if (
+        s_lower == "keine"
+        or "entfällt" in s_lower
+        or "k.a." in s_lower
+        or "keine angabe" in s_lower
+    ):
+        return None
 
-    # Remove "Uhr" suffix (e.g., "16:30 Uhr bis 19:30 Uhr" -> "16:30 bis 19:30")
+    # Remove "Uhr" suffix
     s = re.sub(r"\s*[Uu]hr\s*", " ", s).strip()
 
-    # Replace "bis" with dash (e.g., "16:30 bis 19:30" -> "16:30-19:30")
+    # Replace "bis" with dash
     s = re.sub(r"\s*bis\s*", "-", s, flags=re.IGNORECASE)
 
-    # Clean up time format: "08:15 - 18:00" or "08:15\n-\n18:00" -> "08:15-18:00"
-    # First, normalize all whitespace/newlines around dashes
-    s = re.sub(r"\s*-\s*", "-", s)
-    s = re.sub(r"\s*–\s*", "-", s)  # en-dash
-    s = re.sub(r"\s*—\s*", "-", s)  # em-dash
+    # Normalize all dash types (including U+2010 HYPHEN from some PDFs)
+    s = re.sub(r"\s*[-–—‐]\s*", "-", s)
 
-    # Multiple time ranges separated by newlines should be cleaned
-    # "12:15-13:15\n16:45-19:45" is valid format
-    # Split by remaining whitespace into potential time ranges
-    parts = s.split()
-    cleaned_parts = []
-    for part in parts:
-        part = part.strip()
-        # Check if it looks like a time range (HH:MM-HH:MM)
-        if re.match(r"^\d{1,2}:\d{2}-\d{1,2}:\d{2}$", part):
-            cleaned_parts.append(part)
+    # Find all HH:MM-HH:MM patterns
+    ranges = []
+    for m in re.finditer(r"(\d{1,2}:\d{2})-(\d{1,2}:\d{2})", s):
+        ranges.append({"start": m.group(1), "end": m.group(2)})
 
-    if cleaned_parts:
-        return "\n".join(cleaned_parts)
-
-    # If no clean time ranges found, return the stripped value as-is
-    # (might need manual review)
-    return s if s else None
+    return ranges if ranges else None

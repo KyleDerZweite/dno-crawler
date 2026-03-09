@@ -115,6 +115,7 @@ KEYWORDS = {
         "preisblaetter",
         "netzzugang",
         "netznutzung",
+        "netzkosten",
         "entgelt",
         "tarif",
         "veroeffentlichung",
@@ -145,27 +146,28 @@ KEYWORDS = {
     ],
 }
 
-# Negative keywords - penalize documents containing these
-# Format: (keyword, penalty) - higher penalty = stronger filter
-NEGATIVE_KEYWORDS = {
-    "netzentgelte": [
-        ("gas", -100),  # HARD filter - wrong energy type entirely
-        ("vermiedene", -25),  # Avoided network charges (different document type)
-        ("referenzpreis", -25),  # Reference prices
-        ("individuelle", -25),  # Individual tariffs (special cases)
-        ("vorlaeufig", -25),
-        ("vorläufig", -25),  # Preliminary versions
-        ("entwurf", -25),  # Draft
-    ],
-    "hlzf": [
-        ("gas", -100),  # HARD filter - wrong energy type
-        # Note: Don't penalize "netzentgelte" - HLZF is often on the same page!
-        ("preisblatt", -15),  # Price sheets (soft penalty, could still have HLZF)
-    ],
-    "all": [
-        ("gas", -100),  # Only filter gas when searching for both types
-    ],
-}
+# Negative keywords applied to ALL crawl modes (discovery is always data-type agnostic).
+# Format: (keyword, penalty) - penalty is negative, higher magnitude = stronger filter.
+NEGATIVE_KEYWORDS: list[tuple[str, int]] = [
+    # Hard filters - completely wrong topic
+    ("gas", -100),
+    # Metering / measurement documents (not tariff data)
+    ("messstellenbetrieb", -50),  # Meter operation services (MsbG)
+    ("msbg", -30),  # Messstellenbetriebsgesetz
+    ("messsystem", -30),  # Intelligent metering systems
+    ("messeinrichtung", -30),  # Measuring equipment
+    ("messwesen", -30),  # Metering services
+    # Wrong document types - still contain "netzentgelt" in the name but are not tariff tables
+    ("vermiedene", -50),  # "vermiedene Netzentgelte" (avoided network charges)
+    ("referenzpreis", -50),  # Reference price sheets
+    ("konzessionsabgabe", -50),  # Concession fees
+    ("singul", -30),  # "singulär genutzte Betriebsmittel" (special equipment pricing)
+    ("individuelle", -25),  # Individual tariff agreements
+    # Draft / preliminary versions
+    ("vorlaeufig", -25),
+    ("vorläufig", -25),
+    ("entwurf", -25),
+]
 
 # Irrelevant path segments to skip
 IRRELEVANT_PATHS = {
@@ -357,13 +359,18 @@ class WebCrawler:
                 pages_crawled += 1
                 results.append(result)
 
-                # Queue discovered links
-                for link in links:
+                # Queue discovered links (with anchor text for scoring)
+                for link, anchor_text in links:
                     normalized_link = normalize_url(link)
                     if normalized_link not in visited:
                         visited.add(normalized_link)
                         link_score = self._score_url(
-                            normalized_link, depth + 1, target_keywords, data_type, target_year
+                            normalized_link,
+                            depth + 1,
+                            target_keywords,
+                            data_type,
+                            target_year,
+                            link_text=anchor_text,
                         )
                         heappush(queue, QueueItem(-link_score, normalized_link, depth + 1))
 
@@ -389,7 +396,7 @@ class WebCrawler:
         data_type: str | None,
         allowed_domains: set[str],
         target_year: int | None = None,
-    ) -> tuple[CrawlResult | None, list[str]]:
+    ) -> tuple[CrawlResult | None, list[tuple[str, str]]]:
         """Fetch using probe and get logic, then analyze the content."""
         # Probe URL with HEAD first
         is_valid, content_type, final_url, content_length = await self.prober.probe(
@@ -531,13 +538,16 @@ class WebCrawler:
         target_keywords: list[str],
         data_type: str | None = None,
         target_year: int | None = None,
+        link_text: str = "",
     ) -> float:
         """Score URL based on relevance.
 
         Higher score = more likely to contain target data.
+        Uses both URL patterns and anchor text for scoring.
         """
         score = 0.0
         url_lower = url.lower()
+        link_text_lower = link_text.lower() if link_text else ""
 
         # Depth penalty (prefer shallower)
         score -= depth * 2
@@ -545,13 +555,20 @@ class WebCrawler:
         # Document type bonus
         score += self._get_document_score(url_lower, url)
 
-        # Keyword bonuses
+        # Keyword bonuses (URL + anchor text)
         for keyword in target_keywords:
-            if keyword.lower() in url_lower:
+            kw_lower = keyword.lower()
+            if kw_lower in url_lower:
                 score += 15
+            if link_text_lower and kw_lower in link_text_lower:
+                score += 10
 
         # Year in URL bonus (current/recent years)
         score += self._get_year_bonus(url_lower, target_year)
+
+        # Year in anchor text bonus
+        if target_year and link_text and str(target_year) in link_text:
+            score += 25
 
         # Irrelevant path penalty
         for pattern in IRRELEVANT_PATHS:
@@ -560,10 +577,9 @@ class WebCrawler:
                 break
 
         # Negative keyword penalty (filter out wrong document types)
-        if data_type and data_type in NEGATIVE_KEYWORDS:
-            for neg_kw, penalty in NEGATIVE_KEYWORDS[data_type]:
-                if neg_kw.lower() in url_lower:
-                    score += penalty  # penalty is already negative
+        for neg_kw, penalty in NEGATIVE_KEYWORDS:
+            if neg_kw in url_lower or neg_kw in link_text_lower:
+                score += penalty  # penalty is already negative
 
         # Data-type-specific scoring (skip for "all" to avoid cross-type penalties)
         if data_type and data_type != "all":
@@ -572,19 +588,38 @@ class WebCrawler:
         return score
 
     def _get_year_bonus(self, url_lower: str, target_year: int | None = None) -> float:
-        """Calculate score bonus for recent years in URL."""
+        """Calculate score bonus for years found in URL.
+
+        Target year gets a strong bonus (+50). Other recent years get a
+        moderate bonus (+10). All years are welcome (we want to download
+        all available data), but the target year is prioritised so it gets
+        a download slot first.
+        """
         bonus = 0.0
         current_year = datetime.now().year
+        found_years: set[int] = set()
         for pattern in _YEAR_PATTERNS:
-            matches = pattern.findall(url_lower)
-            for year_str in matches:
-                year = int(year_str)
-                if target_year and year == target_year:
-                    bonus += 20  # Stronger bonus for target year
-                    break
-                if current_year - 6 <= year <= current_year:
-                    bonus += 10
-                    break  # Only count once per pattern type
+            for year_str in pattern.findall(url_lower):
+                found_years.add(int(year_str))
+
+        if not found_years:
+            return 0.0
+
+        cutoff_year = current_year - 10
+
+        if target_year and target_year in found_years:
+            bonus += 50  # Strong bonus for target year
+
+        for year in found_years:
+            if target_year and year == target_year:
+                continue  # Already counted above
+            if year < cutoff_year:
+                bonus -= 30  # Older than 10 years, not worth the download slot
+            elif current_year - 6 <= year <= current_year + 1:
+                bonus += 10  # Recent year bonus
+            else:
+                bonus += 3  # Older but still within 10-year window
+
         return bonus
 
     def _get_document_score(self, url_lower: str, url: str) -> float:
@@ -630,14 +665,15 @@ class WebCrawler:
         base_url: str,
         allowed_domains: set[str],
         target_keywords: list[str] | None = None,
-    ) -> list[str]:
-        """Extract valid links from HTML.
+    ) -> list[tuple[str, str]]:
+        """Extract valid links from HTML with their anchor text.
 
+        Returns list of (url, anchor_text) tuples.
         Filters out external links, skip patterns, and normalizes URLs.
         External HTML links are allowed through if their anchor text or URL
         path contains a target keyword (relevance gate).
         """
-        links = []
+        links: list[tuple[str, str]] = []
 
         for tag in soup.find_all("a", href=True):
             href = tag["href"]
@@ -648,6 +684,7 @@ class WebCrawler:
 
             # Resolve relative URLs
             full_url = urljoin(base_url, href)
+            anchor_text = tag.get_text(strip=True)
 
             try:
                 parsed = urlparse(full_url)
@@ -682,13 +719,13 @@ class WebCrawler:
                         # External document links are always allowed (existing behavior)
                         pass
                     elif target_keywords and self._is_relevant_external_link(
-                        full_url, tag.get_text(strip=True), target_keywords
+                        full_url, anchor_text, target_keywords
                     ):
                         # External HTML link with relevant anchor/URL — follow it
                         self.log.debug(
                             "relevant_external_link",
                             url=full_url[:100],
-                            anchor=tag.get_text(strip=True)[:60],
+                            anchor=anchor_text[:60],
                         )
                     else:
                         # External HTML link with no relevance signal — skip
@@ -698,7 +735,7 @@ class WebCrawler:
                 if any(pattern in path_lower for pattern in IRRELEVANT_PATHS):
                     continue
 
-                links.append(full_url)
+                links.append((full_url, anchor_text))
 
             except Exception:
                 continue

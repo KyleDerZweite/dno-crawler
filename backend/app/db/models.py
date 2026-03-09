@@ -452,13 +452,54 @@ class HLZFModel(Base, TimestampMixin, ExtractionSourceMixin, VerificationMixin):
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     voltage_level: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    # Time windows per season (e.g., "08:00-12:00, 17:00-20:00" or "entfällt")
-    winter: Mapped[str | None] = mapped_column(Text)
-    fruehling: Mapped[str | None] = mapped_column(Text)
-    sommer: Mapped[str | None] = mapped_column(Text)
-    herbst: Mapped[str | None] = mapped_column(Text)
+    # Time windows per season as JSON arrays of {start, end} objects.
+    # Example: [{"start": "07:30:00", "end": "15:30:00"}, ...]
+    # NULL when no peak load time window exists for that season.
+    winter: Mapped[list | None] = mapped_column(JSON)
+    fruehling: Mapped[list | None] = mapped_column(JSON)
+    sommer: Mapped[list | None] = mapped_column(JSON)
+    herbst: Mapped[list | None] = mapped_column(JSON)
 
     dno: Mapped["DNOModel"] = relationship(back_populates="hlzf")
+
+
+class DownloadRegistryModel(Base, TimestampMixin):
+    """Persistent record of every file downloaded for a DNO across crawl runs.
+
+    Enables cross-run deduplication: the crawler knows which URLs were already
+    fetched and how each file was classified, so subsequent runs skip known
+    URLs and prioritise untried ones.
+    """
+
+    __tablename__ = "download_registry"
+    __table_args__ = (
+        Index("idx_dlreg_dno_year", "dno_id", "year"),
+        Index("idx_dlreg_url_hash", "dno_id", "url_hash", unique=True),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    dno_id: Mapped[int] = mapped_column(Integer, ForeignKey("dnos.id", ondelete="CASCADE"))
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    crawl_job_id: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey("crawl_jobs.id", ondelete="SET NULL")
+    )
+
+    # URL tracking
+    source_url: Mapped[str] = mapped_column(Text, nullable=False)
+    url_hash: Mapped[str] = mapped_column(String(32), nullable=False)  # MD5 hex of URL
+
+    # File info
+    file_path: Mapped[str | None] = mapped_column(Text)  # Relative to storage_path
+    file_hash: Mapped[str | None] = mapped_column(String(64))  # SHA-256 of content
+    file_format: Mapped[str | None] = mapped_column(String(10))
+    file_size_bytes: Mapped[int | None] = mapped_column(Integer)
+
+    # Classification result from step 03
+    classification: Mapped[str] = mapped_column(
+        String(20), default="unclassified"
+    )  # netzentgelte | hlzf | irrelevant | unclassified
+    classification_detail: Mapped[dict | None] = mapped_column(JSON)
+    detected_year: Mapped[int | None] = mapped_column(Integer)
 
 
 class DataSourceModel(Base, TimestampMixin):

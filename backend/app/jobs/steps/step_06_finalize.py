@@ -192,61 +192,55 @@ class FinalizeStep(BaseStep):
         logger.warning("unknown_voltage_level", raw=cleaned)
         return cleaned
 
-    def _normalize_hlzf_time(self, value: str | None) -> str | None:
-        """
-        Normalize HLZF time values to consistent HH:MM:SS format.
+    def _normalize_hlzf_time(
+        self, value: list[dict[str, str]] | str | None
+    ) -> list[dict[str, str]] | None:
+        """Normalize HLZF time value to a JSON-ready array of {start, end} dicts.
 
-        Handles:
-        - "7:15" -> "07:15:00"
-        - "07:15" -> "07:15:00"
-        - "7:15:00" -> "07:15:00"
-        - "7:15-13:15" -> "07:15:00-13:15:00"
-        - "18:00 20:00" -> "18:00:00-20:00:00" (space instead of hyphen - AI error)
-        - Multiple ranges separated by newlines
+        Accepts both structured arrays (from new extraction) and legacy strings.
+        Always returns HH:MM:SS format with zero-padded hours.
         """
+
+        def _norm_time(t: str) -> str:
+            t = t.strip()
+            m = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", t)
+            if m:
+                return f"{m.group(1).zfill(2)}:{m.group(2)}:{m.group(3) or '00'}"
+            return t
+
+        # Already a structured array — normalize times and pass through
+        if isinstance(value, list):
+            ranges = []
+            for r in value:
+                if isinstance(r, dict) and r.get("start") and r.get("end"):
+                    ranges.append({"start": _norm_time(r["start"]), "end": _norm_time(r["end"])})
+            return ranges if ranges else None
+
+        # Legacy string fallback
         if value is None:
             return None
 
         value = value.strip()
-        if not value or value.lower() == "entfällt" or value == "-":
+        if not value or value.lower() in ("entfällt", "keine", "-"):
             return None
 
-        def normalize_single_time(t: str) -> str:
-            """Normalize a single time like '7:15' to '07:15:00'."""
-            t = t.strip()
-            # Match time with optional seconds: H:MM or HH:MM or H:MM:SS or HH:MM:SS
-            match = re.match(r"^(\d{1,2}):(\d{2})(?::(\d{2}))?$", t)
-            if match:
-                hour = match.group(1).zfill(2)
-                minute = match.group(2)
-                second = match.group(3) if match.group(3) else "00"
-                return f"{hour}:{minute}:{second}"
-            return t  # Return as-is if not matching expected format
-
-        def normalize_range(r: str) -> str:
-            """Normalize a time range like '7:15-13:15' to '07:15:00-13:15:00'."""
+        def _parse_range(r: str) -> dict[str, str] | None:
             r = r.strip()
+            m = re.match(r"^(.+?)\s*[-–—]\s*(.+)$", r)
+            if m:
+                return {"start": _norm_time(m.group(1)), "end": _norm_time(m.group(2))}
+            m = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$", r)
+            if m:
+                return {"start": _norm_time(m.group(1)), "end": _norm_time(m.group(2))}
+            return None
 
-            # First, try to match range with any dash type: hyphen (-), en-dash (–), em-dash (—)
-            match = re.match(r"^(.+?)\s*[-–—]\s*(.+)$", r)
-            if match:
-                start = normalize_single_time(match.group(1))
-                end = normalize_single_time(match.group(2))
-                return f"{start}-{end}"
+        ranges = []
+        for line in value.split("\n"):
+            parsed = _parse_range(line)
+            if parsed:
+                ranges.append(parsed)
 
-            # Handle AI error: "18:00 20:00" (space instead of hyphen between two times)
-            space_match = re.match(r"^(\d{1,2}:\d{2}(?::\d{2})?)\s+(\d{1,2}:\d{2}(?::\d{2})?)$", r)
-            if space_match:
-                start = normalize_single_time(space_match.group(1))
-                end = normalize_single_time(space_match.group(2))
-                return f"{start}-{end}"
-
-            return normalize_single_time(r)  # Single time, not a range
-
-        # Split by newlines (multiple ranges) and normalize each
-        lines = value.split("\n")
-        normalized_lines = [normalize_range(line) for line in lines if line.strip()]
-        return "\n".join(normalized_lines) if normalized_lines else None
+        return ranges if ranges else None
 
     async def _save_hlzf(
         self,
@@ -265,6 +259,17 @@ class FinalizeStep(BaseStep):
             force_override: If True, override even verified records. If False, skip verified records.
         """
         source_meta = source_meta or {}
+
+        # Filter to target year for multi-year PDFs (records tagged with 'year').
+        # Records without a 'year' field are single-year and use the job's year.
+        if records and any(r.get("year") is not None for r in records):
+            records = [r for r in records if r.get("year") == year]
+            logger.info(
+                "hlzf_year_filtered",
+                target_year=year,
+                records_after_filter=len(records),
+            )
+
         rows_to_upsert = []
 
         for record in records:
@@ -292,6 +297,10 @@ class FinalizeStep(BaseStep):
 
         if not rows_to_upsert:
             return 0
+
+        # Merge rows with the same voltage_level by combining time windows.
+        # The regex extractor may find multiple sub-tables for the same level.
+        rows_to_upsert = self._merge_hlzf_by_voltage_level(rows_to_upsert)
 
         stmt = pg_insert(HLZFModel).values(rows_to_upsert)
 
@@ -321,6 +330,48 @@ class FinalizeStep(BaseStep):
         saved = len(rows_to_upsert)
         logger.info("hlzf_saved", count=saved, dno_id=dno_id, year=year)
         return saved
+
+    def _merge_hlzf_by_voltage_level(self, rows: list[dict]) -> list[dict]:
+        """Merge HLZF rows sharing the same voltage_level.
+
+        Multiple rows for one level can appear when the regex extractor hits
+        separate sub-tables in the same PDF.  Time windows are combined with
+        newlines; 'keine'/None values are dropped when real times exist.
+        """
+        seasons = ("winter", "fruehling", "sommer", "herbst")
+        grouped: dict[str, list[dict]] = {}
+        for row in rows:
+            grouped.setdefault(row["voltage_level"], []).append(row)
+
+        merged: list[dict] = []
+        for _vl, group in grouped.items():
+            if len(group) == 1:
+                merged.append(group[0])
+                continue
+
+            base = dict(group[0])
+            for season in seasons:
+                combined: list[dict] = []
+                seen: set[tuple[str, str]] = set()
+                for row in group:
+                    val = row.get(season)
+                    if not val:
+                        continue
+                    for rng in val:
+                        key = (rng["start"], rng["end"])
+                        if key not in seen:
+                            seen.add(key)
+                            combined.append(rng)
+
+                base[season] = combined if combined else None
+
+            logger.debug(
+                "hlzf_rows_merged",
+                voltage_level=base["voltage_level"],
+                source_rows=len(group),
+            )
+            merged.append(base)
+        return merged
 
     async def _save_netzentgelte(
         self,
@@ -373,6 +424,14 @@ class FinalizeStep(BaseStep):
 
         if not rows_to_upsert:
             return 0
+
+        # Deduplicate by conflict key (last entry wins) to avoid
+        # CardinalityViolationError on batch INSERT ... ON CONFLICT
+        deduped: dict[str, dict] = {}
+        for row in rows_to_upsert:
+            key = row["voltage_level"]
+            deduped[key] = row
+        rows_to_upsert = list(deduped.values())
 
         stmt = pg_insert(NetzentgelteModel).values(rows_to_upsert)
 

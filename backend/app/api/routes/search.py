@@ -14,7 +14,6 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
-from app.core.parsers import parse_hlzf_time_ranges
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_rate_limiter
 from app.db import DNOModel, HLZFModel, LocationModel, NetzentgelteModel, get_db
 from app.services.completeness import build_completeness_payload, connection_points_from_mastr
@@ -131,20 +130,14 @@ class HLZFTimeRange(BaseModel):
 
 
 class HLZFData(BaseModel):
-    """HLZF data with both raw strings and parsed time ranges."""
+    """HLZF data with structured time range arrays."""
 
     year: int
     voltage_level: str
-    # Raw string values (for display fallback)
-    winter: str | None = None
-    fruehling: str | None = None
-    sommer: str | None = None
-    herbst: str | None = None
-    # Parsed time ranges (for structured display)
-    winter_ranges: list[HLZFTimeRange] | None = None
-    fruehling_ranges: list[HLZFTimeRange] | None = None
-    sommer_ranges: list[HLZFTimeRange] | None = None
-    herbst_ranges: list[HLZFTimeRange] | None = None
+    winter: list[HLZFTimeRange] | None = None
+    fruehling: list[HLZFTimeRange] | None = None
+    sommer: list[HLZFTimeRange] | None = None
+    herbst: list[HLZFTimeRange] | None = None
     # Verification status
     verification_status: str | None = None
 
@@ -668,10 +661,6 @@ async def _build_response(
             fruehling=h.fruehling,
             sommer=h.sommer,
             herbst=h.herbst,
-            winter_ranges=parse_hlzf_time_ranges(h.winter),
-            fruehling_ranges=parse_hlzf_time_ranges(h.fruehling),
-            sommer_ranges=parse_hlzf_time_ranges(h.sommer),
-            herbst_ranges=parse_hlzf_time_ranges(h.herbst),
             verification_status=getattr(h, "verification_status", None),
         )
         for h in hlzf_result.scalars().all()

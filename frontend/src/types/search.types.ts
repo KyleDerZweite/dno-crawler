@@ -55,16 +55,10 @@ export interface PublicSearchNetzentgelte {
 export interface PublicSearchHLZF {
     year: number;
     voltage_level: string;
-    // Raw string values (for display fallback)
-    winter?: string;
-    fruehling?: string;
-    sommer?: string;
-    herbst?: string;
-    // Parsed time ranges (for structured display)
-    winter_ranges?: HLZFTimeRange[];
-    fruehling_ranges?: HLZFTimeRange[];
-    sommer_ranges?: HLZFTimeRange[];
-    herbst_ranges?: HLZFTimeRange[];
+    winter?: HLZFTimeRange[] | null;
+    fruehling?: HLZFTimeRange[] | null;
+    sommer?: HLZFTimeRange[] | null;
+    herbst?: HLZFTimeRange[] | null;
 }
 
 // Full search response

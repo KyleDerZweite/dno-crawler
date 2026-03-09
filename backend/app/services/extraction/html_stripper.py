@@ -266,6 +266,43 @@ class HtmlStripper:
         return "\n".join(parts)
 
 
+def clean_html_for_storage(html: str) -> str:
+    """Lightweight HTML cleaning for download-time storage.
+
+    Removes scripts, styles, nav, footer, iframes, SVGs, and unnecessary
+    attributes but keeps ALL body content intact (text, tables, links, images).
+    Much less aggressive than ``HtmlStripper.strip_html`` which only keeps
+    tables + year headers.
+
+    Returns cleaned HTML string (significantly smaller than raw input).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove junk elements entirely
+    for tag_name in HtmlStripper.REMOVE_TAGS:
+        for el in soup.find_all(tag_name):
+            el.decompose()
+
+    # Remove noisy attributes from remaining elements
+    for tag in soup.find_all(True):
+        attrs_to_remove = []
+        for attr in list(tag.attrs):
+            if attr in ("style", "class", "onclick", "onload", "onmouseover") or attr.startswith(
+                ("data-", "aria-")
+            ):
+                attrs_to_remove.append(attr)
+        for attr in attrs_to_remove:
+            del tag[attr]
+
+    # Remove HTML comments
+    from bs4 import Comment
+
+    for comment in soup.find_all(string=lambda t: isinstance(t, Comment)):
+        comment.extract()
+
+    return str(soup)
+
+
 def get_file_size_kb(path: Path) -> float:
     """Get file size in KB."""
     return path.stat().st_size / 1024

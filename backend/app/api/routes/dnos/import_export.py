@@ -153,7 +153,7 @@ async def import_dno_data(
     """
     import structlog
 
-    from app.core.sanitize import SanitizationError, sanitize_string, sanitize_time_string
+    from app.core.sanitize import SanitizationError, sanitize_string
     from app.db.models import HLZFModel, NetzentgelteModel
 
     logger = structlog.get_logger()
@@ -276,16 +276,15 @@ async def import_dno_data(
                         )
                     )
 
+        def _to_dicts(ranges):
+            return [r.model_dump() for r in ranges] if ranges else None
+
         for record in request.hlzf:
-            # Sanitize time strings
-            winter = sanitize_time_string(record.winter or "", "winter") if record.winter else None
-            fruehling = (
-                sanitize_time_string(record.fruehling or "", "fruehling")
-                if record.fruehling
-                else None
-            )
-            sommer = sanitize_time_string(record.sommer or "", "sommer") if record.sommer else None
-            herbst = sanitize_time_string(record.herbst or "", "herbst") if record.herbst else None
+            # Convert Pydantic models to plain dicts for JSON storage
+            winter = _to_dicts(record.winter)
+            fruehling = _to_dicts(record.fruehling)
+            sommer = _to_dicts(record.sommer)
+            herbst = _to_dicts(record.herbst)
 
             # Check for existing record
             existing = await db.execute(
