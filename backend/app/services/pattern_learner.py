@@ -57,9 +57,7 @@ class PatternLearner:
         query = (
             select(CrawlPathPatternModel)
             .where(CrawlPathPatternModel.data_type.in_([data_type, "both"]))
-            .order_by(
-                desc(CrawlPathPatternModel.success_count)  # Most successful first
-            )
+            .order_by(desc(CrawlPathPatternModel.success_count))  # Most successful first
             .limit(limit * 2)
         )  # Get more than needed for filtering
 

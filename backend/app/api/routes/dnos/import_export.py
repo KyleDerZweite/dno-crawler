@@ -83,13 +83,15 @@ async def export_dno_data(
                 "voltage_level": r.voltage_level,
                 "leistung": float(r.leistung) if r.leistung else None,
                 "arbeit": float(r.arbeit) if r.arbeit else None,
-                "leistung_unter_2500h": float(r.leistung_unter_2500h)
-                if r.leistung_unter_2500h
-                else None,
+                "leistung_unter_2500h": (
+                    float(r.leistung_unter_2500h) if r.leistung_unter_2500h else None
+                ),
                 "arbeit_unter_2500h": float(r.arbeit_unter_2500h) if r.arbeit_unter_2500h else None,
-                "verification_status": r.verification_status
-                if r.verification_status in VERIFICATION_STATUSES
-                else "unverified",
+                "verification_status": (
+                    r.verification_status
+                    if r.verification_status in VERIFICATION_STATUSES
+                    else "unverified"
+                ),
                 "extraction_source": r.extraction_source,
             }
             for r in netz_records
@@ -111,9 +113,11 @@ async def export_dno_data(
                 "fruehling": r.fruehling,
                 "sommer": r.sommer,
                 "herbst": r.herbst,
-                "verification_status": r.verification_status
-                if r.verification_status in VERIFICATION_STATUSES
-                else "unverified",
+                "verification_status": (
+                    r.verification_status
+                    if r.verification_status in VERIFICATION_STATUSES
+                    else "unverified"
+                ),
                 "extraction_source": r.extraction_source,
             }
             for r in hlzf_records

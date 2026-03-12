@@ -796,10 +796,7 @@ def _parse_hlzf_table_inverted(table: list[list], page_num: int) -> list[dict[st
                 # Combine paired columns into a time range
                 cell1 = str(row[col_idx] or "").strip()
                 cell2 = str(row[col_idx + 1] or "").strip()
-                if cell1 and cell2:
-                    combined = f"{cell1}-{cell2}"
-                else:
-                    combined = cell1 or cell2
+                combined = f"{cell1}-{cell2}" if cell1 and cell2 else cell1 or cell2
                 time_value = _clean_time_value(combined)
             else:
                 time_value = _clean_time_value(row[col_idx])

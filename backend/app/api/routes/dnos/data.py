@@ -38,14 +38,16 @@ async def get_dno_data(
         )
 
     # Query netzentgelte data
-    netzentgelte_query = text("""
+    netzentgelte_query = text(
+        """
         SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM netzentgelte
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
-    """)
+    """
+    )
     result = await db.execute(netzentgelte_query, {"dno_id": dno_id})
     netzentgelte_rows = result.fetchall()
 
@@ -77,14 +79,16 @@ async def get_dno_data(
         )
 
     # Query HLZF data
-    hlzf_query = text("""
+    hlzf_query = text(
+        """
         SELECT id, voltage_level, year, winter, fruehling, sommer, herbst,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM hlzf
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
-    """)
+    """
+    )
     result = await db.execute(hlzf_query, {"dno_id": dno_id})
     hlzf_rows = result.fetchall()
 

@@ -105,15 +105,15 @@ async def list_jobs(
                     "current_step": job.current_step,
                     "error_message": job.error_message,
                     "triggered_by": job.triggered_by,
-                    "queue_position": pending_order.get(job.id)
-                    if job.status == "pending"
-                    else None,
-                    "parent_job_id": str(job.parent_job_id)
-                    if getattr(job, "parent_job_id", None)
-                    else None,
-                    "child_job_id": str(job.child_job_id)
-                    if getattr(job, "child_job_id", None)
-                    else None,
+                    "queue_position": (
+                        pending_order.get(job.id) if job.status == "pending" else None
+                    ),
+                    "parent_job_id": (
+                        str(job.parent_job_id) if getattr(job, "parent_job_id", None) else None
+                    ),
+                    "child_job_id": (
+                        str(job.child_job_id) if getattr(job, "child_job_id", None) else None
+                    ),
                     "started_at": job.started_at.isoformat() if job.started_at else None,
                     "completed_at": job.completed_at.isoformat() if job.completed_at else None,
                     "created_at": job.created_at.isoformat() if job.created_at else None,

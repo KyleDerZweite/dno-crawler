@@ -62,22 +62,22 @@ def _build_mastr_stats_payload(dno: DNOModel) -> dict | None:
             "closed_distribution_network": mastr.closed_distribution_network,
         },
         "installed_capacity_mw": {
-            "total": float(mastr.total_capacity_mw)
-            if mastr.total_capacity_mw is not None
-            else None,
-            "solar": float(mastr.solar_capacity_mw)
-            if mastr.solar_capacity_mw is not None
-            else None,
+            "total": (
+                float(mastr.total_capacity_mw) if mastr.total_capacity_mw is not None else None
+            ),
+            "solar": (
+                float(mastr.solar_capacity_mw) if mastr.solar_capacity_mw is not None else None
+            ),
             "wind": float(mastr.wind_capacity_mw) if mastr.wind_capacity_mw is not None else None,
-            "storage": float(mastr.storage_capacity_mw)
-            if mastr.storage_capacity_mw is not None
-            else None,
-            "biomass": float(mastr.biomass_capacity_mw)
-            if mastr.biomass_capacity_mw is not None
-            else None,
-            "hydro": float(mastr.hydro_capacity_mw)
-            if mastr.hydro_capacity_mw is not None
-            else None,
+            "storage": (
+                float(mastr.storage_capacity_mw) if mastr.storage_capacity_mw is not None else None
+            ),
+            "biomass": (
+                float(mastr.biomass_capacity_mw) if mastr.biomass_capacity_mw is not None else None
+            ),
+            "hydro": (
+                float(mastr.hydro_capacity_mw) if mastr.hydro_capacity_mw is not None else None
+            ),
         },
         "unit_counts": {
             "solar": mastr.solar_units,
@@ -230,26 +230,26 @@ def _serialize_mastr_data(dno: DNOModel) -> dict | None:
         "has_customers": m.has_customers,
         "closed_distribution_network": m.closed_distribution_network,
         "solar_units": m.solar_units,
-        "solar_capacity_mw": float(m.solar_capacity_mw)
-        if m.solar_capacity_mw is not None
-        else None,
+        "solar_capacity_mw": (
+            float(m.solar_capacity_mw) if m.solar_capacity_mw is not None else None
+        ),
         "wind_units": m.wind_units,
         "wind_capacity_mw": float(m.wind_capacity_mw) if m.wind_capacity_mw is not None else None,
         "storage_units": m.storage_units,
-        "storage_capacity_mw": float(m.storage_capacity_mw)
-        if m.storage_capacity_mw is not None
-        else None,
+        "storage_capacity_mw": (
+            float(m.storage_capacity_mw) if m.storage_capacity_mw is not None else None
+        ),
         "biomass_units": getattr(m, "biomass_units", None),
-        "biomass_capacity_mw": float(m.biomass_capacity_mw)
-        if m.biomass_capacity_mw is not None
-        else None,
+        "biomass_capacity_mw": (
+            float(m.biomass_capacity_mw) if m.biomass_capacity_mw is not None else None
+        ),
         "hydro_units": getattr(m, "hydro_units", None),
-        "hydro_capacity_mw": float(m.hydro_capacity_mw)
-        if m.hydro_capacity_mw is not None
-        else None,
-        "total_capacity_mw": float(m.total_capacity_mw)
-        if m.total_capacity_mw is not None
-        else None,
+        "hydro_capacity_mw": (
+            float(m.hydro_capacity_mw) if m.hydro_capacity_mw is not None else None
+        ),
+        "total_capacity_mw": (
+            float(m.total_capacity_mw) if m.total_capacity_mw is not None else None
+        ),
         "stats_data_quality": m.stats_data_quality,
         "stats_computed_at": m.stats_computed_at.isoformat() if m.stats_computed_at else None,
         "mastr_last_updated": m.mastr_last_updated.isoformat() if m.mastr_last_updated else None,
@@ -724,36 +724,42 @@ async def list_dnos_detailed(
 
     # Batch query for netzentgelte counts
     netz_counts_result = await db.execute(
-        text("""
+        text(
+            """
             SELECT dno_id, COUNT(*) as count
             FROM netzentgelte
             WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
-        """),
+        """
+        ),
         {"dno_ids": dno_ids},
     )
     netz_counts = {row[0]: row[1] for row in netz_counts_result.fetchall()}
 
     # Batch query for HLZF counts
     hlzf_counts_result = await db.execute(
-        text("""
+        text(
+            """
             SELECT dno_id, COUNT(*) as count
             FROM hlzf
             WHERE dno_id = ANY(:dno_ids)
             GROUP BY dno_id
-        """),
+        """
+        ),
         {"dno_ids": dno_ids},
     )
     hlzf_counts = {row[0]: row[1] for row in hlzf_counts_result.fetchall()}
 
     # Batch query for job statuses
     job_status_result = await db.execute(
-        text("""
+        text(
+            """
             SELECT dno_id, status, COUNT(*) as count
             FROM crawl_jobs
             WHERE dno_id = ANY(:dno_ids) AND status IN ('running', 'pending')
             GROUP BY dno_id, status
-        """),
+        """
+        ),
         {"dno_ids": dno_ids},
     )
     job_statuses = {}
@@ -848,13 +854,15 @@ async def get_dno_details(
     # Dynamic Status Computation
     # -------------------------------------------------------------------------
     # Get counts and active jobs for live status
-    stats_query = text("""
+    stats_query = text(
+        """
         SELECT
             (SELECT COUNT(*) FROM netzentgelte WHERE dno_id = :dno_id) as netz_count,
             (SELECT COUNT(*) FROM hlzf WHERE dno_id = :dno_id) as hlzf_count,
             (SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'running') as running_jobs,
             (SELECT COUNT(*) FROM crawl_jobs WHERE dno_id = :dno_id AND status = 'pending') as pending_jobs
-    """)
+    """
+    )
     stats_res = await db.execute(stats_query, {"dno_id": dno.id})
     netz_c, hlzf_c, running_j, pending_j = stats_res.fetchone()
 
@@ -875,9 +883,9 @@ async def get_dno_details(
 
     importance_payload = {
         "score": importance_result.score if importance_result else dno.importance_score,
-        "confidence": importance_result.confidence
-        if importance_result
-        else dno.importance_confidence,
+        "confidence": (
+            importance_result.confidence if importance_result else dno.importance_confidence
+        ),
         "version": importance_result.version if importance_result else dno.importance_version,
         "factors": importance_result.factors if importance_result else dno.importance_factors,
         "updated_at": dno.importance_updated_at.isoformat() if dno.importance_updated_at else None,
