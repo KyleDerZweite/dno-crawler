@@ -132,8 +132,9 @@ def create_app() -> FastAPI:
         title=settings.app_name,
         version=settings.app_version,
         description="AI-powered German DNO data extraction system",
-        docs_url="/docs",
-        redoc_url="/redoc",
+        docs_url="/api/docs",
+        redoc_url="/api/redoc",
+        openapi_url="/api/openapi.json",
         lifespan=lifespan,
     )
 

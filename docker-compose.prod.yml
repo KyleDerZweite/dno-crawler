@@ -156,6 +156,10 @@ services:
     image: fosrl/newt
     container_name: dno-crawler-newt-prod
     restart: unless-stopped
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
     env_file:
       - .env
     environment:
