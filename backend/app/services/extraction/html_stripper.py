@@ -244,10 +244,9 @@ class HtmlStripper:
             for attr in tag.attrs:
                 attr_lower = attr.lower()
                 # Remove matching patterns or event handlers (on*)
-                if (
-                    any(attr_lower.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS)
-                    or attr_lower.startswith("on")
-                ):
+                if any(
+                    attr_lower.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS
+                ) or attr_lower.startswith("on"):
                     attrs_to_remove.append(attr)
 
             for attr in attrs_to_remove:
@@ -315,9 +314,8 @@ def clean_html_for_storage(html: str) -> str:
         for attr in list(tag.attrs):
             attr_lower = attr.lower()
             # Remove style/class/id and event handlers (on*) plus data-* and aria-*
-            if (
-                attr_lower in ("style", "class", "id")
-                or attr_lower.startswith(("on", "data-", "aria-"))
+            if attr_lower in ("style", "class", "id") or attr_lower.startswith(
+                ("on", "data-", "aria-")
             ):
                 attrs_to_remove.append(attr)
                 continue
