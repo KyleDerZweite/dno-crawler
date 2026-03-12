@@ -19,8 +19,31 @@ Usage:
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Comment, Tag
+
+SAFE_URL_SCHEMES = {"http", "https", "mailto", "ftp", "tel"}
+UNSAFE_URL_SCHEMES = {"javascript", "vbscript", "data"}
+
+
+def _is_safe_url_value(value: Any) -> bool:
+    """Return whether an href/src value uses a safe scheme or no scheme."""
+    if not isinstance(value, str):
+        return False
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return True
+
+    scheme = urlsplit(normalized).scheme
+    if not scheme:
+        return True
+
+    if scheme in UNSAFE_URL_SCHEMES:
+        return False
+
+    return scheme in SAFE_URL_SCHEMES
 
 
 class HtmlStripper:
@@ -219,9 +242,11 @@ class HtmlStripper:
             # Remove attributes that match patterns
             attrs_to_remove = []
             for attr in tag.attrs:
+                attr_lower = attr.lower()
+                # Remove matching patterns or event handlers (on*)
                 if any(
-                    attr.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS
-                ) or attr in ["style", "class", "id", "onclick", "onload"]:
+                    attr_lower.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS
+                ) or attr_lower.startswith("on"):
                     attrs_to_remove.append(attr)
 
             for attr in attrs_to_remove:
@@ -264,6 +289,47 @@ class HtmlStripper:
 
         parts.extend(["</body>", "</html>"])
         return "\n".join(parts)
+
+
+def clean_html_for_storage(html: str) -> str:
+    """Lightweight HTML cleaning for download-time storage.
+
+    Removes scripts, styles, nav, footer, iframes, SVGs, and unnecessary
+    attributes but keeps ALL body content intact (text, tables, links, images).
+    Much less aggressive than ``HtmlStripper.strip_html`` which only keeps
+    tables + year headers.
+
+    Returns cleaned HTML string (significantly smaller than raw input).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Remove junk elements entirely
+    for tag_name in HtmlStripper.REMOVE_TAGS:
+        for el in soup.find_all(tag_name):
+            el.decompose()
+
+    # Remove noisy attributes from remaining elements
+    for tag in soup.find_all(True):
+        attrs_to_remove = []
+        for attr in list(tag.attrs):
+            attr_lower = attr.lower()
+            # Remove style/class/id and event handlers (on*) plus data-* and aria-*
+            if attr_lower in ("style", "class", "id") or attr_lower.startswith(
+                ("on", "data-", "aria-")
+            ):
+                attrs_to_remove.append(attr)
+                continue
+
+            if attr_lower in ("href", "src") and not _is_safe_url_value(tag.attrs.get(attr)):
+                attrs_to_remove.append(attr)
+        for attr in attrs_to_remove:
+            del tag[attr]
+
+    # Remove HTML comments
+    for comment in soup.find_all(string=lambda t: isinstance(t, Comment)):
+        comment.extract()
+
+    return str(soup)
 
 
 def get_file_size_kb(path: Path) -> float:

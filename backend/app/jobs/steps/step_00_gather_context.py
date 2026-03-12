@@ -25,7 +25,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import CrawlJobModel, DNOModel, DNOSourceProfile
+from app.db.models import CrawlJobModel, DNOModel, DNOSourceProfile, DownloadRegistryModel
 from app.jobs.steps.base import BaseStep, StepError
 from app.services.user_agent import build_user_agent
 
@@ -151,6 +151,36 @@ class GatherContextStep(BaseStep):
                     cached_files[dt] = str(found[0])
 
         # =================================================================
+        # 3b. Load download registry (cross-run memory)
+        # =================================================================
+        prior_downloads = []
+        registry_result = await db.execute(
+            select(DownloadRegistryModel).where(
+                DownloadRegistryModel.dno_id == dno.id,
+                DownloadRegistryModel.year == job.year,
+            )
+        )
+        for entry in registry_result.scalars().all():
+            prior_downloads.append(
+                {
+                    "url_hash": entry.url_hash,
+                    "source_url": entry.source_url,
+                    "classification": entry.classification,
+                    "file_path": entry.file_path,
+                    "file_format": entry.file_format,
+                }
+            )
+
+        if prior_downloads:
+            log.info(
+                "download_registry_loaded",
+                entries=len(prior_downloads),
+                classified=sum(
+                    1 for d in prior_downloads if d["classification"] not in ("unclassified",)
+                ),
+            )
+
+        # =================================================================
         # 4. Build context
         # =================================================================
         job.context = {
@@ -161,6 +191,7 @@ class GatherContextStep(BaseStep):
             "dno_website": dno.website,
             "profiles": profiles,
             "cached_files": cached_files,
+            "prior_downloads": prior_downloads,
             "dno_crawlable": getattr(dno, "crawlable", True),
             "crawl_blocked_reason": getattr(dno, "crawl_blocked_reason", None),
         }
@@ -174,6 +205,8 @@ class GatherContextStep(BaseStep):
             parts.append(f"cached: {', '.join(cached_types)}")
         if profile_types:
             parts.append(f"profiles: {', '.join(profile_types)}")
+        if prior_downloads:
+            parts.append(f"registry: {len(prior_downloads)} prior downloads")
         if parts:
             return f"Context loaded for {dno.name} ({'; '.join(parts)})"
         return f"No prior knowledge for {dno.name} - will search from scratch"

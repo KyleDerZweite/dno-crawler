@@ -148,10 +148,8 @@ def should_sample(event: dict[str, Any]) -> bool:
     if "/jobs" in path or "/crawl" in path:
         return True
 
-    # Sample 10% of the rest
-    import random
-
-    return random.random() < 0.10
+    # TODO: Restore to 0.10 after debugging
+    return True
 
 
 def add_request_id(logger: Any, method_name: str, event_dict: dict) -> dict:

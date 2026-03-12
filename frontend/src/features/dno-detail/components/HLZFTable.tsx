@@ -49,13 +49,11 @@ function SelectableTime({ value }: { value: string }) {
 }
 
 /**
- * Render time ranges from parsed backend array
+ * Render time ranges from JSON array
  */
 function renderTimeRanges(
-    ranges: { start: string; end: string }[] | null | undefined,
-    rawValue: string | null | undefined
+    ranges: { start: string; end: string }[] | null | undefined
 ): React.ReactNode {
-    // Use parsed ranges if available
     if (ranges && ranges.length > 0) {
         return (
             <div className="space-y-0.5" style={{ userSelect: "none" }}>
@@ -72,12 +70,7 @@ function renderTimeRanges(
         );
     }
 
-    // Fallback: show raw value or dash
-    if (!rawValue || rawValue === "-" || rawValue.toLowerCase() === "entfällt") {
-        return <span className="text-muted-foreground">-</span>;
-    }
-
-    return <span className="text-sm">{rawValue}</span>;
+    return <span className="text-muted-foreground">-</span>;
 }
 
 export function HLZFTable({
@@ -172,16 +165,16 @@ export function HLZFTable({
                                         <tr key={item.id} className="border-b border-border/50 hover:bg-muted/50">
                                             <td className="py-2 px-3 font-medium">{item.voltage_level}</td>
                                             <td className="py-2 px-3 font-mono align-top">
-                                                {renderTimeRanges(item.winter_ranges, item.winter)}
+                                                {renderTimeRanges(item.winter)}
                                             </td>
                                             <td className="py-2 px-3 font-mono align-top">
-                                                {renderTimeRanges(item.fruehling_ranges, item.fruehling)}
+                                                {renderTimeRanges(item.fruehling)}
                                             </td>
                                             <td className="py-2 px-3 font-mono align-top">
-                                                {renderTimeRanges(item.sommer_ranges, item.sommer)}
+                                                {renderTimeRanges(item.sommer)}
                                             </td>
                                             <td className="py-2 px-3 font-mono align-top">
-                                                {renderTimeRanges(item.herbst_ranges, item.herbst)}
+                                                {renderTimeRanges(item.herbst)}
                                             </td>
                                             <td className="py-2 px-3 text-center">
                                                 <div className="flex items-center justify-center gap-1">

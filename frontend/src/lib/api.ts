@@ -14,6 +14,7 @@ import type {
   APIKeyInfo,
   DNO,
   HLZF,
+  HLZFTimeRange,
   Job,
   JobDetails,
   Netzentgelte,
@@ -307,10 +308,10 @@ export const api = {
       dno_id: string,
       record_id: number,
       payload: {
-        winter?: string;
-        fruehling?: string;
-        sommer?: string;
-        herbst?: string;
+        winter?: HLZFTimeRange[] | null;
+        fruehling?: HLZFTimeRange[] | null;
+        sommer?: HLZFTimeRange[] | null;
+        herbst?: HLZFTimeRange[] | null;
       }
     ): Promise<ApiResponse<{ id: string }>> {
       const { data } = await apiClient.patch(
@@ -397,10 +398,10 @@ export const api = {
         hlzf?: {
           year: number;
           voltage_level: string;
-          winter?: string;
-          fruehling?: string;
-          sommer?: string;
-          herbst?: string;
+          winter?: HLZFTimeRange[] | null;
+          fruehling?: HLZFTimeRange[] | null;
+          sommer?: HLZFTimeRange[] | null;
+          herbst?: HLZFTimeRange[] | null;
           verification_status?: string;
           extraction_source?: string;
         }[];

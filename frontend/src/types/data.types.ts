@@ -52,15 +52,10 @@ export interface HLZF extends VerificationFields, ExtractionFields {
     dno_id: string;
     year: number;
     voltage_level: string;
-    winter?: string | null;
-    fruehling?: string | null;
-    sommer?: string | null;
-    herbst?: string | null;
-    // Parsed time ranges
-    winter_ranges?: HLZFTimeRange[];
-    fruehling_ranges?: HLZFTimeRange[];
-    sommer_ranges?: HLZFTimeRange[];
-    herbst_ranges?: HLZFTimeRange[];
+    winter?: HLZFTimeRange[] | null;
+    fruehling?: HLZFTimeRange[] | null;
+    sommer?: HLZFTimeRange[] | null;
+    herbst?: HLZFTimeRange[] | null;
 }
 
 // Verification response from API

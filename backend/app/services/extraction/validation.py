@@ -6,7 +6,7 @@ def is_valid_data_value(value: object) -> bool:
     if value is None:
         return False
     value_str = str(value).strip().lower()
-    return value_str not in {"-", "n/a", "null", "none", "", "entfällt"}
+    return value_str not in {"-", "n/a", "null", "none", "", "entfällt", "keine"}
 
 
 def validate_extraction_sanity(records: list[dict], data_type: str) -> tuple[bool, str]:

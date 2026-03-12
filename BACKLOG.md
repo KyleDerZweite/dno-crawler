@@ -84,6 +84,15 @@
     - Source name is configurable via custom input or selected identifier strategy.
     - Quantity label is configurable (Status or custom value) in the exported stream.
 
+- [ ] **TASK-011 Bulk Downloads Directory Zip Transfer**
+  - Goal: Enable uploading and downloading the `data/downloads/` directory as a zip archive between local and remote environments.
+  - Scope: CLI script or admin endpoint that zips the local `data/downloads/` directory, transfers it to the server, and unpacks it into the remote `data/downloads/` path. Reverse direction (download) zips the remote `data/downloads/` directory and downloads it locally with automatic unpack.
+  - Deliverables: upload command (zip local, transfer, unpack remote), download command (zip remote, transfer, unpack local), integrity check after unpack.
+  - Acceptance:
+    - Upload zips local `data/downloads/`, transfers to the production host, and unpacks into the correct `data/downloads/` path without corrupting existing files.
+    - Download zips remote `data/downloads/`, transfers locally, and unpacks into the local `data/downloads/` path.
+    - Both directions handle partial or incremental transfers gracefully (skip or overwrite strategy).
+
 ---
 
 ## 3. Post-MVP Deferred
@@ -111,6 +120,7 @@
 - [ ] API endpoint GET /api/v1/lookup?lat=X&lon=Y.
 - [ ] API endpoint POST /api/v1/webhooks for price-change notifications.
 - [ ] GraphQL endpoint.
+- [ ] **Rebranding / Icon Cleanup** — "dno-crawler" may not be the best name for a professional platform; consider renaming. Current favicon/icons use an overly complex shape; either simplify to a clean SVG icon or drop the app icon entirely and just use the personal brand favicon.
 
 ---
 

@@ -2,10 +2,11 @@
 Pydantic schemas for DNO API endpoints.
 """
 
+from datetime import time
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, conlist, field_validator
 
 
 class JobType(StrEnum):
@@ -62,13 +63,37 @@ class UpdateNetzentgelteRequest(BaseModel):
     arbeit_unter_2500h: float | None = None
 
 
+class HLZFTimeRange(BaseModel):
+    """A single time range with start and end times."""
+
+    start: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
+    end: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
+
+    @field_validator("start", "end", mode="after")
+    @classmethod
+    def validate_time_value(cls, v: str) -> str:
+        """Validate that time strings represent valid clock times.
+
+        Rejects impossible times like 25:61:99 by attempting to parse
+        with datetime.time.fromisoformat().
+        """
+        try:
+            time.fromisoformat(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid time value '{v}': {e}") from e
+        return v
+
+
+HLZFSeasonRanges = conlist(HLZFTimeRange, max_length=10)
+
+
 class UpdateHLZFRequest(BaseModel):
     """Request model for updating HLZF."""
 
-    winter: str | None = None
-    fruehling: str | None = None
-    sommer: str | None = None
-    herbst: str | None = None
+    winter: HLZFSeasonRanges | None = None
+    fruehling: HLZFSeasonRanges | None = None
+    sommer: HLZFSeasonRanges | None = None
+    herbst: HLZFSeasonRanges | None = None
 
 
 # Import/Export constants
@@ -112,10 +137,10 @@ class HLZFImport(BaseModel):
 
     year: int = Field(..., ge=2000, le=2100)
     voltage_level: str = Field(...)
-    winter: str | None = Field(None, max_length=100)
-    fruehling: str | None = Field(None, max_length=100)
-    sommer: str | None = Field(None, max_length=100)
-    herbst: str | None = Field(None, max_length=100)
+    winter: HLZFSeasonRanges | None = None
+    fruehling: HLZFSeasonRanges | None = None
+    sommer: HLZFSeasonRanges | None = None
+    herbst: HLZFSeasonRanges | None = None
     verification_status: str | None = Field(None)
     extraction_source: str | None = Field(None)
 

@@ -18,15 +18,17 @@ Output stored in job.context:
 """
 
 import asyncio
+import hashlib
 import re
 import shutil
 from pathlib import Path
 
 import structlog
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
-from app.db.models import CrawlJobModel
+from app.db.models import CrawlJobModel, DownloadRegistryModel
 from app.jobs.steps.base import BaseStep
 
 logger = structlog.get_logger()
@@ -66,7 +68,7 @@ class ClassifyStep(BaseStep):
             file_text = await self._extract_text(file_path, file_format, db)
 
             # Detect year from file content
-            detected_year = self._detect_year_from_text(file_text)
+            detected_year = self._detect_year_from_text(file_text, file_format)
 
             # Run extractors on this file
             netz_count = await self._try_netzentgelte(file_path, file_format, job.year)
@@ -93,9 +95,17 @@ class ClassifyStep(BaseStep):
                 hlzf_keyword=hlzf_keyword,
             )
 
-            # Determine the classification key suffix for non-target years
-            is_target_year = detected_year is None or detected_year == job.year
-            year_suffix = "" if is_target_year else f":{detected_year}"
+            # Determine the classification key suffix for non-target years.
+            # For HLZF: if extraction succeeded (count > 0), use job.year since that's
+            # what _try_hlzf filtered to. For netzentgelte: use detected_year.
+            netz_year = detected_year
+            netz_is_target = netz_year is None or netz_year == job.year
+            netz_year_suffix = "" if netz_is_target else f":{netz_year}"
+
+            # HLZF: if regex extraction found records, those are for job.year by design
+            hlzf_year = job.year if hlzf_count > 0 else detected_year
+            hlzf_is_target = hlzf_year is None or hlzf_year == job.year
+            hlzf_year_suffix = "" if hlzf_is_target else f":{hlzf_year}"
 
             classified = False
 
@@ -106,27 +116,27 @@ class ClassifyStep(BaseStep):
 
             # Check netzentgelte (regex ≥2 records, or keyword match)
             if netz_effective >= 0:
-                key = f"netzentgelte{year_suffix}"
-                if key not in best or netz_effective > best[key]["record_count"]:
+                key = f"netzentgelte{netz_year_suffix}"
+                if self._is_better_candidate(netz_effective, file_format, best.get(key)):
                     best[key] = {
                         "path": str(file_path),
                         "format": file_format,
                         "record_count": netz_effective,
                         "source_url": source_url,
-                        "detected_year": detected_year,
+                        "detected_year": netz_year,
                     }
                 classified = True
 
             # Check hlzf (regex ≥2 records, or keyword match)
             if hlzf_effective >= 0:
-                key = f"hlzf{year_suffix}"
-                if key not in best or hlzf_effective > best[key]["record_count"]:
+                key = f"hlzf{hlzf_year_suffix}"
+                if self._is_better_candidate(hlzf_effective, file_format, best.get(key)):
                     best[key] = {
                         "path": str(file_path),
                         "format": file_format,
                         "record_count": hlzf_effective,
                         "source_url": source_url,
-                        "detected_year": detected_year,
+                        "detected_year": hlzf_year,
                     }
                 classified = True
 
@@ -140,6 +150,20 @@ class ClassifyStep(BaseStep):
                         "hlzf_records": hlzf_count,
                     }
                 )
+
+        # Cross-type dedup: if the same file path won for both netzentgelte
+        # and hlzf (same year suffix), keep only the type with the higher
+        # record count.  A genuine HLZF document is 1-2 pages with time
+        # windows; a 12-page netzentgelte PDF containing the word "hochlast"
+        # somewhere is not HLZF.
+        best = self._dedup_cross_type(best, log)
+
+        # Build a lookup of which data_type each file won for (path -> data_type)
+        winning_paths: dict[str, str] = {}
+        for data_type_key, info in best.items():
+            winning_paths[info["path"]] = data_type_key.split(":")[0]
+
+        original_winning_paths = dict(winning_paths)
 
         # Move winning files to downloads/ with canonical naming
         downloads_dir = Path(settings.downloads_path) / dno_slug
@@ -172,6 +196,23 @@ class ClassifyStep(BaseStep):
                 log.warning("classify_move_failed", error=str(e), src=str(src))
                 # Keep original path if move fails
 
+        # =================================================================
+        # Persist classification results to download registry
+        # =================================================================
+        dno_id = ctx.get("dno_id")
+        if dno_id:
+            await self._update_registry(
+                db,
+                dno_id,
+                job.year,
+                job.id,
+                downloaded_files,
+                best,
+                unclassified,
+                log,
+                original_winning_paths,
+            )
+
         # Check if we should deepen the crawl
         crawl_pass = ctx.get("crawl_pass", 1)
         if not best and crawl_pass == 1:
@@ -199,6 +240,166 @@ class ClassifyStep(BaseStep):
             return f"No data found in {len(downloaded_files)} files - will deepen crawl"
 
         return f"No data found in {len(downloaded_files)} files"
+
+    @staticmethod
+    def _format_priority(fmt: str) -> int:
+        """Return a priority score for file formats. PDFs are preferred."""
+        if fmt == "pdf":
+            return 2
+        if fmt in ("xlsx", "xls", "csv"):
+            return 1
+        return 0  # html and others
+
+    def _is_better_candidate(
+        self, record_count: int, file_format: str, current_best: dict | None
+    ) -> bool:
+        """Check if a new candidate beats the current best.
+
+        Higher record_count always wins. On ties, prefer PDF over HTML.
+        """
+        if current_best is None:
+            return True
+        cur_count = current_best["record_count"]
+        if record_count != cur_count:
+            return record_count > cur_count
+        # Tiebreaker: prefer PDF over HTML/other formats
+        return self._format_priority(file_format) > self._format_priority(current_best["format"])
+
+    @staticmethod
+    def _dedup_cross_type(
+        best: dict[str, dict], log: structlog.stdlib.BoundLogger
+    ) -> dict[str, dict]:
+        """Remove cross-type duplicates where the same file won for both types.
+
+        Groups entries by year suffix and checks if the same file path appears
+        under both netzentgelte and hlzf.  Keeps only the type with higher
+        record_count; on a tie keeps netzentgelte (more common data type).
+        """
+        # Group keys by year suffix
+        suffixes: set[str] = set()
+        for key in best:
+            suffix = key.split(":", 1)[1] if ":" in key else ""
+            suffixes.add(suffix)
+
+        keys_to_remove: list[str] = []
+
+        for suffix in suffixes:
+            netz_key = f"netzentgelte:{suffix}" if suffix else "netzentgelte"
+            hlzf_key = f"hlzf:{suffix}" if suffix else "hlzf"
+
+            netz_info = best.get(netz_key)
+            hlzf_info = best.get(hlzf_key)
+
+            if not netz_info or not hlzf_info:
+                continue
+
+            if netz_info["path"] != hlzf_info["path"]:
+                continue
+
+            # Same file classified as both types — keep the stronger match
+            netz_count = netz_info["record_count"]
+            hlzf_count = hlzf_info["record_count"]
+
+            if hlzf_count > netz_count:
+                keys_to_remove.append(netz_key)
+                log.info(
+                    "cross_type_dedup",
+                    kept=hlzf_key,
+                    removed=netz_key,
+                    file=Path(hlzf_info["path"]).name,
+                )
+            else:
+                keys_to_remove.append(hlzf_key)
+                log.info(
+                    "cross_type_dedup",
+                    kept=netz_key,
+                    removed=hlzf_key,
+                    file=Path(netz_info["path"]).name,
+                )
+
+        for key in keys_to_remove:
+            del best[key]
+
+        return best
+
+    async def _update_registry(
+        self,
+        db: AsyncSession,
+        dno_id: int,
+        year: int,
+        job_id: int,
+        downloaded_files: list[dict],
+        best: dict[str, dict],
+        unclassified: list[dict],
+        log,
+        original_winning_paths: dict[str, str] | None = None,
+    ) -> None:
+        """Upsert classification results into the download registry."""
+        # Build a lookup: file_path -> winning data_type
+        winning_paths = original_winning_paths or {
+            info["path"]: data_type_key.split(":")[0] for data_type_key, info in best.items()
+        }
+
+        # Build a lookup: file_path -> unclassified detail
+        unclassified_paths: dict[str, dict] = {}
+        for entry in unclassified:
+            unclassified_paths[entry["path"]] = entry
+
+        upserted = 0
+        for file_info in downloaded_files:
+            url = file_info.get("url", "")
+            if not url or url.startswith("cache://"):
+                continue
+
+            url_hash = hashlib.md5(url.encode()).hexdigest()[:32]
+            file_path = file_info.get("path", "")
+
+            # Determine classification
+            classification = "unclassified"
+            detail: dict = {}
+            if file_path in winning_paths:
+                classification = winning_paths[file_path]
+            elif file_path in unclassified_paths:
+                uc = unclassified_paths[file_path]
+                # If regex found zero records for both types, mark irrelevant
+                if uc.get("netz_records", 0) <= 0 and uc.get("hlzf_records", 0) <= 0:
+                    classification = "irrelevant"
+                detail = {
+                    "netz_records": uc.get("netz_records", 0),
+                    "hlzf_records": uc.get("hlzf_records", 0),
+                }
+
+            stmt = (
+                pg_insert(DownloadRegistryModel)
+                .values(
+                    dno_id=dno_id,
+                    year=year,
+                    crawl_job_id=job_id,
+                    source_url=url,
+                    url_hash=url_hash,
+                    file_path=file_path,
+                    file_hash=file_info.get("content_hash"),
+                    file_format=file_info.get("format"),
+                    file_size_bytes=file_info.get("size_bytes"),
+                    classification=classification,
+                    classification_detail=detail or None,
+                )
+                .on_conflict_do_update(
+                    index_elements=["dno_id", "url_hash"],
+                    set_={
+                        "classification": classification,
+                        "classification_detail": detail or None,
+                        "crawl_job_id": job_id,
+                        "file_path": file_path,
+                    },
+                )
+            )
+            await db.execute(stmt)
+            upserted += 1
+
+        if upserted:
+            await db.commit()
+            log.info("download_registry_updated", upserted=upserted)
 
     async def _extract_text(
         self, file_path: Path, file_format: str, db: AsyncSession | None = None
@@ -272,11 +473,14 @@ class ClassifyStep(BaseStep):
             return None
 
     @staticmethod
-    def _detect_year_from_text(text: str) -> int | None:
+    def _detect_year_from_text(text: str, file_format: str = "") -> int | None:
         """Detect the data year from already-extracted text.
 
         Searches for 4-digit years (20xx) near relevant keywords.
         Returns the detected year or None if ambiguous/not found.
+
+        For HTML files with many year references (download index pages),
+        returns None to avoid false classification with a wrong year.
         """
         if not text:
             return None
@@ -284,7 +488,9 @@ class ClassifyStep(BaseStep):
         keywords = (
             r"(?:Netzentgelt|Entgelt|Hochlastzeitfenster|Netznutzung|Preisblatt|gültig|Gültigkeit)"
         )
-        pattern = rf"(?:{keywords}).{{0,100}}(20\d{{2}})|(20\d{{2}}).{{0,100}}{keywords}"
+        # Use word boundaries (\b) to prevent matching years embedded in account
+        # numbers (e.g. "50363120342" → false "2034") or prices ("0,02040000").
+        pattern = rf"(?:{keywords}).{{0,100}}\b(20\d{{2}})\b|\b(20\d{{2}})\b.{{0,100}}{keywords}"
         matches = re.findall(pattern, text, re.IGNORECASE | re.DOTALL)
 
         years: set[int] = set()
@@ -295,8 +501,15 @@ class ClassifyStep(BaseStep):
 
         if len(years) == 1:
             return years.pop()
+
         if years:
+            # HTML files with 3+ distinct years are likely download index pages,
+            # not single-year data documents.  Return None to avoid picking a
+            # wrong year (e.g. 2027 from a page listing 2020-2027 links).
+            if file_format in ("html", "htm") and len(years) >= 3:
+                return None
             return max(years)
+
         return None
 
     @staticmethod
@@ -304,7 +517,7 @@ class ClassifyStep(BaseStep):
         """Check if text strongly matches HLZF content.
 
         Requires ALL of:
-        - At least one strong HLZF keyword
+        - At least one strong HLZF keyword in the title area (first 500 chars)
         - At least one voltage level keyword (MS, NS, Mittelspannung, etc.)
         - Multiple time patterns (HH:MM)
         """
@@ -312,15 +525,17 @@ class ClassifyStep(BaseStep):
             return False
 
         text_lower = text.lower()
+        # Check title area for strong keywords to avoid false positives from
+        # documents that mention "Hochlast" deep in unrelated content.
+        title_area = text_lower[:500]
 
-        # Must contain at least one strong HLZF keyword
+        # Must contain at least one strong HLZF keyword in title area
         hlzf_keywords = [
             "hochlastzeitfenster",
             "hochlastzeit",
-            "hochlast",
             "atypische netznutzung",
         ]
-        if not any(kw in text_lower for kw in hlzf_keywords):
+        if not any(kw in title_area for kw in hlzf_keywords):
             return False
 
         # Must contain voltage level references
@@ -346,7 +561,7 @@ class ClassifyStep(BaseStep):
         """Check if text strongly matches Netzentgelte content.
 
         Requires ALL of:
-        - At least one strong Netzentgelte keyword
+        - At least one strong Netzentgelte keyword in the title area (first 500 chars)
         - At least one voltage level keyword
         - Multiple decimal number patterns (prices)
         """
@@ -354,17 +569,29 @@ class ClassifyStep(BaseStep):
             return False
 
         text_lower = text.lower()
+        # Check title area for strong keywords to avoid false positives from
+        # documents like "Ergaenzende Bedingungen" or "Allgemeine Bedingungen"
+        # that mention voltage levels and prices but are not tariff sheets.
+        title_area = text_lower[:500]
 
-        # Must contain at least one strong Netzentgelte keyword
+        # Reject documents that are NOT standard netzentgelte even though
+        # they contain "netzentgelt" in the title.
+        reject_prefixes = ["individuelle", "vermiedene", "referenzpreis"]
+        if any(rp in title_area for rp in reject_prefixes):
+            return False
+
+        # Must contain at least one strong Netzentgelte keyword in title area
         netz_keywords = [
             "netzentgelt",
+            "netznutzungsentgelt",
             "leistungspreis",
             "arbeitspreis",
-            "preisblatt",
-            "registrierender lastgangmessung",
-            "registrierende lastgangmessung",
         ]
-        if not any(kw in text_lower for kw in netz_keywords):
+        # Also accept "preisblatt" but only when combined with a grid keyword
+        has_preisblatt = "preisblatt" in title_area and any(
+            kw in title_area for kw in ("netz", "strom", "entgelt")
+        )
+        if not has_preisblatt and not any(kw in title_area for kw in netz_keywords):
             return False
 
         # Must contain voltage level references
@@ -415,7 +642,11 @@ class ClassifyStep(BaseStep):
             return 0
 
     async def _try_hlzf(self, file_path: Path, file_format: str, year: int) -> int:
-        """Try extracting hlzf data, return valid record count."""
+        """Try extracting hlzf data, return valid record count.
+
+        For multi-year PDFs (records tagged with 'year'), counts only records
+        matching the target year to avoid inflated scores vs single-year files.
+        """
         try:
             if file_format == "pdf":
                 from app.services.extraction.pdf_extractor import extract_hlzf_from_pdf
@@ -430,6 +661,11 @@ class ClassifyStep(BaseStep):
                 records = extract_hlzf_from_html(html_content, year)
             else:
                 return 0
+
+            # For multi-year PDFs, count only target year records
+            if records and any(r.get("year") is not None for r in records):
+                target_records = [r for r in records if r.get("year") == year]
+                return len(target_records)
 
             return len(records)
         except Exception as e:

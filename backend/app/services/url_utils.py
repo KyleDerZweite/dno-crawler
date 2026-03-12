@@ -47,11 +47,13 @@ ALLOWED_CONTENT_TYPES = {
     "application/vnd.ms-excel",  # .xls
     "application/msword",  # .doc
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",  # .docx
+    "application/zip",
+    "application/x-zip-compressed",
     "text/html",  # Landing pages
 }
 
 # Document file extensions (for content-type fallback)
-DOCUMENT_EXTENSIONS = {".pdf", ".pdfx", ".xlsx", ".xls", ".docx", ".doc"}
+DOCUMENT_EXTENSIONS = {".pdf", ".pdfx", ".xlsx", ".xls", ".docx", ".doc", ".zip"}
 
 # Query parameters to strip (tracking, session, download flags, etc.)
 STRIP_PARAMS = {

@@ -12,6 +12,7 @@ import {
     HLZFTable,
     EditRecordDialog,
 } from "../components";
+import { rangesToString, stringToRanges } from "../components/EditRecordDialog";
 import { useDataFilters } from "../hooks";
 import type { DNODetailContext } from "./types";
 
@@ -69,8 +70,16 @@ export function DataExplorer() {
     });
 
     const updateHLZFMutation = useMutation({
-        mutationFn: (data: { id: number; winter?: string; fruehling?: string; sommer?: string; herbst?: string }) =>
-            api.dnos.updateHLZF(String(numericId), data.id, data),
+        mutationFn: (data: { id: number; winter?: string; fruehling?: string; sommer?: string; herbst?: string }) => {
+            // Convert text strings back to JSON arrays for the API
+            const payload = {
+                winter: stringToRanges(data.winter ?? ""),
+                fruehling: stringToRanges(data.fruehling ?? ""),
+                sommer: stringToRanges(data.sommer ?? ""),
+                herbst: stringToRanges(data.herbst ?? ""),
+            };
+            return api.dnos.updateHLZF(String(numericId), data.id, payload);
+        },
         onSuccess: () => {
             setEditModalOpen(false);
             refetchData();
@@ -203,7 +212,13 @@ export function DataExplorer() {
                 isAdmin={isAdmin}
                 onEdit={(item: HLZF) => {
                     setEditModalType('hlzf');
-                    setEditRecord({ id: item.id, winter: item.winter ?? '', fruehling: item.fruehling ?? '', sommer: item.sommer ?? '', herbst: item.herbst ?? '' });
+                    setEditRecord({
+                        id: item.id,
+                        winter: rangesToString(item.winter),
+                        fruehling: rangesToString(item.fruehling),
+                        sommer: rangesToString(item.sommer),
+                        herbst: rangesToString(item.herbst),
+                    });
                     setEditModalOpen(true);
                 }}
                 onDelete={(id: number) => deleteHLZFMutation.mutate(id)}

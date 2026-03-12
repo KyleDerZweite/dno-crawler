@@ -167,9 +167,9 @@ async def list_configs(
                 "priority": config.priority,
                 "status": config.status_display,
                 "model_parameters": config.model_parameters,
-                "last_success_at": config.last_success_at.isoformat()
-                if config.last_success_at
-                else None,
+                "last_success_at": (
+                    config.last_success_at.isoformat() if config.last_success_at else None
+                ),
                 "last_error_at": config.last_error_at.isoformat() if config.last_error_at else None,
                 "last_error_message": config.last_error_message,
                 "consecutive_failures": config.consecutive_failures,
@@ -433,13 +433,15 @@ async def get_status(
             "ai_enabled": len(enabled_configs) > 0,
             "total_configs": len(all_configs),
             "enabled_configs": len(enabled_configs),
-            "active_provider": {
-                "id": active_config.id,
-                "name": active_config.name,
-                "provider_type": active_config.provider_type,
-                "model": active_config.model,
-            }
-            if active_config
-            else None,
+            "active_provider": (
+                {
+                    "id": active_config.id,
+                    "name": active_config.name,
+                    "provider_type": active_config.provider_type,
+                    "model": active_config.model,
+                }
+                if active_config
+                else None
+            ),
         },
     )

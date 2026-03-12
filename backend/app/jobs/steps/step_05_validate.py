@@ -16,7 +16,7 @@ Validation rules for Netzentgelte:
 
 Validation rules for HLZF:
 - At least 2 voltage levels
-- Time windows in valid format (HH:MM-HH:MM) or "entfällt"
+- Time windows as structured JSON arrays with start/end times or None for no data
 
 Output stored in job.context:
 - is_valid: True if data passes all checks
@@ -138,8 +138,14 @@ class ValidateStep(BaseStep):
         if not sanity_ok:
             errors.append(sanity_reason)
 
-        # Helper to check if value is valid time data
-        def is_valid_time(v):
+        def _has_time_data(v) -> bool:
+            """Check if a season value has valid time data.
+
+            Handles both JSONB arrays (post-migration) and legacy strings.
+            """
+            if isinstance(v, list):
+                return len(v) > 0
+            # Legacy string fallback
             return is_valid_data_value(v)
 
         # Check that expected voltage levels are present
@@ -181,7 +187,7 @@ class ValidateStep(BaseStep):
             # Count peak season data (winter + herbst)
             for season in peak_seasons:
                 total_peak_slots += 1
-                if is_valid_time(record.get(season)):
+                if _has_time_data(record.get(season)):
                     filled_peak_slots += 1
 
         # Check at least one peak season has time data overall

@@ -100,10 +100,10 @@ export function useDNOMutations({ dnoId, onSuccess }: UseDNOMutationsOptions) {
     const updateHLZF = useMutation({
         mutationFn: (data: {
             id: number;
-            winter?: string;
-            fruehling?: string;
-            sommer?: string;
-            herbst?: string;
+            winter?: { start: string; end: string }[] | null;
+            fruehling?: { start: string; end: string }[] | null;
+            sommer?: { start: string; end: string }[] | null;
+            herbst?: { start: string; end: string }[] | null;
         }) =>
             api.dnos.updateHLZF(String(dnoId), data.id, {
                 winter: data.winter,
