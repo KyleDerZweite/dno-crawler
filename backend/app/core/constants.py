@@ -121,6 +121,58 @@ _RE_WHITESPACE = re.compile(r"\s+")
 _RE_SEPARATOR = re.compile(r"\s*([-/])\s*")
 _RE_PARENS = re.compile(r"[()]")
 
+# kV-based voltage level resolution
+# Maps numeric kV values to standard abbreviations
+_KV_MAP: dict[str, str] = {
+    "0.4": "NS",
+    "10": "MS",
+    "20": "MS",
+    "30": "MS",
+    "110": "HS",
+    "220": "HöS",
+    "380": "HöS",
+}
+
+# Pattern A: number kV / number (kV|V) — both sides have units
+# e.g. "110 kV / 20 kV", "20 kV / 400 V"
+_RE_KV_COMPOUND_FULL = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*kv\s*/\s*(\d+(?:[.,]\d+)?)\s*(kv|v)\b",
+    re.IGNORECASE,
+)
+
+# Pattern B: number / number (kV|V) — trailing unit only
+# e.g. "20/0,4kV", "110/20kV"
+_RE_KV_COMPOUND = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*/\s*(\d+(?:[.,]\d+)?)\s*kv",
+    re.IGNORECASE,
+)
+
+# Single: number (kV|V) — captures unit to distinguish V from kV
+_RE_KV_SINGLE = re.compile(
+    r"(\d+(?:[.,]\d+)?)\s*(kv|v)\b",
+    re.IGNORECASE,
+)
+
+
+def _kv_to_level(kv_str: str, *, is_volt: bool = False) -> str | None:
+    """Map a kV value string to a voltage level abbreviation.
+
+    Args:
+        kv_str: Numeric value as string (e.g. "110", "0,4", "400")
+        is_volt: If True, value is in Volts (divide by 1000 to get kV)
+    """
+    normalized = kv_str.replace(",", ".").strip()
+    if normalized.endswith(".0"):
+        normalized = normalized[:-2]
+    if is_volt:
+        try:
+            kv_val = float(normalized) / 1000
+            # Format cleanly: 0.4, 20, etc.
+            normalized = f"{kv_val:g}"
+        except ValueError:
+            return None
+    return _KV_MAP.get(normalized)
+
 
 def normalize_voltage_level(level: str) -> str | None:
     """
@@ -155,6 +207,35 @@ def normalize_voltage_level(level: str) -> str | None:
     if cleaned in VOLTAGE_LEVEL_ALIASES:
         return VOLTAGE_LEVEL_ALIASES[cleaned]
 
+    # Try kV/V-based resolution early — before partial alias matching which can
+    # false-positive on short aliases like "ms" inside "umspannung"
+    # (e.g. "Umspannung 20/0,4kV" → MS/NS, "110 kV / 20 kV" → HS/MS)
+
+    # Pattern A: "110 kV / 20 kV", "20 kV / 400 V"
+    compound_full = _RE_KV_COMPOUND_FULL.search(cleaned)
+    if compound_full:
+        high = _kv_to_level(compound_full.group(1))  # always kV
+        low_is_v = compound_full.group(3).lower() == "v"
+        low = _kv_to_level(compound_full.group(2), is_volt=low_is_v)
+        if high and low:
+            return f"{high}/{low}"
+
+    # Pattern B: "20/0,4kV"
+    compound_kv = _RE_KV_COMPOUND.search(cleaned)
+    if compound_kv:
+        high = _kv_to_level(compound_kv.group(1))
+        low = _kv_to_level(compound_kv.group(2))
+        if high and low:
+            return f"{high}/{low}"
+
+    # Single: "20 kV", "400 V"
+    single_kv = _RE_KV_SINGLE.search(cleaned)
+    if single_kv:
+        is_v = single_kv.group(2).lower() == "v"
+        resolved = _kv_to_level(single_kv.group(1), is_volt=is_v)
+        if resolved:
+            return resolved
+
     # Partial match - check if any key is contained in the level
     # Sort aliases by length (descending) to match specific phrases first
     # e.g. Match "umspannung hoch-/mittelspannung" before "mittelspannung"
@@ -163,7 +244,12 @@ def normalize_voltage_level(level: str) -> str | None:
     for alias in sorted_aliases:
         # Also clean the alias for comparison (though aliases should be clean in constant)
         clean_alias = _RE_SEPARATOR.sub(r"\1", alias)
-        if clean_alias in cleaned:
+        if len(clean_alias) <= 4:
+            # Short aliases (hs, ms, ns, hös, ...) need word boundary matching
+            # to avoid false positives like "hs" in "Verbrauchseinrichtung"
+            if re.search(r"\b" + re.escape(clean_alias) + r"\b", cleaned):
+                return VOLTAGE_LEVEL_ALIASES[alias]
+        elif clean_alias in cleaned:
             return VOLTAGE_LEVEL_ALIASES[alias]
 
     # If no match found, try to extract useful info

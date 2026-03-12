@@ -62,13 +62,20 @@ class UpdateNetzentgelteRequest(BaseModel):
     arbeit_unter_2500h: float | None = None
 
 
+class HLZFTimeRange(BaseModel):
+    """A single time range with start and end times."""
+
+    start: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
+    end: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
+
+
 class UpdateHLZFRequest(BaseModel):
     """Request model for updating HLZF."""
 
-    winter: str | None = None
-    fruehling: str | None = None
-    sommer: str | None = None
-    herbst: str | None = None
+    winter: list[HLZFTimeRange] | None = None
+    fruehling: list[HLZFTimeRange] | None = None
+    sommer: list[HLZFTimeRange] | None = None
+    herbst: list[HLZFTimeRange] | None = None
 
 
 # Import/Export constants
@@ -112,10 +119,10 @@ class HLZFImport(BaseModel):
 
     year: int = Field(..., ge=2000, le=2100)
     voltage_level: str = Field(...)
-    winter: str | None = Field(None, max_length=100)
-    fruehling: str | None = Field(None, max_length=100)
-    sommer: str | None = Field(None, max_length=100)
-    herbst: str | None = Field(None, max_length=100)
+    winter: list[HLZFTimeRange] | None = None
+    fruehling: list[HLZFTimeRange] | None = None
+    sommer: list[HLZFTimeRange] | None = None
+    herbst: list[HLZFTimeRange] | None = None
     verification_status: str | None = Field(None)
     extraction_source: str | None = Field(None)
 

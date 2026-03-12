@@ -300,9 +300,9 @@ class ContentVerifier:
                     keywords_found=[],
                     keywords_missing=[],
                     error="Could not extract text from content",
-                    content_sample=content[:500].decode("utf-8", errors="replace")
-                    if content
-                    else None,
+                    content_sample=(
+                        content[:500].decode("utf-8", errors="replace") if content else None
+                    ),
                 )
 
             # Verify content against expected data type
@@ -352,28 +352,34 @@ class ContentVerifier:
 
             if not await validate_url_ssrf_safe(url):
                 self.log.warning("verify_cache_ssrf_blocked", url=url[:80])
-                return VerificationResult(
-                    is_verified=False,
-                    confidence=0.0,
-                    detected_data_type=None,
-                    keywords_found=[],
-                    keywords_missing=[],
-                    error="URL blocked by SSRF protection",
-                ), None
+                return (
+                    VerificationResult(
+                        is_verified=False,
+                        confidence=0.0,
+                        detected_data_type=None,
+                        keywords_found=[],
+                        keywords_missing=[],
+                        error="URL blocked by SSRF protection",
+                    ),
+                    None,
+                )
 
             content_type = self._detect_content_type(url)
 
             # Download full file
             content = await self._download_full(url)
             if not content:
-                return VerificationResult(
-                    is_verified=False,
-                    confidence=0.0,
-                    detected_data_type=None,
-                    keywords_found=[],
-                    keywords_missing=[],
-                    error="Failed to download file",
-                ), None
+                return (
+                    VerificationResult(
+                        is_verified=False,
+                        confidence=0.0,
+                        detected_data_type=None,
+                        keywords_found=[],
+                        keywords_missing=[],
+                        error="Failed to download file",
+                    ),
+                    None,
+                )
 
             # Extract text for verification
             text = await self._extract_text(content, content_type, url)
@@ -448,14 +454,17 @@ class ContentVerifier:
 
         except Exception as e:
             self.log.warning("verify_and_cache_failed", url=url[:80], error=str(e))
-            return VerificationResult(
-                is_verified=False,
-                confidence=0.0,
-                detected_data_type=None,
-                keywords_found=[],
-                keywords_missing=[],
-                error=str(e),
-            ), None
+            return (
+                VerificationResult(
+                    is_verified=False,
+                    confidence=0.0,
+                    detected_data_type=None,
+                    keywords_found=[],
+                    keywords_missing=[],
+                    error=str(e),
+                ),
+                None,
+            )
 
     async def _download_full(self, url: str, max_size: int = 50 * 1024 * 1024) -> bytes | None:
         """Download complete file (up to max_size bytes).

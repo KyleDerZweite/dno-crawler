@@ -104,8 +104,9 @@ export function PriceTrendChart({ netzentgelte, isLoading, className }: PriceTre
 
         // Build colors array matching series order
         const colors: string[] = [];
-        voltageLevels.forEach((level, idx) => {
-            const color = chartColors.preset.colors[idx] || chartColors.preset.colors[0];
+        voltageLevels.forEach((level) => {
+            const colorIdx = VOLTAGE_LEVELS.indexOf(level as typeof VOLTAGE_LEVELS[number]);
+            const color = chartColors.preset.colors[colorIdx >= 0 ? colorIdx : 0];
             colors.push(color);
             // If there's a forecast series, use same color
             const hasForecast = series.some((s) => s.name === `${level} (Forecast)`);

@@ -12,7 +12,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user, require_admin
 from app.core.models import APIResponse
-from app.core.parsers import parse_hlzf_time_ranges
 from app.db import DNOModel, get_db
 
 from .schemas import UpdateHLZFRequest, UpdateNetzentgelteRequest
@@ -39,14 +38,16 @@ async def get_dno_data(
         )
 
     # Query netzentgelte data
-    netzentgelte_query = text("""
+    netzentgelte_query = text(
+        """
         SELECT id, voltage_level, year, leistung, arbeit, leistung_unter_2500h, arbeit_unter_2500h,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM netzentgelte
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
-    """)
+    """
+    )
     result = await db.execute(netzentgelte_query, {"dno_id": dno_id})
     netzentgelte_rows = result.fetchall()
 
@@ -78,38 +79,30 @@ async def get_dno_data(
         )
 
     # Query HLZF data
-    hlzf_query = text("""
+    hlzf_query = text(
+        """
         SELECT id, voltage_level, year, winter, fruehling, sommer, herbst,
                verification_status, extraction_source, extraction_model, extraction_source_format,
                last_edited_by, last_edited_at, verified_by, verified_at, flagged_by, flagged_at, flag_reason
         FROM hlzf
         WHERE dno_id = :dno_id
         ORDER BY year DESC, voltage_level
-    """)
+    """
+    )
     result = await db.execute(hlzf_query, {"dno_id": dno_id})
     hlzf_rows = result.fetchall()
 
     hlzf = []
     for row in hlzf_rows:
-        winter_val = row[3]
-        fruehling_val = row[4]
-        sommer_val = row[5]
-        herbst_val = row[6]
-
         hlzf.append(
             {
                 "id": row[0],
                 "voltage_level": row[1],
                 "year": row[2],
-                "winter": winter_val,
-                "fruehling": fruehling_val,
-                "sommer": sommer_val,
-                "herbst": herbst_val,
-                # Parsed time ranges
-                "winter_ranges": parse_hlzf_time_ranges(winter_val) or [],
-                "fruehling_ranges": parse_hlzf_time_ranges(fruehling_val) or [],
-                "sommer_ranges": parse_hlzf_time_ranges(sommer_val) or [],
-                "herbst_ranges": parse_hlzf_time_ranges(herbst_val) or [],
+                "winter": row[3],
+                "fruehling": row[4],
+                "sommer": row[5],
+                "herbst": row[6],
                 "verification_status": row[7],
                 # Extraction source fields
                 "extraction_source": row[8],
@@ -246,15 +239,18 @@ async def update_hlzf(
             detail="Record not found",
         )
 
-    # Update only provided fields
+    # Update only provided fields (seasons are JSON arrays or None)
+    def _to_dicts(ranges):
+        return [r.model_dump() for r in ranges] if ranges else None
+
     if request.winter is not None:
-        record.winter = request.winter if request.winter != "" else None
+        record.winter = _to_dicts(request.winter)
     if request.fruehling is not None:
-        record.fruehling = request.fruehling if request.fruehling != "" else None
+        record.fruehling = _to_dicts(request.fruehling)
     if request.sommer is not None:
-        record.sommer = request.sommer if request.sommer != "" else None
+        record.sommer = _to_dicts(request.sommer)
     if request.herbst is not None:
-        record.herbst = request.herbst if request.herbst != "" else None
+        record.herbst = _to_dicts(request.herbst)
 
     # Track manual edit
     record.extraction_source = "manual"

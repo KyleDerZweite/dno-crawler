@@ -18,6 +18,7 @@ Output stored in job.context:
 """
 
 import asyncio
+import hashlib
 from urllib.parse import urlparse
 
 import httpx
@@ -36,7 +37,7 @@ from app.services.web_crawler import WebCrawler, get_keywords_for_data_type
 logger = structlog.get_logger()
 
 # Maximum candidates to collect across all strategies
-MAX_CANDIDATES = 60
+MAX_CANDIDATES = 80
 
 # Timeout for BFS crawl (5 minutes)
 BFS_CRAWL_TIMEOUT_SECONDS = 300
@@ -49,8 +50,15 @@ _PARENT_PAGE_KEYWORDS = [
     "service",
     "netz",
     "netzzugang",
+    "netzkosten",
+    "lieferanten",
+    "preisblaetter",
+    "preisblatt",
     "publikationen",
 ]
+
+# URL path fragments indicating TYPO3 CMS
+_TYPO3_INDICATORS = ["/fileadmin/", "/typo3conf/", "/typo3temp/"]
 
 
 class DiscoverStep(BaseStep):
@@ -116,10 +124,32 @@ class DiscoverStep(BaseStep):
             if crawl_pass > 1:
                 seen_urls = {c["url"] for c in ctx.get("candidate_urls", [])}
 
+            # Build registry lookup for cross-run deduplication
+            prior_downloads = ctx.get("prior_downloads", [])
+            registry_by_url: dict[str, str] = {}  # url_hash -> classification
+            registry_urls: set[str] = set()
+            for entry in prior_downloads:
+                registry_by_url[entry["url_hash"]] = entry["classification"]
+                registry_urls.add(entry["source_url"])
+
             def _add_candidate(url: str, score: float, source: str, file_type: str = "unknown"):
-                """Add a candidate URL if not already seen."""
+                """Add a candidate URL if not already seen.
+
+                Applies cross-run deduplication: URLs previously classified as
+                irrelevant are skipped entirely; unclassified URLs get a score
+                penalty so new URLs are preferred.
+                """
                 if url in seen_urls or len(candidates) >= MAX_CANDIDATES:
                     return
+
+                # Check download registry for prior classification
+                url_hash = hashlib.md5(url.encode()).hexdigest()[:32]
+                prior_class = registry_by_url.get(url_hash)
+                if prior_class == "irrelevant":
+                    return  # Skip URLs that were already tried and found useless
+                if prior_class == "unclassified":
+                    score -= 30  # Penalise but don't exclude
+
                 seen_urls.add(url)
                 candidates.append(
                     {
@@ -205,6 +235,32 @@ class DiscoverStep(BaseStep):
                         _add_candidate(final_url, 60.0, f"pattern_{dt}", ft)
 
             # =================================================================
+            # CMS detection: increase BFS depth for TYPO3 sites
+            # =================================================================
+            # TYPO3 nests documents deep under /fileadmin/ paths that
+            # require more link-hops to reach from the homepage.
+            is_typo3 = any(
+                any(ind in c["url"].lower() for ind in _TYPO3_INDICATORS) for c in candidates
+            )
+            if not is_typo3:
+                # Quick check on the root page HTML for TYPO3 markers
+                try:
+                    resp = await client.get(dno_website, follow_redirects=True, timeout=10.0)
+                    snippet = resp.text[:5000].lower()
+                    if (
+                        'content="typo3' in snippet
+                        or "/typo3conf/" in snippet
+                        or "/fileadmin/" in snippet
+                    ):
+                        is_typo3 = True
+                except Exception:
+                    pass
+
+            if is_typo3 and max_depth < 5:
+                max_depth = 5
+                log.info("typo3_cms_detected", max_depth=max_depth)
+
+            # =================================================================
             # Strategy 5: BFS crawl (start from parent pages or root)
             # =================================================================
             if len(candidates) < MAX_CANDIDATES:
@@ -261,6 +317,15 @@ class DiscoverStep(BaseStep):
             # Sort candidates by score descending
             candidates.sort(key=lambda c: c["score"], reverse=True)
             candidates = candidates[:MAX_CANDIDATES]
+
+            if registry_urls:
+                new_urls = sum(1 for c in candidates if c["url"] not in registry_urls)
+                log.info(
+                    "registry_dedup_applied",
+                    registry_entries=len(registry_urls),
+                    candidates_total=len(candidates),
+                    candidates_new=new_urls,
+                )
 
             ctx["candidate_urls"] = candidates
             job.context = ctx

@@ -23,10 +23,10 @@ interface HLZFTimelineChartProps {
 type ViewMode = "single" | "compare";
 
 const SEASONS = [
-    { key: "winter" as const, label: "Winter", rangeKey: "winter_ranges" as const },
-    { key: "fruehling" as const, label: "Frühling", rangeKey: "fruehling_ranges" as const },
-    { key: "sommer" as const, label: "Sommer", rangeKey: "sommer_ranges" as const },
-    { key: "herbst" as const, label: "Herbst", rangeKey: "herbst_ranges" as const },
+    { key: "winter" as const, label: "Winter" },
+    { key: "fruehling" as const, label: "Frühling" },
+    { key: "sommer" as const, label: "Sommer" },
+    { key: "herbst" as const, label: "Herbst" },
 ];
 
 const DUMMY_DATE = "1970-01-01";
@@ -35,19 +35,6 @@ function parseTimeToTimestamp(timeStr: string): number {
     const clean = timeStr.trim();
     const [hours, minutes] = clean.split(":").map(Number);
     return new Date(`${DUMMY_DATE}T${String(hours).padStart(2, "0")}:${String(minutes || 0).padStart(2, "0")}:00`).getTime();
-}
-
-function parseRawTimeString(raw: string | null | undefined): HLZFTimeRange[] {
-    if (!raw || raw === "-" || raw.trim() === "") return [];
-    const ranges: HLZFTimeRange[] = [];
-    const parts = raw.split(/[,;]|und|&/i);
-    for (const part of parts) {
-        const match = part.match(/(\d{1,2}:\d{2})\s*[-–]\s*(\d{1,2}:\d{2})/);
-        if (match) {
-            ranges.push({ start: match[1] + ":00", end: match[2] + ":00" });
-        }
-    }
-    return ranges;
 }
 
 function hexToRgba(hex: string, alpha: number): string {
@@ -129,11 +116,7 @@ export function HLZFTimelineChart({ hlzf, isLoading, className }: HLZFTimelineCh
 
                 if (levelData) {
                     for (const season of SEASONS) {
-                        let ranges = levelData[season.rangeKey] as HLZFTimeRange[] | undefined;
-                        if (!ranges || ranges.length === 0) {
-                            const rawValue = levelData[season.key] as string | undefined;
-                            ranges = parseRawTimeString(rawValue);
-                        }
+                        const ranges = (levelData[season.key] as HLZFTimeRange[] | null | undefined) || [];
 
                         for (const range of ranges) {
                             try {
@@ -177,9 +160,8 @@ export function HLZFTimelineChart({ hlzf, isLoading, className }: HLZFTimelineCh
                 const yearData = hlzf.filter((h) => h.year === year);
                 const levelData = yearData.find((h) => h.voltage_level === level);
                 const hasData = levelData && SEASONS.some(season => {
-                    const ranges = levelData[season.rangeKey] as HLZFTimeRange[] | undefined;
-                    const raw = levelData[season.key] as string | undefined;
-                    return (ranges && ranges.length > 0) || parseRawTimeString(raw).length > 0;
+                    const ranges = levelData[season.key] as HLZFTimeRange[] | null | undefined;
+                    return ranges && ranges.length > 0;
                 });
 
                 if (hasData) {
