@@ -242,11 +242,11 @@ class HtmlStripper:
             # Remove attributes that match patterns
             attrs_to_remove = []
             for attr in tag.attrs:
+                attr_lower = attr.lower()
                 # Remove matching patterns or event handlers (on*)
                 if (
-                    any(attr.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS)
-                    or attr in ["style", "class", "id"]
-                    or attr.lower().startswith("on")
+                    any(attr_lower.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS)
+                    or attr_lower.startswith("on")
                 ):
                     attrs_to_remove.append(attr)
 
@@ -313,16 +313,16 @@ def clean_html_for_storage(html: str) -> str:
     for tag in soup.find_all(True):
         attrs_to_remove = []
         for attr in list(tag.attrs):
+            attr_lower = attr.lower()
             # Remove style/class/id and event handlers (on*) plus data-* and aria-*
             if (
-                attr in ("style", "class", "id")
-                or attr.lower().startswith("on")
-                or attr.startswith(("data-", "aria-"))
+                attr_lower in ("style", "class", "id")
+                or attr_lower.startswith(("on", "data-", "aria-"))
             ):
                 attrs_to_remove.append(attr)
                 continue
 
-            if attr in ("href", "src") and not _is_safe_url_value(tag.attrs.get(attr)):
+            if attr_lower in ("href", "src") and not _is_safe_url_value(tag.attrs.get(attr)):
                 attrs_to_remove.append(attr)
         for attr in attrs_to_remove:
             del tag[attr]
