@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 
+from app.api.routes.dnos.schemas import HLZFTimeRange
 from app.core.rate_limiter import RateLimiter, get_client_ip, get_rate_limiter
 from app.db import DNOModel, HLZFModel, LocationModel, NetzentgelteModel, get_db
 from app.services.completeness import build_completeness_payload, connection_points_from_mastr
@@ -120,13 +121,6 @@ class NetzentgelteData(BaseModel):
     leistung_unter_2500h: float | None = None
     arbeit_unter_2500h: float | None = None
     verification_status: str | None = None
-
-
-class HLZFTimeRange(BaseModel):
-    """Parsed time range with start and end times."""
-
-    start: str  # e.g., "12:15:00"
-    end: str  # e.g., "13:15:00"
 
 
 class HLZFData(BaseModel):

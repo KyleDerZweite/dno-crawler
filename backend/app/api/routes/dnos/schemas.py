@@ -6,7 +6,7 @@ from datetime import time
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, conlist, field_validator
 
 
 class JobType(StrEnum):
@@ -84,13 +84,16 @@ class HLZFTimeRange(BaseModel):
         return v
 
 
+HLZFSeasonRanges = conlist(HLZFTimeRange, max_length=10)
+
+
 class UpdateHLZFRequest(BaseModel):
     """Request model for updating HLZF."""
 
-    winter: list[HLZFTimeRange] | None = None
-    fruehling: list[HLZFTimeRange] | None = None
-    sommer: list[HLZFTimeRange] | None = None
-    herbst: list[HLZFTimeRange] | None = None
+    winter: HLZFSeasonRanges | None = None
+    fruehling: HLZFSeasonRanges | None = None
+    sommer: HLZFSeasonRanges | None = None
+    herbst: HLZFSeasonRanges | None = None
 
 
 # Import/Export constants
@@ -134,10 +137,10 @@ class HLZFImport(BaseModel):
 
     year: int = Field(..., ge=2000, le=2100)
     voltage_level: str = Field(...)
-    winter: list[HLZFTimeRange] | None = None
-    fruehling: list[HLZFTimeRange] | None = None
-    sommer: list[HLZFTimeRange] | None = None
-    herbst: list[HLZFTimeRange] | None = None
+    winter: HLZFSeasonRanges | None = None
+    fruehling: HLZFSeasonRanges | None = None
+    sommer: HLZFSeasonRanges | None = None
+    herbst: HLZFSeasonRanges | None = None
     verification_status: str | None = Field(None)
     extraction_source: str | None = Field(None)
 

@@ -24,7 +24,7 @@ import shutil
 from pathlib import Path
 
 import structlog
-from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import settings
@@ -163,6 +163,8 @@ class ClassifyStep(BaseStep):
         for data_type_key, info in best.items():
             winning_paths[info["path"]] = data_type_key.split(":")[0]
 
+        original_winning_paths = dict(winning_paths)
+
         # Move winning files to downloads/ with canonical naming
         downloads_dir = Path(settings.downloads_path) / dno_slug
         downloads_dir.mkdir(parents=True, exist_ok=True)
@@ -200,7 +202,15 @@ class ClassifyStep(BaseStep):
         dno_id = ctx.get("dno_id")
         if dno_id:
             await self._update_registry(
-                db, dno_id, job.year, job.id, downloaded_files, best, unclassified, log
+                db,
+                dno_id,
+                job.year,
+                job.id,
+                downloaded_files,
+                best,
+                unclassified,
+                log,
+                original_winning_paths,
             )
 
         # Check if we should deepen the crawl
@@ -322,12 +332,13 @@ class ClassifyStep(BaseStep):
         best: dict[str, dict],
         unclassified: list[dict],
         log,
+        original_winning_paths: dict[str, str] | None = None,
     ) -> None:
         """Upsert classification results into the download registry."""
         # Build a lookup: file_path -> winning data_type
-        winning_paths: dict[str, str] = {}
-        for data_type_key, info in best.items():
-            winning_paths[info["path"]] = data_type_key.split(":")[0]
+        winning_paths = original_winning_paths or {
+            info["path"]: data_type_key.split(":")[0] for data_type_key, info in best.items()
+        }
 
         # Build a lookup: file_path -> unclassified detail
         unclassified_paths: dict[str, dict] = {}
@@ -358,36 +369,32 @@ class ClassifyStep(BaseStep):
                     "hlzf_records": uc.get("hlzf_records", 0),
                 }
 
-            # Upsert: check if entry exists for this (dno_id, url_hash)
-            result = await db.execute(
-                select(DownloadRegistryModel).where(
-                    DownloadRegistryModel.dno_id == dno_id,
-                    DownloadRegistryModel.url_hash == url_hash,
+            stmt = (
+                pg_insert(DownloadRegistryModel)
+                .values(
+                    dno_id=dno_id,
+                    year=year,
+                    crawl_job_id=job_id,
+                    source_url=url,
+                    url_hash=url_hash,
+                    file_path=file_path,
+                    file_hash=file_info.get("content_hash"),
+                    file_format=file_info.get("format"),
+                    file_size_bytes=file_info.get("size_bytes"),
+                    classification=classification,
+                    classification_detail=detail or None,
+                )
+                .on_conflict_do_update(
+                    index_elements=["dno_id", "url_hash"],
+                    set_={
+                        "classification": classification,
+                        "classification_detail": detail or None,
+                        "crawl_job_id": job_id,
+                        "file_path": file_path,
+                    },
                 )
             )
-            existing = result.scalar_one_or_none()
-
-            if existing:
-                existing.classification = classification
-                existing.classification_detail = detail or existing.classification_detail
-                existing.crawl_job_id = job_id
-                existing.file_path = file_path
-            else:
-                db.add(
-                    DownloadRegistryModel(
-                        dno_id=dno_id,
-                        year=year,
-                        crawl_job_id=job_id,
-                        source_url=url,
-                        url_hash=url_hash,
-                        file_path=file_path,
-                        file_hash=file_info.get("content_hash"),
-                        file_format=file_info.get("format"),
-                        file_size_bytes=file_info.get("size_bytes"),
-                        classification=classification,
-                        classification_detail=detail or None,
-                    )
-                )
+            await db.execute(stmt)
             upserted += 1
 
         if upserted:

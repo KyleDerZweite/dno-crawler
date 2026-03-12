@@ -20,7 +20,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from bs4 import BeautifulSoup, Tag
+from bs4 import BeautifulSoup, Comment, Tag
 
 
 class HtmlStripper:
@@ -292,7 +292,7 @@ def clean_html_for_storage(html: str) -> str:
         for attr in list(tag.attrs):
             # Remove style/class/id and event handlers (on*) plus data-* and aria-*
             if (
-                attr in ("style", "class")
+                attr in ("style", "class", "id")
                 or attr.lower().startswith("on")
                 or attr.startswith(("data-", "aria-"))
             ):
@@ -301,8 +301,6 @@ def clean_html_for_storage(html: str) -> str:
             del tag[attr]
 
     # Remove HTML comments
-    from bs4 import Comment
-
     for comment in soup.find_all(string=lambda t: isinstance(t, Comment)):
         comment.extract()
 
