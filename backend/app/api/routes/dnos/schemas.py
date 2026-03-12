@@ -2,6 +2,7 @@
 Pydantic schemas for DNO API endpoints.
 """
 
+from datetime import time
 from enum import StrEnum
 from typing import Literal
 
@@ -67,6 +68,20 @@ class HLZFTimeRange(BaseModel):
 
     start: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
     end: str = Field(..., pattern=r"^\d{2}:\d{2}:\d{2}$")
+
+    @field_validator("start", "end", mode="after")
+    @classmethod
+    def validate_time_value(cls, v: str) -> str:
+        """Validate that time strings represent valid clock times.
+
+        Rejects impossible times like 25:61:99 by attempting to parse
+        with datetime.time.fromisoformat().
+        """
+        try:
+            time.fromisoformat(v)
+        except ValueError as e:
+            raise ValueError(f"Invalid time value '{v}': {e}") from e
+        return v
 
 
 class UpdateHLZFRequest(BaseModel):

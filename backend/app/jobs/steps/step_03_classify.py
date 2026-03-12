@@ -95,9 +95,17 @@ class ClassifyStep(BaseStep):
                 hlzf_keyword=hlzf_keyword,
             )
 
-            # Determine the classification key suffix for non-target years
-            is_target_year = detected_year is None or detected_year == job.year
-            year_suffix = "" if is_target_year else f":{detected_year}"
+            # Determine the classification key suffix for non-target years.
+            # For HLZF: if extraction succeeded (count > 0), use job.year since that's
+            # what _try_hlzf filtered to. For netzentgelte: use detected_year.
+            netz_year = detected_year
+            netz_is_target = netz_year is None or netz_year == job.year
+            netz_year_suffix = "" if netz_is_target else f":{netz_year}"
+
+            # HLZF: if regex extraction found records, those are for job.year by design
+            hlzf_year = job.year if hlzf_count > 0 else detected_year
+            hlzf_is_target = hlzf_year is None or hlzf_year == job.year
+            hlzf_year_suffix = "" if hlzf_is_target else f":{hlzf_year}"
 
             classified = False
 
@@ -108,27 +116,27 @@ class ClassifyStep(BaseStep):
 
             # Check netzentgelte (regex ≥2 records, or keyword match)
             if netz_effective >= 0:
-                key = f"netzentgelte{year_suffix}"
+                key = f"netzentgelte{netz_year_suffix}"
                 if self._is_better_candidate(netz_effective, file_format, best.get(key)):
                     best[key] = {
                         "path": str(file_path),
                         "format": file_format,
                         "record_count": netz_effective,
                         "source_url": source_url,
-                        "detected_year": detected_year,
+                        "detected_year": netz_year,
                     }
                 classified = True
 
             # Check hlzf (regex ≥2 records, or keyword match)
             if hlzf_effective >= 0:
-                key = f"hlzf{year_suffix}"
+                key = f"hlzf{hlzf_year_suffix}"
                 if self._is_better_candidate(hlzf_effective, file_format, best.get(key)):
                     best[key] = {
                         "path": str(file_path),
                         "format": file_format,
                         "record_count": hlzf_effective,
                         "source_url": source_url,
-                        "detected_year": detected_year,
+                        "detected_year": hlzf_year,
                     }
                 classified = True
 

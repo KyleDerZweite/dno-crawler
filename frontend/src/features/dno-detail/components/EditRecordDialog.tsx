@@ -137,8 +137,11 @@ export function EditRecordDialog({
                                 Format: HH:MM-HH:MM (comma-separated for multiple windows)
                             </p>
                             <div className="grid gap-2">
-                                <label className="text-sm font-medium">Winter</label>
+                                <label htmlFor="hlzf-winter" className="text-sm font-medium">
+                                    Winter
+                                </label>
                                 <Input
+                                    id="hlzf-winter"
                                     type="text"
                                     placeholder="e.g., 08:00-20:00, 21:00-23:00"
                                     value={hlzfData.winter ?? ""}
@@ -148,8 +151,11 @@ export function EditRecordDialog({
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <label className="text-sm font-medium">Frühling</label>
+                                <label htmlFor="hlzf-fruehling" className="text-sm font-medium">
+                                    Frühling
+                                </label>
                                 <Input
+                                    id="hlzf-fruehling"
                                     type="text"
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.fruehling ?? ""}
@@ -159,8 +165,11 @@ export function EditRecordDialog({
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <label className="text-sm font-medium">Sommer</label>
+                                <label htmlFor="hlzf-sommer" className="text-sm font-medium">
+                                    Sommer
+                                </label>
                                 <Input
+                                    id="hlzf-sommer"
                                     type="text"
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.sommer ?? ""}
@@ -170,8 +179,11 @@ export function EditRecordDialog({
                                 />
                             </div>
                             <div className="grid gap-2">
-                                <label className="text-sm font-medium">Herbst</label>
+                                <label htmlFor="hlzf-herbst" className="text-sm font-medium">
+                                    Herbst
+                                </label>
                                 <Input
+                                    id="hlzf-herbst"
                                     type="text"
                                     placeholder="e.g., 08:00-20:00"
                                     value={hlzfData.herbst ?? ""}

@@ -219,9 +219,12 @@ class HtmlStripper:
             # Remove attributes that match patterns
             attrs_to_remove = []
             for attr in tag.attrs:
-                if any(
-                    attr.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS
-                ) or attr in ["style", "class", "id", "onclick", "onload"]:
+                # Remove matching patterns or event handlers (on*)
+                if (
+                    any(attr.startswith(pattern.rstrip("-")) for pattern in self.REMOVE_ATTRS)
+                    or attr in ["style", "class", "id"]
+                    or attr.lower().startswith("on")
+                ):
                     attrs_to_remove.append(attr)
 
             for attr in attrs_to_remove:
@@ -287,8 +290,11 @@ def clean_html_for_storage(html: str) -> str:
     for tag in soup.find_all(True):
         attrs_to_remove = []
         for attr in list(tag.attrs):
-            if attr in ("style", "class", "onclick", "onload", "onmouseover") or attr.startswith(
-                ("data-", "aria-")
+            # Remove style/class/id and event handlers (on*) plus data-* and aria-*
+            if (
+                attr in ("style", "class")
+                or attr.lower().startswith("on")
+                or attr.startswith(("data-", "aria-"))
             ):
                 attrs_to_remove.append(attr)
         for attr in attrs_to_remove:

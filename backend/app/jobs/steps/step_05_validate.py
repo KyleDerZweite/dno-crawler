@@ -16,7 +16,7 @@ Validation rules for Netzentgelte:
 
 Validation rules for HLZF:
 - At least 2 voltage levels
-- Time windows in valid format (HH:MM-HH:MM) or "entfällt"
+- Time windows as structured JSON arrays with start/end times or None for no data
 
 Output stored in job.context:
 - is_valid: True if data passes all checks
