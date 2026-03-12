@@ -19,8 +19,31 @@ Usage:
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 from bs4 import BeautifulSoup, Comment, Tag
+
+SAFE_URL_SCHEMES = {"http", "https", "mailto", "ftp", "tel"}
+UNSAFE_URL_SCHEMES = {"javascript", "vbscript", "data"}
+
+
+def _is_safe_url_value(value: Any) -> bool:
+    """Return whether an href/src value uses a safe scheme or no scheme."""
+    if not isinstance(value, str):
+        return False
+
+    normalized = value.strip().lower()
+    if not normalized:
+        return True
+
+    scheme = urlsplit(normalized).scheme
+    if not scheme:
+        return True
+
+    if scheme in UNSAFE_URL_SCHEMES:
+        return False
+
+    return scheme in SAFE_URL_SCHEMES
 
 
 class HtmlStripper:
@@ -296,6 +319,10 @@ def clean_html_for_storage(html: str) -> str:
                 or attr.lower().startswith("on")
                 or attr.startswith(("data-", "aria-"))
             ):
+                attrs_to_remove.append(attr)
+                continue
+
+            if attr in ("href", "src") and not _is_safe_url_value(tag.attrs.get(attr)):
                 attrs_to_remove.append(attr)
         for attr in attrs_to_remove:
             del tag[attr]
