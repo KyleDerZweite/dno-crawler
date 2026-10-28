@@ -13,27 +13,31 @@ jobs:
       run:
         working-directory: backend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "latest"
+          version: "0.11.16"
+          python-version: "3.11"
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install Python
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Run ruff check
-        run: uv run ruff check .
+        run: uv run --locked ruff check .
 
       - name: Run ruff format check
-        run: uv run ruff format --check .
+        run: uv run --locked ruff format --check .
 
       - name: Run mypy
-        run: uv run mypy app
+        run: uv run --locked mypy app
 
   backend-test:
     name: Backend Tests
@@ -70,21 +74,25 @@ jobs:
       ZITADEL_DOMAIN: auth.example.com
       ENVIRONMENT: test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install uv
-        uses: astral-sh/setup-uv@v5
+        uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "latest"
+          version: "0.11.16"
+          python-version: "3.11"
+          working-directory: backend
+          enable-cache: true
+          cache-dependency-glob: uv.lock
 
       - name: Install Python
         run: uv python install 3.11
 
       - name: Install dependencies
-        run: uv sync --extra dev
+        run: uv sync --locked --extra dev
 
       - name: Run tests
-        run: uv run pytest -x --tb=short
+        run: uv run --locked pytest -x --tb=short
 
   frontend-build:
     name: Frontend Build & Lint
@@ -93,23 +101,28 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          node-version-file: frontend/.node-version
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run lint
-        run: npm run lint
+        run: pnpm run lint
 
       - name: Build
-        run: npm run build
+        run: pnpm run build
 
   frontend-test:
     name: Frontend Tests
@@ -118,17 +131,22 @@ jobs:
       run:
         working-directory: frontend
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          package_json_file: frontend/package.json
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v7
         with:
-          node-version: "22"
-          cache: "npm"
-          cache-dependency-path: frontend/package-lock.json
+          node-version-file: frontend/.node-version
+          cache: "pnpm"
+          cache-dependency-path: frontend/pnpm-lock.yaml
 
       - name: Install dependencies
-        run: npm ci
+        run: pnpm install --frozen-lockfile
 
       - name: Run tests
-        run: npm test
+        run: pnpm test

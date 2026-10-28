@@ -8,9 +8,9 @@ license = { text = "MIT" }
 
 dependencies = [
     # Web Framework
-    "fastapi>=0.109.0",
+    "fastapi>=0.162.0",
     "uvicorn[standard]>=0.27.0",
-    "python-multipart>=0.0.6",
+    "python-multipart>=0.0.32",
 
     # Database
     "sqlalchemy[asyncio]>=2.0.25",
@@ -24,16 +24,16 @@ dependencies = [
 
     # HTTP Client
     "httpx>=0.26.0",
-    "aiohttp>=3.9.1",
+    "aiohttp>=3.14.5",
 
     # Web Scraping
     "beautifulsoup4>=4.12.3",
-    "lxml>=5.1.0",
+    "lxml>=6.1.3",
     "trafilatura>=2.0.0",
 
     # PDF & Excel Processing
     "pymupdf>=1.23.0",
-    "pdfplumber>=0.10.3",
+    "pdfplumber>=0.11.10",
     "openpyxl>=3.1.0",
     "xlrd>=2.0.1",        # Old .xls format support
 
@@ -44,19 +44,19 @@ dependencies = [
 
     # Data Validation
     "pydantic>=2.5.0",
-    "pydantic-settings>=2.1.0",
+    "pydantic-settings>=2.16.2",
     "email-validator>=2.1.0",
 
     # Authentication
-    "pyjwt[crypto]>=2.8.0",
+    "pyjwt[crypto]>=2.15.1",
     "passlib[bcrypt]>=1.7.4",
 
     # Security
     "defusedxml>=0.7.1",    # Safe XML parsing (XXE protection)
-    "cryptography>=42.0.0", # Encryption (Fernet, HKDF)
+    "cryptography>=50.0.2", # Encryption (Fernet, HKDF)
 
     # Utilities
-    "python-dotenv>=1.0.0",
+    "python-dotenv>=1.2.4",
     "structlog>=24.1.0",
     "tenacity>=8.2.3",           # Retries
     "aiofiles>=23.0.0",          # Async file I/O
@@ -68,17 +68,17 @@ dependencies = [
 
     # Data formats
     "pandas>=2.0.0",   # DataFrame operations for seed data
-    "pyarrow>=15.0.0", # Parquet support for seed data
+    "pyarrow>=26.0.0", # Parquet support for seed data
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=7.4.4",
+    "pytest>=9.2.0",
     "pytest-asyncio>=0.23.3",
     "pytest-cov>=4.1.0",
     "httpx>=0.26.0",          # For testing
     "ruff>=0.1.14",
-    "black>=24.1.0",
+    "black>=26.10.1",
     "mypy>=1.8.0",
     "pre-commit>=3.6.0",
 ]

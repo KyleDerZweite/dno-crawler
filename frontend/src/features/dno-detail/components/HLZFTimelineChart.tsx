@@ -5,7 +5,7 @@
 
 import { useMemo, useState, useEffect } from "react";
 import Chart from "react-apexcharts";
-import type { ApexOptions } from "apexcharts";
+import type { ApexOptions, ApexAxisChartSeries } from "apexcharts";
 import { Clock, Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -225,12 +225,12 @@ export function HLZFTimelineChart({ hlzf, isLoading, className }: HLZFTimelineCh
     return (
         <div className={className}>
             {/* Header */}
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Clock className="h-5 w-5 text-primary" />
                     <h3 className="font-semibold">HLZF Timeline</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {/* Mode toggle */}
                     <div className="flex rounded-md border">
                         <Button

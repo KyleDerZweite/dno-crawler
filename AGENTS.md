@@ -81,34 +81,39 @@ DNO Crawler is a full-stack app for automated extraction of regulatory data (Net
 
 ### Backend (run from `backend/`)
 ```bash
-uv sync                                    # Install dependencies (uses uv, not pip)
-uvicorn app.api.main:app --reload          # Dev server on :8000
-pytest                                     # Run tests (asyncio_mode=auto)
-pytest tests/path/test_file.py::test_name  # Run single test
-ruff check .                               # Lint
-ruff check . --fix                         # Lint with auto-fix
-ruff format .                              # Format (or: black .)
-mypy app                                   # Type check (strict mode)
-alembic revision --autogenerate -m "msg"   # Generate migration
-alembic upgrade head                       # Apply migrations
-python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json --dry-run  # Validate MaStR stats import
-python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json            # Import MaStR stats
+uv sync --locked --extra dev  # Install locked development dependencies
+uv run uvicorn app.api.main:app --reload  # Dev server on :8000
+uv run pytest  # Run tests (asyncio_mode=auto)
+uv run pytest tests/path/test_file.py::test_name  # Run single test
+uv run ruff check .  # Lint
+uv run ruff check . --fix  # Lint with auto-fix
+uv run ruff format .  # Format
+uv run mypy app  # Type check with configured exclusions
+uv run alembic revision --autogenerate -m "msg"  # Generate migration
+uv run alembic upgrade head  # Apply migrations
+uv run python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json --dry-run  # Validate MaStR stats import
+uv run python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json  # Import MaStR stats
 ```
+
+Mypy is not strict. Missing imports are ignored, and errors in `app.services.*`,
+`app.jobs.*`, `app.core.*`, and `app.api.*` are suppressed by `backend/pyproject.toml`.
+A passing mypy run does not establish type coverage for those modules.
 
 ### MaStR Offline Pipeline (run from repo root)
 ```bash
-python marktstammdatenregister/transform_mastr.py --data-dir ./marktstammdatenregister/data --output ./marktstammdatenregister/dno_stats.json
-python marktstammdatenregister/import_mastr_stats.py --file ./marktstammdatenregister/dno_stats.json --dry-run
+uv run --project backend python marktstammdatenregister/transform_mastr.py --data-dir ./marktstammdatenregister/data --output ./marktstammdatenregister/dno_stats.json
+uv run --project backend python backend/scripts/import_mastr_stats.py --file ./marktstammdatenregister/dno_stats.json --dry-run
 ```
 
 ### Frontend (run from `frontend/`)
 ```bash
-npm install        # Install dependencies
-npm run dev        # Vite dev server on :5173
-npm run build      # tsc -b && vite build
-npm run lint       # ESLint
-npm test           # Run Vitest tests
-npm run test:watch # Run tests in watch mode
+corepack enable                 # Enable the pinned pnpm version
+pnpm install --frozen-lockfile  # Install dependencies
+pnpm run dev        # Vite dev server on :5173
+pnpm run build      # tsc -b && vite build
+pnpm run lint       # ESLint
+pnpm test           # Run Vitest tests
+pnpm run test:watch # Run tests in watch mode
 ```
 
 ### Podman

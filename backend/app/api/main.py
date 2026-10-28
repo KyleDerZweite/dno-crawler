@@ -135,6 +135,8 @@ def create_app() -> FastAPI:
         docs_url="/docs",
         redoc_url="/redoc",
         lifespan=lifespan,
+        # Preserve JSON requests without Content-Type accepted before FastAPI 0.132.
+        strict_content_type=False,
     )
 
     app.add_middleware(SecurityHeadersMiddleware)

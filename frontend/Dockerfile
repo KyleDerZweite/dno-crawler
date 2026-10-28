@@ -1,10 +1,10 @@
 # Stage 1: Build
-FROM node:20-alpine AS build
+FROM node:22-alpine AS build
 
 WORKDIR /app
 
-COPY package.json package-lock.json ./
-RUN npm ci
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
 
 COPY . .
 
@@ -14,7 +14,7 @@ ARG VITE_ZITADEL_CLIENT_ID
 ARG VITE_ZITADEL_REDIRECT_URI
 ARG VITE_ZITADEL_POST_LOGOUT_URI
 
-RUN npm run build
+RUN pnpm run build
 
 # Stage 2: Serve
 FROM nginx:alpine

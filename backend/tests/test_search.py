@@ -9,6 +9,17 @@ pytestmark = pytest.mark.asyncio
 
 
 class TestSearchEndpoint:
+    async def test_missing_content_type_keeps_json_validation(self, client: AsyncClient) -> None:
+        """Older API clients may omit Content-Type on JSON bodies."""
+        payload = '{"coordinates":{"latitude":999,"longitude":999}}'
+        explicit = await client.post(
+            "/api/v1/search/", content=payload, headers={"Content-Type": "application/json"}
+        )
+        implicit = await client.post("/api/v1/search/", content=payload)
+        assert explicit.status_code == 422
+        assert implicit.status_code == explicit.status_code
+        assert implicit.json() == explicit.json()
+
     async def test_search_requires_input(self, client: AsyncClient) -> None:
         """Search endpoint requires at least one search parameter."""
         response = await client.post("/api/v1/search/", json={})

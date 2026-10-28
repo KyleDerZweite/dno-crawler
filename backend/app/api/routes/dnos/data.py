@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.auth import User as AuthUser
 from app.core.auth import get_current_user, require_admin
 from app.core.models import APIResponse
+from app.core.parsers import decode_hlzf_season
 from app.db import DNOModel, get_db
 
 from .schemas import UpdateHLZFRequest, UpdateNetzentgelteRequest
@@ -99,10 +100,10 @@ async def get_dno_data(
                 "id": row[0],
                 "voltage_level": row[1],
                 "year": row[2],
-                "winter": row[3],
-                "fruehling": row[4],
-                "sommer": row[5],
-                "herbst": row[6],
+                "winter": decode_hlzf_season(row[3]),
+                "fruehling": decode_hlzf_season(row[4]),
+                "sommer": decode_hlzf_season(row[5]),
+                "herbst": decode_hlzf_season(row[6]),
                 "verification_status": row[7],
                 # Extraction source fields
                 "extraction_source": row[8],

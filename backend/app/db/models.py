@@ -33,10 +33,13 @@ from sqlalchemy import (
     Text,
 )
 from sqlalchemy.dialects.postgresql import JSON, UUID
+from sqlalchemy.engine import Dialect
 from sqlalchemy.orm import Mapped, mapped_column, relationship, validates
 from sqlalchemy.sql import func
+from sqlalchemy.types import TypeDecorator
 
 from app.core.models import JobStatus, VerificationStatus
+from app.core.parsers import decode_hlzf_season
 from app.db.database import Base
 
 if TYPE_CHECKING:
@@ -434,6 +437,18 @@ class NetzentgelteModel(Base, TimestampMixin, ExtractionSourceMixin, Verificatio
     dno: Mapped["DNOModel"] = relationship(back_populates="netzentgelte")
 
 
+class HLZFSeasonJSON(TypeDecorator):
+    """Keep JSON writes and decode the TEXT columns in existing Alembic databases."""
+
+    impl = JSON
+    cache_ok = True
+
+    def process_result_value(
+        self, value: list[dict[str, str]] | str | None, dialect: Dialect
+    ) -> list[dict[str, str]] | None:
+        return decode_hlzf_season(value)
+
+
 class HLZFModel(Base, TimestampMixin, ExtractionSourceMixin, VerificationMixin):
     """HLZF (Hochlastzeitfenster) data per voltage level.
 
@@ -455,10 +470,10 @@ class HLZFModel(Base, TimestampMixin, ExtractionSourceMixin, VerificationMixin):
     # Time windows per season as JSON arrays of {start, end} objects.
     # Example: [{"start": "07:30:00", "end": "15:30:00"}, ...]
     # NULL when no peak load time window exists for that season.
-    winter: Mapped[list | None] = mapped_column(JSON)
-    fruehling: Mapped[list | None] = mapped_column(JSON)
-    sommer: Mapped[list | None] = mapped_column(JSON)
-    herbst: Mapped[list | None] = mapped_column(JSON)
+    winter: Mapped[list | None] = mapped_column(HLZFSeasonJSON)
+    fruehling: Mapped[list | None] = mapped_column(HLZFSeasonJSON)
+    sommer: Mapped[list | None] = mapped_column(HLZFSeasonJSON)
+    herbst: Mapped[list | None] = mapped_column(HLZFSeasonJSON)
 
     dno: Mapped["DNOModel"] = relationship(back_populates="hlzf")
 

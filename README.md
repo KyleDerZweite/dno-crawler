@@ -98,7 +98,7 @@ python marktstammdatenregister/transform_mastr.py \
 
 # 2) Apply DB migration and import (from backend/)
 cd backend
-alembic upgrade head
+uv run alembic upgrade head
 python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json --dry-run
 python scripts/import_mastr_stats.py --file ../marktstammdatenregister/dno_stats.json
 ```
@@ -192,20 +192,23 @@ Access the application:
 
 ### Local Development (Without Containers)
 
+Use Python 3.11 with uv 0.11.16, and Node 22.12 or newer within Node 22 with Corepack. The frontend pins pnpm in `package.json`.
+
 Backend:
 
 ```bash
 cd backend
-uv sync  # or pip install -r requirements.txt
-uvicorn app.api.main:app --reload
+uv sync --locked --extra dev
+uv run uvicorn app.api.main:app --reload
 ```
 
 Frontend:
 
 ```bash
 cd frontend
-npm install
-npm run dev
+corepack enable
+pnpm install --frozen-lockfile
+pnpm run dev
 ```
 
 ### Database Migrations
@@ -216,13 +219,13 @@ Schema changes are managed via Alembic:
 cd backend
 
 # Generate a new migration after model changes
-alembic revision --autogenerate -m "description"
+uv run alembic revision --autogenerate -m "description"
 
 # Apply migrations
-alembic upgrade head
+uv run alembic upgrade head
 
 # Rollback one migration
-alembic downgrade -1
+uv run alembic downgrade -1
 ```
 
 **Production Setup:**

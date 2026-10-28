@@ -30,17 +30,74 @@ Use two long-lived branches:
 
 ## Promotion Checklist
 
-Before merging `dev` into `main`, validate:
+Before merging `dev` into `main`, install locked dependencies with `cd backend && uv sync --locked --extra dev` and `cd frontend && pnpm install --frozen-lockfile`, then validate:
 
 - `cd backend && uv run ruff check . && uv run ruff format --check .`
 - `cd backend && uv run mypy app`
 - `cd backend && uv run pytest -x --tb=short`
-- `cd frontend && npm run lint`
-- `cd frontend && npm run build`
-- `cd frontend && npm test`
+- `cd frontend && pnpm run lint`
+- `cd frontend && pnpm run build`
+- `cd frontend && pnpm test`
 - CI pipeline green on PR
 - Migration file present and reviewed if schema changed (`backend/alembic/versions/`)
 - No secrets in diff (`.env`, API keys, credentials)
+
+## Dependency tooling
+
+Use Python 3.11 with uv 0.11.16 and `backend/uv.lock`. Frontend development, CI and build containers use Node 22 and pnpm 10.34.9 from `frontend/package.json`. Both lockfiles include the security refresh verified on 2026-10-28. Subsequent installs must preserve `pnpm-lock.yaml` with `--frozen-lockfile`. Both lockfiles belong in version control. Only esbuild is allowed to run dependency build scripts. The development backend keeps its virtual environment at `/opt/venv`, outside the read-only source mount.
+
+Dependabot uses the `uv` ecosystem for the backend and the `npm` ecosystem for pnpm. Version-update PRs target `dev`, preserving promotion to `main`. The pnpm 10 lock format remains compatible with GitHub dependency scanning. This configuration does not enable repository vulnerability alerts or change branch protection.
+
+### Security refresh compatibility contract
+
+The 2026-10-28 maintenance scope preserves API routes and response shapes, deterministic document parsing, OIDC verification, frontend routes and existing components. Dependency changes do not change the split-worker responsibilities, database schema or promotion policy. The dependency review selected updates and regression coverage within these existing boundaries.
+
+FastAPI 0.162.0 supports the audited Starlette 1.10.0. [FastAPI's release notes](https://fastapi.tiangolo.com/release-notes/) describe Starlette 1 support and the new strict JSON Content-Type default. The application explicitly keeps `strict_content_type=False` to preserve clients that omit Content-Type. Its database dependency must propagate `RequestValidationError` to the existing 422 handler, rather than converting validation into HTTP 500. The search regression compares explicit and omitted Content-Type on invalid coordinates.
+
+Vitest 5.0.5 replaces Vitest 3 and removes the vulnerable Tinypool dependency. The existing jsdom setup, test discovery and CLI remain in use. [Vitest's migration guide](https://vitest.dev/guide/migration/) requires Node >=22.12 and Vite >=6.4, which this project's Node 22 and Vite 7 satisfy. The existing React Hooks lint plugin remains pinned to 7.0.1. The 7.1 recommended preset changes unrelated effect rules; this maintenance does not select that lint-policy change. No audit overrides, ignored advisories or rule suppressions were added.
+
+ApexCharts 5.16 requires explicit `ApexAxisChartSeries` type imports in the three existing chart components. Chart data, options and layout remain unchanged. Backend updates include cryptography 50.0.2 and PyArrow 26.0.0. Regression tests exercise RSA/JWKS validation and rejected claims, Fernet tampering, actual PDF tariff extraction, multiline HTML HLZF windows and the shipped Parquet reader. OpenAI 2.14.0, OpenRouter 0.1.1, pandas 2.3.3 and PyMuPDF 1.26.7 retain their existing versions to avoid unrelated provider and parser API migrations.
+
+The disposable migrated runtime exposed an older schema mismatch: the initial migration stores HLZF seasons as TEXT, while the current ORM declares JSON. A shared decoder now reads JSON arrays, JSON text, JSON null and older time-window strings. The ORM result adapter and raw-SQL detail endpoint use that decoder; writes keep the existing JSON format. Neither migrations nor stored captures change. Regression coverage checks public search and protected detail against fresh JSON columns and both TEXT representations, and rejects unreadable content. On narrow layouts, the shared search mode buttons wrap, the existing DNO context navigation precedes the content, and chart controls wrap. Wide layouts retain the existing sidebars.
+
+### Local verification on 2026-10-28
+
+This is implementation evidence, not deployment or owner acceptance. At the original implementation verification, the checkout was `main` at base/HEAD `88f0746143e5e74a9b798ae97e8a7a657b4cdee0`, with an empty staging area. The original owner's changes remain part of the working diff. The pre-existing BACKLOG.md bytes retain SHA-256 `2e098cb0ebe9731758b46fbbfcf2beecba034d17d4390190861e857cc376ac42`. Entry fingerprints cover 307 tracked/untracked files; tracked captures, paused modules and personal AGENTS.md rules were preserved. Disposable PostgreSQL and Redis storage did not mount repository data directories.
+
+The final backend lock has SHA-256 `fbae4f22895d74802281914c8e379a7065d0ed9670be1bea8c7519bcf06c8118`; the frontend lock has SHA-256 `b6327dbf252cbce8e7280fd19e3ad5fa755196de4a0968a432506756611a055d`. `pnpm audit --json` reports zero findings across 418 dependencies, down from 137 findings including 3 critical and 58 high. `uv export --locked --extra dev --no-hashes --no-emit-project` followed by `uvx --python 3.11 pip-audit -r <export> --disable-pip --no-deps -f json` reports zero known findings across 115 resolved Python packages, down from 274 findings in 25 packages. The export includes every locked dependency; `--no-deps` prevents a second dependency resolution. Neither audit excludes advisories.
+
+| Check | Observed result |
+|-------|-----------------|
+| `uv lock --check`, `uv sync --locked --extra dev`, offline resync | Passed on Python 3.11.17 with uv 0.11.16 |
+| Locked `ruff check .`, `ruff format --check .`, `mypy app` | Passed; mypy retains the exclusions documented in AGENTS.md |
+| Locked `pytest -x --tb=short` | 45 passed, zero skips, including all original 31 tests, against disposable PostgreSQL 16.11 and Redis 7.4.7 |
+| Frozen/offline pnpm install, `pnpm run lint`, `pnpm run build`, `pnpm test` | Passed on Node 22.23.4 and pnpm 10.34.9; 5 tests across 3 files |
+| Deliberately mismatched manifest in a temporary directory | Rejected with `ERR_PNPM_OUTDATED_LOCKFILE` |
+| Production and development frontend/backend Dockerfiles | All four built and ran; production backend used Docker image format to retain Podman's HEALTHCHECK |
+| Current backend runtime source hashes | Matched the checkout in both containers |
+| Runtime Python | Both backend images used Python 3.11.18 |
+| Migrations and runtime probes | Applied through `a3b9c7d1e5f2`; both health/readiness HTTP 200 with database and Redis connected; production container health `healthy` |
+| Authentication and unavailable Redis | Production anonymous `/auth/me` returned 401; development mock returned 200; production mock-auth startup failed with exit 3; Redis outage returned `degraded`, followed by `ready` after restart |
+| Rendered production assets and development server | Chromium 156.0.8078.4 passed at 390 and 1440 pixels: visible search modes, invalid-input disabled state, synthetic 429/empty-state recovery, real local search/data preview, nested detail route, three charts and toggles, dialog Escape; no page errors or API 5xx |
+
+The rendered journeys used synthetic records in the migrated disposable database and the existing mock-admin mode. Production assets used a local test proxy to the development API because the deployment routes `/api` outside nginx. The 429 and empty responses were UI fixtures; successful search, detail data and charts used real PostgreSQL/Redis-backed API responses. Existing Google Fonts requests were observed. Live Zitadel sign-in, external AI providers, real crawling, touch/assistive-technology testing and owner acceptance remain unverified. The original address-search smoke tests allow upstream error responses, so their passing result does not establish live VNB service availability.
+
+Two existing React Refresh lint warnings and the large-bundle build warning remain. Initial failed checks identified the HLZF storage mismatch, validation-to-500 conversion and missing ApexCharts type imports; regression checks passed after the fixes. Registry timeouts required reduced pnpm concurrency for the refresh. An initial build-cache mount failed under SELinux; a separate disposable uv cache allowed backend builds without changing the shared cache. No production host, actual website, branch policy, CI trigger or required-check name changed. No commit, push, PR or deployment occurred. Hosted CI and independent review remain for the integrating owner.
+
+All six disposable runtime containers, their network and the separate build cache were removed after verification. Local build images and temporary evidence reports remain available for the integrating owner's review.
+
+
+### Local integration onto dev on 2026-10-28
+
+The reviewed maintenance commit `17a8c22cd88af53bb772306203519bce17fd8955` was cherry-picked without conflicts as `9ce5f97155e191d0c75dd2fc6686b18519791813` onto verified `origin/dev` at `ecaa3f404d63a8964618b7c5e0f9be5a6c26f0d2`. The local branch is `maintenance/locked-security-refresh-dev-20261028`. The three unrelated commits reachable from original `main` are excluded. Dev's `/docs`, `/redoc` and `/openapi.json` routes and production compose configuration remain unchanged. Both setup-uv references retain upstream commit `07a047e608db84b3d8c06cd9a7c7dcc9c355c18e`. Original `main` and the original maintenance branch remain unchanged.
+
+Locked backend sync, Ruff lint/format, mypy and all 45 tests passed again against disposable PostgreSQL 16 and Redis 7, with zero skips. Frozen pnpm install, lint, TypeScript/build and all five frontend tests passed on Node 22.23.4 and pnpm 10.34.9. Both fresh audits again found zero known vulnerabilities across 115 Python packages and 418 frontend dependencies, without advisory exclusions. The two existing React Refresh warnings and bundle-size warning remain.
+
+All four container images rebuilt successfully. The migrated disposable runtime reached Alembic `a3b9c7d1e5f2`; both backend images returned healthy/ready with PostgreSQL and Redis connected. Both runtime API source hashes matched this checkout. Anonymous production auth returned 401, development mock auth returned 200, and production startup with mock auth exited 3. Redis outage changed readiness to degraded; restarting Redis restored ready. HTTP probes confirmed dev's original documentation routes, including 404 for `/api/docs`.
+
+Chromium 156.0.8078.4 repeated the existing production-assets and development journeys at 390 and 1440 pixels. Search, real database-backed preview/detail, three charts and toggles, synthetic 429/empty-state recovery, invalid-input state and dialog Escape passed without page errors or API 5xx. Production assets still used the explicit test proxy to the mock-development backend. Source mounts remained read-only; the frontend test container used temporary writable Vite caches after the first start correctly failed on a read-only cache. Screenshots were inspected at both widths. Live Zitadel, external providers, real crawls, assistive technology and owner acceptance remain unverified. Hosted CI and a new independent review belong to Root before delivery.
+
+Only pre-existing `BACKLOG.md` remains unstaged, with its original index blob and SHA-256 `2e098cb0ebe9731758b46fbbfcf2beecba034d17d4390190861e857cc376ac42`. The normal branch switch preserved its bytes, so no private recovery ref was needed. No push, PR, deployment or shared branch mutation occurred. All six integration containers and their isolated network were removed after checks; local images and `/tmp/dno-dev-integration-*` evidence remain for review.
 
 ## Environment Strategy
 
