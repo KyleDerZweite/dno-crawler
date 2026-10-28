@@ -5,10 +5,26 @@ Common functions for parsing and normalizing values extracted from
 PDF, HTML, and other document formats.
 """
 
+import json
 import re
 from typing import TypeVar
 
 T = TypeVar("T")
+
+
+def decode_hlzf_season(value: list[dict[str, str]] | str | None) -> list[dict[str, str]] | None:
+    """Read structured JSON or legacy TEXT seasons without changing stored captures."""
+    if value is None or isinstance(value, list):
+        return value
+    if value.lstrip().startswith("[") or value.strip() == "null":
+        decoded = json.loads(value)
+        if decoded is None or isinstance(decoded, list):
+            return decoded
+        raise ValueError("HLZF season JSON must be an array")
+    ranges = parse_hlzf_time_ranges(value)
+    if ranges is None and value.strip().lower() not in ("", "-", "entfällt", "keine"):
+        raise ValueError("Invalid legacy HLZF season")
+    return ranges
 
 
 def parse_german_number(value: str | None) -> float | None:

@@ -79,7 +79,7 @@ export function DetailContextSidebar({
     ];
 
     return (
-        <aside className="w-72 border-r bg-muted/10 flex flex-col shrink-0">
+        <aside className="w-full border-b bg-muted/10 flex flex-col shrink-0 md:w-72 md:border-b-0 md:border-r">
             {/* Entity Header */}
             <div className="p-6 border-b">
                 <div className="flex items-center gap-3 mb-4">
@@ -124,7 +124,7 @@ export function DetailContextSidebar({
             </div>
 
             {/* Vertical Tabs */}
-            <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-1">
+            <nav className="grid grid-cols-2 gap-1 py-4 px-3 md:block md:flex-1 md:overflow-y-auto md:space-y-1">
                 {navItems.map(item => (
                     <NavLink
                         key={item.id}

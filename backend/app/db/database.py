@@ -86,10 +86,11 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
     except Exception as e:
         # Don't catch application-level exceptions that should be handled by global handlers
         from fastapi.exceptions import HTTPException as FastAPIHTTPException
+        from fastapi.exceptions import RequestValidationError
 
         from app.core.exceptions import DNOCrawlerException
 
-        if isinstance(e, (DNOCrawlerException, FastAPIHTTPException)):
+        if isinstance(e, (DNOCrawlerException, FastAPIHTTPException, RequestValidationError)):
             if session:
                 await session.rollback()
             raise  # Re-raise to let global exception handlers handle it

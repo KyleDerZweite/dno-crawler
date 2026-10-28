@@ -5,7 +5,7 @@
 
 import { useMemo, useState } from "react";
 import Chart from "react-apexcharts";
-import type { ApexOptions } from "apexcharts";
+import type { ApexOptions, ApexAxisChartSeries } from "apexcharts";
 import { Button } from "@/components/ui/button";
 import { TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -185,12 +185,12 @@ export function PriceTrendChart({ netzentgelte, isLoading, className }: PriceTre
     return (
         <div className={className}>
             {/* Header */}
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <TrendingUp className="h-5 w-5 text-primary" />
                     <h3 className="font-semibold">Price Trends</h3>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
                     {/* Price field toggle */}
                     <div className="flex rounded-md border">
                         <Button

@@ -5,7 +5,7 @@
 
 import { useMemo } from "react";
 import Chart from "react-apexcharts";
-import type { ApexOptions } from "apexcharts";
+import type { ApexOptions, ApexAxisChartSeries } from "apexcharts";
 import { Grid3X3 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Netzentgelte, HLZF } from "@/types";
@@ -189,7 +189,7 @@ export function DataCompletenessHeatmap({
     return (
         <div className={className}>
             {/* Header */}
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
                 <div className="flex items-center gap-2">
                     <Grid3X3 className="h-5 w-5 text-primary" />
                     <h3 className="font-semibold">Data Completeness</h3>

@@ -19,7 +19,7 @@ Copy-paste auth implementation for React + TypeScript + Vite applications using 
 ## Installation
 
 ```bash
-npm install oidc-client-ts react-oidc-context
+pnpm add oidc-client-ts react-oidc-context
 ```
 
 ## Setup

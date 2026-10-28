@@ -6,7 +6,7 @@ React SPA for the DNO Crawler application.
 
 ## Stack
 
-- **React 18** with TypeScript
+- **React 19** with TypeScript
 - **Vite** for development and bundling
 - **TailwindCSS** for styling
 - **TanStack Query** for server state management
@@ -47,17 +47,20 @@ src/
 
 ### Prerequisites
 
-- Node.js 18+
-- npm or pnpm
+- Node.js 22.12 or newer within Node 22, matching `.node-version` and CI
+- Corepack, which selects the pnpm version pinned in `package.json`
 
 ### Setup
 
 ```bash
+# Enable the package manager pinned in package.json
+corepack enable
+
 # Install dependencies
-npm install
+pnpm install --frozen-lockfile
 
 # Start development server
-npm run dev
+pnpm run dev
 ```
 
 The app runs at `http://localhost:5173` by default.
@@ -68,7 +71,7 @@ Create a `.env` file or set these in the root `.env`:
 
 | Variable | Description |
 |----------|-------------|
-| `VITE_API_URL` | Backend API URL (default: `http://localhost:8000/api/v1`) |
+| `VITE_API_URL` | Backend API URL, default `/api/v1`, proxied to the backend by Vite in development |
 | `VITE_ZITADEL_AUTHORITY` | OIDC provider URL (use `https://auth.example.com` for mock mode) |
 | `VITE_ZITADEL_CLIENT_ID` | OIDC client ID |
 | `VITE_ZITADEL_REDIRECT_URI` | OAuth callback URL |
@@ -82,10 +85,10 @@ When `VITE_ZITADEL_AUTHORITY` is set to `https://auth.example.com`, the app runs
 
 ```bash
 # Production build
-npm run build
+pnpm run build
 
 # Preview production build
-npm run preview
+pnpm run preview
 ```
 
 Output is generated in `dist/`.
@@ -149,7 +152,7 @@ React Router handles client-side navigation:
 
 ```bash
 # Run ESLint
-npm run lint
+pnpm run lint
 ```
 
 ## Docker

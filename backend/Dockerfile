@@ -15,12 +15,16 @@ RUN apt-get update \
         curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Install Python dependencies from pyproject.toml
-COPY pyproject.toml .
-RUN pip install --no-cache-dir .
+# Keep dependencies outside the read-only /app development source mount.
+COPY --from=ghcr.io/astral-sh/uv:0.11.16 /uv /usr/local/bin/uv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+ENV PATH="/opt/venv/bin:$PATH"
+COPY pyproject.toml uv.lock ./
+RUN uv sync --locked --extra dev --no-install-project
 
 # Copy project
 COPY . .
+RUN uv sync --locked --extra dev
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash appuser \

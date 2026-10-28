@@ -131,6 +131,7 @@ Thumbs.db
 
 # Lock files
 *.lock
+!backend/uv.lock
 
 # End of .gitignore
 data/auth/*

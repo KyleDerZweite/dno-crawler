@@ -156,7 +156,7 @@ export function DNODetailPage() {
     };
 
     return (
-        <div className="flex h-screen overflow-hidden bg-background">
+        <div className="flex min-h-screen flex-col bg-background md:h-screen md:flex-row md:overflow-hidden">
             {/* Context Sidebar */}
             <DetailContextSidebar
                 dno={dno}
@@ -171,9 +171,9 @@ export function DNODetailPage() {
             />
 
             {/* Workspace */}
-            <main className="flex-1 flex flex-col min-w-0">
+            <main className="flex-1 flex flex-col min-w-0 min-h-0">
                 {/* Breadcrumbs Header - h-16 to align with global sidebar header */}
-                <header className="h-16 border-b px-6 flex items-center gap-2 bg-background/50 backdrop-blur shrink-0 sticky top-0 z-10">
+                <header className="h-16 border-b px-6 flex items-center gap-2 overflow-x-auto whitespace-nowrap bg-background/50 backdrop-blur shrink-0 sticky top-0 z-10">
                     <Button variant="ghost" size="icon" asChild className="h-8 w-8 -ml-2 text-muted-foreground">
                         <Link to="/dashboard"><Home className="h-4 w-4" /></Link>
                     </Button>
@@ -194,7 +194,7 @@ export function DNODetailPage() {
                 </header>
 
                 {/* Content Area - Child routes render here */}
-                <div className="flex-1 overflow-y-auto p-6">
+                <div className="flex-1 overflow-y-auto p-4 sm:p-6">
                     <div className="max-w-7xl mx-auto">
                         <Outlet context={outletContext} />
                     </div>

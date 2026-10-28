@@ -178,7 +178,7 @@ export function PublicSearchPanel({
         <>
             <Card>
                 <CardContent className="p-6 space-y-6">
-                    <div className="flex gap-2 border-b pb-4">
+                    <div className="flex flex-wrap gap-2 border-b pb-4">
                         <Button
                             variant={searchMode === "address" ? "default" : "ghost"}
                             size="sm"
